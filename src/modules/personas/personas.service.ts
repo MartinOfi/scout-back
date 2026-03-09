@@ -113,7 +113,6 @@ export class PersonasService {
       ...dto,
       tipo: PersonaType.PROTAGONISTA,
       estado: EstadoPersona.ACTIVO,
-      fueBonificado: false,
     });
 
     return this.protagonistaRepository.save(protagonista);
@@ -221,18 +220,5 @@ export class PersonasService {
   async remove(id: string): Promise<void> {
     const persona = await this.findOne(id);
     await this.personaRepository.softRemove(persona);
-  }
-
-  async marcarBonificado(id: string): Promise<Protagonista> {
-    const protagonista = await this.protagonistaRepository.findOne({
-      where: { id },
-    });
-
-    if (!protagonista) {
-      throw new NotFoundException(`Protagonista con ID ${id} no encontrado`);
-    }
-
-    protagonista.fueBonificado = true;
-    return this.protagonistaRepository.save(protagonista);
   }
 }
