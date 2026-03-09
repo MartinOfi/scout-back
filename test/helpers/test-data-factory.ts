@@ -56,7 +56,10 @@ export class ProtagonistaFactory {
   /**
    * Create multiple protagonistas at once
    */
-  async createMany(count: number, overrides: Partial<any> = {}): Promise<any[]> {
+  async createMany(
+    count: number,
+    overrides: Partial<any> = {},
+  ): Promise<any[]> {
     const promises = [];
     for (let i = 0; i < count; i++) {
       promises.push(
@@ -64,7 +67,7 @@ export class ProtagonistaFactory {
           nombre: `Protagonista ${i + 1}`,
           dni: this.generateRandomDNI(),
           ...overrides,
-        })
+        }),
       );
     }
     return Promise.all(promises);

@@ -170,6 +170,10 @@ describe('InscripcionesService', () => {
         ano: 2026,
         montoTotal: 10000,
         montoBonificado: 0,
+        declaracionDeSalud: false,
+        autorizacionDeImagen: false,
+        salidasCercanas: false,
+        autorizacionIngreso: false,
       });
     });
 
@@ -305,6 +309,58 @@ describe('InscripcionesService', () => {
       expect(result.inscripcion).toEqual(mockInscripcion);
       expect(result.montoPagado).toBe(5000);
       expect(result.estado).toBe(EstadoInscripcion.PARCIAL);
+    });
+  });
+
+  describe('update', () => {
+    it('should update authorization fields', async () => {
+      const existingInscripcion = { ...mockInscripcion, montoTotal: 10000 };
+      repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
+      repository.save.mockResolvedValue({
+        ...existingInscripcion,
+        declaracionDeSalud: true,
+        autorizacionDeImagen: true,
+      } as Inscripcion);
+
+      const result = await service.update('inscripcion-uuid', {
+        declaracionDeSalud: true,
+        autorizacionDeImagen: true,
+      });
+
+      expect(result.declaracionDeSalud).toBe(true);
+      expect(result.autorizacionDeImagen).toBe(true);
+    });
+
+    it('should update montoBonificado', async () => {
+      const existingInscripcion = { ...mockInscripcion, montoTotal: 10000 };
+      repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
+      repository.save.mockResolvedValue({
+        ...existingInscripcion,
+        montoBonificado: 5000,
+      } as Inscripcion);
+
+      const result = await service.update('inscripcion-uuid', {
+        montoBonificado: 5000,
+      });
+
+      expect(result.montoBonificado).toBe(5000);
+    });
+
+    it('should throw if montoBonificado exceeds montoTotal', async () => {
+      const existingInscripcion = { ...mockInscripcion, montoTotal: 10000 };
+      repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
+
+      await expect(
+        service.update('inscripcion-uuid', { montoBonificado: 15000 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException if inscription not found', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.update('non-existent-id', { declaracionDeSalud: true }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

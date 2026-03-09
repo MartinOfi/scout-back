@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Inscripcion } from './entities/inscripcion.entity';
 import { CreateInscripcionDto } from './dtos/create-inscripcion.dto';
+import { UpdateInscripcionDto } from './dtos/update-inscripcion.dto';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import {
@@ -120,6 +121,10 @@ export class InscripcionesService {
       ano: dto.ano,
       montoTotal: dto.montoTotal,
       montoBonificado,
+      declaracionDeSalud: dto.declaracionDeSalud ?? false,
+      autorizacionDeImagen: dto.autorizacionDeImagen ?? false,
+      salidasCercanas: dto.salidasCercanas ?? false,
+      autorizacionIngreso: dto.autorizacionIngreso ?? false,
     });
 
     return this.inscripcionRepository.save(inscripcion);
@@ -147,6 +152,39 @@ export class InscripcionesService {
       return EstadoInscripcion.PARCIAL;
     }
     return EstadoInscripcion.PENDIENTE;
+  }
+
+  async update(id: string, dto: UpdateInscripcionDto): Promise<Inscripcion> {
+    const inscripcion = await this.findOne(id);
+
+    // Validar que montoBonificado no exceda montoTotal si se actualiza
+    if (
+      dto.montoBonificado !== undefined &&
+      dto.montoBonificado > Number(inscripcion.montoTotal)
+    ) {
+      throw new BadRequestException(
+        'El monto bonificado no puede exceder el monto total',
+      );
+    }
+
+    // Actualizar solo los campos proporcionados
+    if (dto.montoBonificado !== undefined) {
+      inscripcion.montoBonificado = dto.montoBonificado;
+    }
+    if (dto.declaracionDeSalud !== undefined) {
+      inscripcion.declaracionDeSalud = dto.declaracionDeSalud;
+    }
+    if (dto.autorizacionDeImagen !== undefined) {
+      inscripcion.autorizacionDeImagen = dto.autorizacionDeImagen;
+    }
+    if (dto.salidasCercanas !== undefined) {
+      inscripcion.salidasCercanas = dto.salidasCercanas;
+    }
+    if (dto.autorizacionIngreso !== undefined) {
+      inscripcion.autorizacionIngreso = dto.autorizacionIngreso;
+    }
+
+    return this.inscripcionRepository.save(inscripcion);
   }
 
   async remove(id: string): Promise<void> {

@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Body,
   Param,
@@ -17,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { InscripcionesService } from './inscripciones.service';
 import { CreateInscripcionDto } from './dtos/create-inscripcion.dto';
+import { UpdateInscripcionDto } from './dtos/update-inscripcion.dto';
 import { TipoInscripcion } from '../../common/enums';
 
 @ApiTags('Inscripciones')
@@ -70,6 +72,19 @@ export class InscripcionesController {
   })
   async create(@Body() dto: CreateInscripcionDto) {
     return this.inscripcionesService.registrarInscripcion(dto);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Actualizar una inscripción (autorizaciones/bonificación)' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'Inscripción actualizada' })
+  @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
+  @ApiResponse({ status: 400, description: 'Error de validación' })
+  async update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateInscripcionDto,
+  ) {
+    return this.inscripcionesService.update(id, dto);
   }
 
   @Delete(':id')

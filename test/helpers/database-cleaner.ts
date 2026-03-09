@@ -14,7 +14,7 @@ import { DataSource, EntityMetadata } from 'typeorm';
  */
 export async function truncateTables(
   dataSource: DataSource,
-  entityNames: string[]
+  entityNames: string[],
 ): Promise<void> {
   await dataSource.query('SET session_replication_role = replica;');
 
@@ -22,7 +22,7 @@ export async function truncateTables(
     for (const entityName of entityNames) {
       const metadata = dataSource.getMetadata(entityName);
       await dataSource.query(
-        `TRUNCATE TABLE "${metadata.tableName}" RESTART IDENTITY CASCADE;`
+        `TRUNCATE TABLE "${metadata.tableName}" RESTART IDENTITY CASCADE;`,
       );
     }
   } finally {
@@ -39,7 +39,7 @@ export async function truncateTables(
  */
 export async function deleteAllRows(
   dataSource: DataSource,
-  entityNames: string[]
+  entityNames: string[],
 ): Promise<void> {
   for (const entityName of entityNames) {
     const repository = dataSource.getRepository(entityName);
@@ -50,7 +50,9 @@ export async function deleteAllRows(
 /**
  * Get all table names in database
  */
-export async function getAllTableNames(dataSource: DataSource): Promise<string[]> {
+export async function getAllTableNames(
+  dataSource: DataSource,
+): Promise<string[]> {
   const entities = dataSource.entityMetadatas;
   return entities.map((entity: EntityMetadata) => entity.tableName);
 }
@@ -61,7 +63,7 @@ export async function getAllTableNames(dataSource: DataSource): Promise<string[]
  */
 export async function getTableRowCount(
   dataSource: DataSource,
-  entityName: string
+  entityName: string,
 ): Promise<number> {
   const repository = dataSource.getRepository(entityName);
   return await repository.count();
@@ -71,13 +73,17 @@ export async function getTableRowCount(
  * Verify database is empty (all tables have 0 rows)
  * Useful for test setup verification
  */
-export async function verifyDatabaseIsEmpty(dataSource: DataSource): Promise<boolean> {
+export async function verifyDatabaseIsEmpty(
+  dataSource: DataSource,
+): Promise<boolean> {
   const entities = dataSource.entityMetadatas;
 
   for (const entity of entities) {
     const count = await getTableRowCount(dataSource, entity.name);
     if (count > 0) {
-      console.warn(`⚠️  Table ${entity.tableName} has ${count} rows (expected 0)`);
+      console.warn(
+        `⚠️  Table ${entity.tableName} has ${count} rows (expected 0)`,
+      );
       return false;
     }
   }
@@ -95,13 +101,15 @@ export async function resetSequences(dataSource: DataSource): Promise<void> {
   for (const entity of entities) {
     // Find primary key columns with sequences
     const pkColumns = entity.primaryColumns.filter(
-      (col) => col.isGenerated && col.generationStrategy === 'increment'
+      (col) => col.isGenerated && col.generationStrategy === 'increment',
     );
 
     for (const pkColumn of pkColumns) {
       const sequenceName = `${entity.tableName}_${pkColumn.databaseName}_seq`;
       try {
-        await dataSource.query(`ALTER SEQUENCE "${sequenceName}" RESTART WITH 1;`);
+        await dataSource.query(
+          `ALTER SEQUENCE "${sequenceName}" RESTART WITH 1;`,
+        );
       } catch (error) {
         // Sequence might not exist (UUID primary keys), ignore
       }
@@ -122,7 +130,7 @@ export async function fullDatabaseReset(dataSource: DataSource): Promise<void> {
     // Truncate all tables
     for (const entity of entities) {
       await dataSource.query(
-        `TRUNCATE TABLE "${entity.tableName}" RESTART IDENTITY CASCADE;`
+        `TRUNCATE TABLE "${entity.tableName}" RESTART IDENTITY CASCADE;`,
       );
     }
 

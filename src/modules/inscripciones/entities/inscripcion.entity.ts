@@ -30,4 +30,36 @@ export class Inscripcion extends BaseEntity {
 
   @Column('decimal', { precision: 10, scale: 2, default: 0 })
   montoBonificado!: number;
+
+  // =========================================================================
+  // Documentación y autorizaciones
+  // =========================================================================
+
+  @Column({
+    name: 'declaracion_de_salud',
+    type: 'boolean',
+    default: false,
+  })
+  declaracionDeSalud!: boolean;
+
+  @Column({
+    name: 'autorizacion_de_imagen',
+    type: 'boolean',
+    default: false,
+  })
+  autorizacionDeImagen!: boolean;
+
+  @Column({
+    name: 'salidas_cercanas',
+    type: 'boolean',
+    default: false,
+  })
+  salidasCercanas!: boolean;
+
+  @Column({
+    name: 'autorizacion_ingreso',
+    type: 'boolean',
+    default: false,
+  })
+  autorizacionIngreso!: boolean;
 }

@@ -4,6 +4,7 @@ import {
   IsPositive,
   IsEnum,
   IsOptional,
+  IsBoolean,
   Min,
   Max,
 } from 'class-validator';
@@ -47,4 +48,40 @@ export class CreateInscripcionDto {
   @Min(0)
   @IsOptional()
   montoBonificado?: number;
+
+  // =========================================================================
+  // Documentación y autorizaciones
+  // =========================================================================
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Declaración de salud presentada (default: false)',
+  })
+  @IsBoolean()
+  @IsOptional()
+  declaracionDeSalud?: boolean;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Autorización de uso de imagen (default: false)',
+  })
+  @IsBoolean()
+  @IsOptional()
+  autorizacionDeImagen?: boolean;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Autorización para salidas cercanas (default: false)',
+  })
+  @IsBoolean()
+  @IsOptional()
+  salidasCercanas?: boolean;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Autorización de ingreso al grupo (default: false)',
+  })
+  @IsBoolean()
+  @IsOptional()
+  autorizacionIngreso?: boolean;
 }

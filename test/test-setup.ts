@@ -27,8 +27,8 @@ export async function setupTestDatabase(): Promise<DataSource> {
     url: process.env.DATABASE_URL,
     entities: [__dirname + '/../src/**/*.entity{.ts,.js}'],
     synchronize: true, // Auto-create tables (only safe for test DB!)
-    dropSchema: false,  // Don't drop on every connection (we control cleanup)
-    logging: false,     // Disable SQL logging for cleaner test output
+    dropSchema: false, // Don't drop on every connection (we control cleanup)
+    logging: false, // Disable SQL logging for cleaner test output
   });
 
   await testDataSource.initialize();
@@ -53,7 +53,9 @@ export async function closeTestDatabase(): Promise<void> {
  */
 export function getTestDataSource(): DataSource {
   if (!testDataSource?.isInitialized) {
-    throw new Error('Test database not initialized. Call setupTestDatabase() first.');
+    throw new Error(
+      'Test database not initialized. Call setupTestDatabase() first.',
+    );
   }
   return testDataSource;
 }
@@ -75,7 +77,9 @@ export async function cleanDatabase(): Promise<void> {
     // Truncate all tables
     for (const entity of entities) {
       const repository = dataSource.getRepository(entity.name);
-      await repository.query(`TRUNCATE TABLE "${entity.tableName}" RESTART IDENTITY CASCADE;`);
+      await repository.query(
+        `TRUNCATE TABLE "${entity.tableName}" RESTART IDENTITY CASCADE;`,
+      );
     }
   } finally {
     // Re-enable foreign key checks
