@@ -115,16 +115,28 @@ export class InscripcionesService {
       );
     }
 
+    // Campos de autorización solo aplican a SCOUT_ARGENTINA
+    const esScoutArgentina = dto.tipo === TipoInscripcion.SCOUT_ARGENTINA;
+
     const inscripcion = this.inscripcionRepository.create({
       personaId: dto.personaId,
       tipo: dto.tipo,
       ano: dto.ano,
       montoTotal: dto.montoTotal,
       montoBonificado,
-      declaracionDeSalud: dto.declaracionDeSalud ?? false,
-      autorizacionDeImagen: dto.autorizacionDeImagen ?? false,
-      salidasCercanas: dto.salidasCercanas ?? false,
-      autorizacionIngreso: dto.autorizacionIngreso ?? false,
+      // Autorizaciones: solo se guardan para SCOUT_ARGENTINA, siempre false para GRUPO
+      declaracionDeSalud: esScoutArgentina
+        ? (dto.declaracionDeSalud ?? false)
+        : false,
+      autorizacionDeImagen: esScoutArgentina
+        ? (dto.autorizacionDeImagen ?? false)
+        : false,
+      salidasCercanas: esScoutArgentina
+        ? (dto.salidasCercanas ?? false)
+        : false,
+      autorizacionIngreso: esScoutArgentina
+        ? (dto.autorizacionIngreso ?? false)
+        : false,
     });
 
     return this.inscripcionRepository.save(inscripcion);
@@ -167,21 +179,37 @@ export class InscripcionesService {
       );
     }
 
+    // Validar que campos de autorización solo se actualicen en SCOUT_ARGENTINA
+    const esScoutArgentina = inscripcion.tipo === TipoInscripcion.SCOUT_ARGENTINA;
+    const tieneAutorizaciones =
+      dto.declaracionDeSalud !== undefined ||
+      dto.autorizacionDeImagen !== undefined ||
+      dto.salidasCercanas !== undefined ||
+      dto.autorizacionIngreso !== undefined;
+
+    if (tieneAutorizaciones && !esScoutArgentina) {
+      throw new BadRequestException(
+        'Los campos de autorización solo aplican a inscripciones de Scout Argentina',
+      );
+    }
+
     // Actualizar solo los campos proporcionados
     if (dto.montoBonificado !== undefined) {
       inscripcion.montoBonificado = dto.montoBonificado;
     }
-    if (dto.declaracionDeSalud !== undefined) {
-      inscripcion.declaracionDeSalud = dto.declaracionDeSalud;
-    }
-    if (dto.autorizacionDeImagen !== undefined) {
-      inscripcion.autorizacionDeImagen = dto.autorizacionDeImagen;
-    }
-    if (dto.salidasCercanas !== undefined) {
-      inscripcion.salidasCercanas = dto.salidasCercanas;
-    }
-    if (dto.autorizacionIngreso !== undefined) {
-      inscripcion.autorizacionIngreso = dto.autorizacionIngreso;
+    if (esScoutArgentina) {
+      if (dto.declaracionDeSalud !== undefined) {
+        inscripcion.declaracionDeSalud = dto.declaracionDeSalud;
+      }
+      if (dto.autorizacionDeImagen !== undefined) {
+        inscripcion.autorizacionDeImagen = dto.autorizacionDeImagen;
+      }
+      if (dto.salidasCercanas !== undefined) {
+        inscripcion.salidasCercanas = dto.salidasCercanas;
+      }
+      if (dto.autorizacionIngreso !== undefined) {
+        inscripcion.autorizacionIngreso = dto.autorizacionIngreso;
+      }
     }
 
     return this.inscripcionRepository.save(inscripcion);

@@ -313,8 +313,12 @@ describe('InscripcionesService', () => {
   });
 
   describe('update', () => {
-    it('should update authorization fields', async () => {
-      const existingInscripcion = { ...mockInscripcion, montoTotal: 10000 };
+    it('should update authorization fields on SCOUT_ARGENTINA', async () => {
+      const existingInscripcion = {
+        ...mockInscripcion,
+        tipo: TipoInscripcion.SCOUT_ARGENTINA,
+        montoTotal: 10000,
+      };
       repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
       repository.save.mockResolvedValue({
         ...existingInscripcion,
@@ -331,8 +335,12 @@ describe('InscripcionesService', () => {
       expect(result.autorizacionDeImagen).toBe(true);
     });
 
-    it('should update montoBonificado', async () => {
-      const existingInscripcion = { ...mockInscripcion, montoTotal: 10000 };
+    it('should update montoBonificado on any inscription type', async () => {
+      const existingInscripcion = {
+        ...mockInscripcion,
+        tipo: TipoInscripcion.GRUPO,
+        montoTotal: 10000,
+      };
       repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
       repository.save.mockResolvedValue({
         ...existingInscripcion,
@@ -361,6 +369,59 @@ describe('InscripcionesService', () => {
       await expect(
         service.update('non-existent-id', { declaracionDeSalud: true }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw if trying to update authorization fields on GRUPO inscription', async () => {
+      const grupoInscripcion = {
+        ...mockInscripcion,
+        tipo: TipoInscripcion.GRUPO,
+        montoTotal: 10000,
+      };
+      repository.findOne.mockResolvedValue(grupoInscripcion as Inscripcion);
+
+      await expect(
+        service.update('inscripcion-uuid', { declaracionDeSalud: true }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should allow updating authorization fields on SCOUT_ARGENTINA inscription', async () => {
+      const scoutArgentinaInscripcion = {
+        ...mockInscripcion,
+        tipo: TipoInscripcion.SCOUT_ARGENTINA,
+        montoTotal: 10000,
+      };
+      repository.findOne.mockResolvedValue(
+        scoutArgentinaInscripcion as Inscripcion,
+      );
+      repository.save.mockResolvedValue({
+        ...scoutArgentinaInscripcion,
+        declaracionDeSalud: true,
+      } as Inscripcion);
+
+      const result = await service.update('inscripcion-uuid', {
+        declaracionDeSalud: true,
+      });
+
+      expect(result.declaracionDeSalud).toBe(true);
+    });
+
+    it('should allow updating montoBonificado on GRUPO inscription', async () => {
+      const grupoInscripcion = {
+        ...mockInscripcion,
+        tipo: TipoInscripcion.GRUPO,
+        montoTotal: 10000,
+      };
+      repository.findOne.mockResolvedValue(grupoInscripcion as Inscripcion);
+      repository.save.mockResolvedValue({
+        ...grupoInscripcion,
+        montoBonificado: 3000,
+      } as Inscripcion);
+
+      const result = await service.update('inscripcion-uuid', {
+        montoBonificado: 3000,
+      });
+
+      expect(result.montoBonificado).toBe(3000);
     });
   });
 

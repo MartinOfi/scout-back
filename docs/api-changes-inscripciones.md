@@ -224,3 +224,6 @@ export class InscripcionesService {
 - Una persona puede tener **una inscripción de cada tipo por año**
 - Los pagos se registran desde el módulo de **Movimientos** (no desde Inscripciones)
 - El `estado` y `montoPagado` solo vienen en `GET /:id`, no en listados
+- **Los campos de autorización solo aplican a inscripciones `scout_argentina`**:
+  - En `POST`: se ignoran si `tipo` es `grupo` (siempre `false`)
+  - En `PATCH`: error `400` si se intenta actualizar en inscripción `grupo`
