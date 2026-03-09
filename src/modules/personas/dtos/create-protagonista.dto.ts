@@ -1,12 +1,5 @@
-import {
-  IsString,
-  IsEnum,
-  IsBoolean,
-  IsOptional,
-  MinLength,
-  MaxLength,
-} from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsEnum, MinLength, MaxLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 import { Rama } from '../../../common/enums';
 
 export class CreateProtagonistaDto {
@@ -19,9 +12,4 @@ export class CreateProtagonistaDto {
   @ApiProperty({ enum: Rama, example: Rama.MANADA })
   @IsEnum(Rama)
   rama!: Rama;
-
-  @ApiPropertyOptional({ example: false, default: false })
-  @IsBoolean()
-  @IsOptional()
-  fueBonificado?: boolean;
 }
