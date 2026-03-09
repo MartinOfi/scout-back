@@ -37,7 +37,7 @@ export class CreateMovimientoDto {
 
   @ApiProperty({
     enum: ConceptoMovimiento,
-    example: ConceptoMovimiento.INSCRIPCION,
+    example: ConceptoMovimiento.CUOTA_GRUPO,
   })
   @IsEnum(ConceptoMovimiento)
   concepto!: ConceptoMovimiento;
