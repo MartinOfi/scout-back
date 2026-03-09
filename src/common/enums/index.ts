@@ -72,7 +72,8 @@ export enum TipoMovimiento {
  */
 export enum ConceptoMovimiento {
   // Inscripciones
-  INSCRIPCION = 'inscripcion', // Ingreso: cobro a familias
+  INSCRIPCION_GRUPO = 'inscripcion_grupo', // Ingreso: cobro inscripción grupo
+  INSCRIPCION_SCOUT_ARGENTINA = 'inscripcion_scout_argentina', // Ingreso: cobro inscripción SA
   INSCRIPCION_PAGO_SCOUT_ARGENTINA = 'inscripcion_pago_scout_argentina', // Egreso: pago a Scout Argentina
 
   // Cuotas
@@ -98,7 +99,6 @@ export enum ConceptoMovimiento {
 
   // Ajustes
   AJUSTE_INICIAL = 'ajuste_inicial', // Carga de saldo inicial (migración)
-  AJUSTE_BONIFICACION = 'ajuste_bonificacion', // Ajuste por bonificación de inscripción
 
   // Fondos de rama
   ASIGNACION_FONDO_RAMA = 'asignacion_fondo_rama', // Ingreso a fondo de rama (no egreso de caja)
@@ -139,6 +139,15 @@ export enum EstadoInscripcion {
   PARCIAL = 'parcial',
   PAGADO = 'pagado',
   BONIFICADO = 'bonificado',
+}
+
+/**
+ * Tipos de inscripción
+ * From Design Doc: GRUPO (grupo local) y SCOUT_ARGENTINA (nacional)
+ */
+export enum TipoInscripcion {
+  GRUPO = 'grupo',
+  SCOUT_ARGENTINA = 'scout_argentina',
 }
 
 /**
