@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: scout-postgres-test
+    environment:
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_DB: scout_test
+      # Optimizaciones para testing (más rápido)
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    ports:
+      - "5433:5432"  # Puerto 5433 para no conflictar con PostgreSQL local (5432)
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d scout_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    # Configuraciones de performance para testing
+    command:
+      - "postgres"
+      - "-c"
+      - "fsync=off"                    # Más rápido (seguro para tests)
+      - "-c"
+      - "synchronous_commit=off"       # Más rápido (seguro para tests)
+      - "-c"
+      - "full_page_writes=off"         # Más rápido (seguro para tests)
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "max_connections=100"
+
+volumes:
+  postgres_test_data:
+    driver: local
