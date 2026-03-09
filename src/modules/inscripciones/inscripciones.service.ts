@@ -2,23 +2,20 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Inscripcion } from './entities/inscripcion.entity';
 import { CreateInscripcionDto } from './dtos/create-inscripcion.dto';
 import { PersonasService } from '../personas/personas.service';
-import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import {
   EstadoInscripcion,
+  TipoInscripcion,
   TipoMovimiento,
-  ConceptoMovimiento,
-  MedioPago,
-  EstadoPago,
-  PersonaType,
 } from '../../common/enums';
-import { Protagonista } from '../personas/entities/persona.entity';
 
 @Injectable()
 export class InscripcionesService {
@@ -26,7 +23,7 @@ export class InscripcionesService {
     @InjectRepository(Inscripcion)
     private readonly inscripcionRepository: Repository<Inscripcion>,
     private readonly personasService: PersonasService,
-    private readonly cajasService: CajasService,
+    @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
   ) {}
 
@@ -44,9 +41,25 @@ export class InscripcionesService {
     });
   }
 
-  async findByAno(ano: number): Promise<Inscripcion[]> {
+  async findByAno(ano: number, tipo?: TipoInscripcion): Promise<Inscripcion[]> {
+    const where: { ano: number; tipo?: TipoInscripcion } = { ano };
+    if (tipo) {
+      where.tipo = tipo;
+    }
+
     return this.inscripcionRepository.find({
-      where: { ano },
+      where,
+      relations: ['persona'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async findByAnoAndTipo(
+    ano: number,
+    tipo: TipoInscripcion,
+  ): Promise<Inscripcion[]> {
+    return this.inscripcionRepository.find({
+      where: { ano, tipo },
       relations: ['persona'],
       order: { createdAt: 'DESC' },
     });
@@ -65,147 +78,75 @@ export class InscripcionesService {
     return inscripcion;
   }
 
-  async create(dto: CreateInscripcionDto): Promise<Inscripcion> {
-    // Validar que la persona existe
-    const persona = await this.personasService.findOne(dto.personaId);
+  async findOneWithEstado(id: string): Promise<{
+    inscripcion: Inscripcion;
+    montoPagado: number;
+    estado: EstadoInscripcion;
+  }> {
+    const inscripcion = await this.findOne(id);
+    const montoPagado = await this.getMontoPagado(id);
+    const estado = await this.getEstado(inscripcion);
 
-    // Verificar que no exista inscripción para este año
+    return { inscripcion, montoPagado, estado };
+  }
+
+  async registrarInscripcion(dto: CreateInscripcionDto): Promise<Inscripcion> {
+    await this.personasService.findOne(dto.personaId);
+
     const existente = await this.inscripcionRepository.findOne({
-      where: { personaId: dto.personaId, ano: dto.ano },
+      where: {
+        personaId: dto.personaId,
+        ano: dto.ano,
+        tipo: dto.tipo,
+      },
     });
 
     if (existente) {
       throw new BadRequestException(
-        `Ya existe una inscripción para esta persona en el año ${dto.ano}`,
+        `Ya existe una inscripción de tipo ${dto.tipo} para esta persona en el año ${dto.ano}`,
       );
     }
 
-    // Calcular bonificación si es protagonista que nunca fue bonificado
-    let montoBonificado = 0;
-    if (
-      persona.tipo === PersonaType.PROTAGONISTA &&
-      !(persona as Protagonista).fueBonificado &&
-      dto.aplicarBonificacion
-    ) {
-      montoBonificado = dto.montoTotal;
+    const montoBonificado = dto.montoBonificado ?? 0;
+    if (montoBonificado > dto.montoTotal) {
+      throw new BadRequestException(
+        'El monto bonificado no puede exceder el monto total',
+      );
     }
 
     const inscripcion = this.inscripcionRepository.create({
       personaId: dto.personaId,
+      tipo: dto.tipo,
       ano: dto.ano,
       montoTotal: dto.montoTotal,
       montoBonificado,
-      montoPagado: 0,
-      estado:
-        montoBonificado >= dto.montoTotal
-          ? EstadoInscripcion.PAGADO
-          : EstadoInscripcion.PENDIENTE,
     });
-
-    const saved = await this.inscripcionRepository.save(inscripcion);
-
-    // Si fue bonificado, crear movimiento de bonificación y marcar protagonista
-    if (montoBonificado > 0) {
-      const cajaGrupo = await this.cajasService.findCajaGrupo();
-
-      const movimiento = await this.movimientosService.create({
-        cajaId: cajaGrupo.id,
-        tipo: TipoMovimiento.INGRESO,
-        monto: montoBonificado,
-        concepto: ConceptoMovimiento.AJUSTE_BONIFICACION,
-        descripcion: `Bonificación inscripción ${dto.ano} - ${persona.nombre}`,
-        responsableId: dto.personaId,
-        medioPago: MedioPago.TRANSFERENCIA, // Bonificación no requiere pago real
-        estadoPago: EstadoPago.PAGADO,
-        inscripcionId: saved.id,
-      });
-
-      saved.movimientoBonificacionId = movimiento.id;
-      saved.montoPagado = montoBonificado;
-      await this.inscripcionRepository.save(saved);
-
-      // Marcar protagonista como bonificado
-      await this.personasService.marcarBonificado(dto.personaId);
-    }
-
-    return saved;
-  }
-
-  async registrarPago(
-    inscripcionId: string,
-    monto: number,
-    medioPago: MedioPago,
-    responsableId: string,
-  ): Promise<Inscripcion> {
-    const inscripcion = await this.findOne(inscripcionId);
-
-    if (inscripcion.estado === EstadoInscripcion.PAGADO) {
-      throw new BadRequestException(
-        'Esta inscripción ya está completamente pagada',
-      );
-    }
-
-    const montoRestante =
-      inscripcion.montoTotal -
-      inscripcion.montoBonificado -
-      inscripcion.montoPagado;
-
-    if (monto > montoRestante) {
-      throw new BadRequestException(
-        `El monto excede el restante a pagar ($${montoRestante})`,
-      );
-    }
-
-    // Crear movimiento de ingreso en caja grupo
-    const cajaGrupo = await this.cajasService.findCajaGrupo();
-
-    await this.movimientosService.create({
-      cajaId: cajaGrupo.id,
-      tipo: TipoMovimiento.INGRESO,
-      monto,
-      concepto: ConceptoMovimiento.INSCRIPCION,
-      descripcion: `Pago inscripción ${inscripcion.ano} - ${inscripcion.persona.nombre}`,
-      responsableId,
-      medioPago,
-      estadoPago: EstadoPago.PAGADO,
-      inscripcionId,
-    });
-
-    // Actualizar inscripción
-    inscripcion.montoPagado += monto;
-
-    if (
-      inscripcion.montoPagado + inscripcion.montoBonificado >=
-      inscripcion.montoTotal
-    ) {
-      inscripcion.estado = EstadoInscripcion.PAGADO;
-    } else {
-      inscripcion.estado = EstadoInscripcion.PARCIAL;
-    }
 
     return this.inscripcionRepository.save(inscripcion);
   }
 
-  async registrarPagoScoutArgentina(
-    inscripcionId: string,
-    monto: number,
-    medioPago: MedioPago,
-  ): Promise<void> {
-    const inscripcion = await this.findOne(inscripcionId);
-    const cajaGrupo = await this.cajasService.findCajaGrupo();
-
-    // Crear movimiento de egreso (pago a Scout Argentina)
-    await this.movimientosService.create({
-      cajaId: cajaGrupo.id,
-      tipo: TipoMovimiento.EGRESO,
-      monto,
-      concepto: ConceptoMovimiento.INSCRIPCION_PAGO_SCOUT_ARGENTINA,
-      descripcion: `Pago a Scout Argentina - Inscripción ${inscripcion.ano}`,
-      responsableId: inscripcion.personaId,
-      medioPago,
-      estadoPago: EstadoPago.PAGADO,
+  async getMontoPagado(inscripcionId: string): Promise<number> {
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'inscripcion',
       inscripcionId,
-    });
+    );
+
+    return movimientos
+      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
+      .reduce((sum, m) => sum + Number(m.monto), 0);
+  }
+
+  async getEstado(inscripcion: Inscripcion): Promise<EstadoInscripcion> {
+    const montoPagado = await this.getMontoPagado(inscripcion.id);
+    const totalCubierto = montoPagado + Number(inscripcion.montoBonificado);
+
+    if (totalCubierto >= Number(inscripcion.montoTotal)) {
+      return EstadoInscripcion.PAGADO;
+    }
+    if (totalCubierto > 0) {
+      return EstadoInscripcion.PARCIAL;
+    }
+    return EstadoInscripcion.PENDIENTE;
   }
 
   async remove(id: string): Promise<void> {
