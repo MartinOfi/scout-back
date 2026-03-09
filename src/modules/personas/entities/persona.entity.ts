@@ -24,15 +24,11 @@ export abstract class Persona extends BaseEntity {
  * Protagonista: Chicos que participan del grupo scout (7-22 años)
  * - Pertenece a exactamente una rama
  * - Tiene cuenta personal
- * - Puede recibir bonificación de inscripción (una vez)
  */
 @ChildEntity(PersonaType.PROTAGONISTA)
 export class Protagonista extends Persona {
   @Column({ type: 'enum', enum: Rama })
   rama!: Rama;
-
-  @Column({ default: false })
-  fueBonificado!: boolean;
 }
 
 /**
