@@ -2,17 +2,26 @@ import {
   IsNumber,
   IsUUID,
   IsPositive,
-  IsBoolean,
+  IsEnum,
   IsOptional,
   Min,
   Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { TipoInscripcion } from '../../../common/enums';
 
 export class CreateInscripcionDto {
   @ApiProperty({ format: 'uuid', description: 'ID de la persona' })
   @IsUUID()
   personaId!: string;
+
+  @ApiProperty({
+    enum: TipoInscripcion,
+    example: TipoInscripcion.GRUPO,
+    description: 'Tipo de inscripción',
+  })
+  @IsEnum(TipoInscripcion)
+  tipo!: TipoInscripcion;
 
   @ApiProperty({ example: 2026, minimum: 2020, maximum: 2100 })
   @IsNumber()
@@ -30,10 +39,12 @@ export class CreateInscripcionDto {
   montoTotal!: number;
 
   @ApiPropertyOptional({
-    example: true,
-    description: 'Aplicar bonificación si es protagonista nuevo',
+    example: 5000.0,
+    minimum: 0,
+    description: 'Monto bonificado (default: 0)',
   })
-  @IsBoolean()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
   @IsOptional()
-  aplicarBonificacion?: boolean;
+  montoBonificado?: number;
 }
