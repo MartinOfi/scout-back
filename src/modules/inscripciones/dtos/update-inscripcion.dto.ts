@@ -47,4 +47,12 @@ export class UpdateInscripcionDto {
   @IsBoolean()
   @IsOptional()
   autorizacionIngreso?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Certificado de aptitud física presentado',
+  })
+  @IsBoolean()
+  @IsOptional()
+  certificadoAptitudFisica?: boolean;
 }

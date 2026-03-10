@@ -60,6 +60,9 @@ export class InscripcionResponseDto {
   @ApiProperty()
   autorizacionIngreso!: boolean;
 
+  @ApiProperty()
+  certificadoAptitudFisica!: boolean;
+
   // Timestamps
   @ApiProperty()
   createdAt!: Date;
