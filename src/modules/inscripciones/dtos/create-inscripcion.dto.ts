@@ -85,6 +85,14 @@ export class CreateInscripcionDto {
   @IsOptional()
   autorizacionIngreso?: boolean;
 
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Certificado de aptitud física presentado (default: false)',
+  })
+  @IsBoolean()
+  @IsOptional()
+  certificadoAptitudFisica?: boolean;
+
   // =========================================================================
   // Pago inicial (opcional)
   // =========================================================================
@@ -107,4 +115,15 @@ export class CreateInscripcionDto {
   @IsEnum(MedioPago)
   @IsOptional()
   medioPago?: MedioPago;
+
+  @ApiPropertyOptional({
+    example: 3000.0,
+    minimum: 0,
+    description:
+      'Monto a descontar de la caja personal (default: 0). Debe ser menor o igual a montoPagado.',
+  })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  montoConSaldoPersonal?: number;
 }
