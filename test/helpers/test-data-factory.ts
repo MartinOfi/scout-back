@@ -13,6 +13,7 @@ import {
   ConceptoMovimiento,
   EstadoPago,
   CajaType,
+  CargoEducador,
 } from '../../src/common/enums';
 
 /**
@@ -94,7 +95,7 @@ export class EducadorFactory {
       fechaNacimiento: new Date('1990-03-20'),
       tipo: PersonaType.EDUCADOR,
       estado: EstadoPersona.ACTIVO,
-      cargo: 'Responsable Manada',
+      cargo: CargoEducador.EDUCADOR,
       fechaIngreso: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),

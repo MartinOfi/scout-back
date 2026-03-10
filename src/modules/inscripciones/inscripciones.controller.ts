@@ -75,7 +75,9 @@ export class InscripcionesController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar una inscripción (autorizaciones/bonificación)' })
+  @ApiOperation({
+    summary: 'Actualizar una inscripción (autorizaciones/bonificación)',
+  })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Inscripción actualizada' })
   @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })

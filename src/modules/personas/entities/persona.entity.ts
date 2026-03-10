@@ -1,6 +1,11 @@
 import { Entity, Column, TableInheritance, ChildEntity } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
-import { PersonaType, EstadoPersona, Rama } from '../../../common/enums';
+import {
+  PersonaType,
+  EstadoPersona,
+  Rama,
+  CargoEducador,
+} from '../../../common/enums';
 
 /**
  * Persona base entity using Single Table Inheritance
@@ -40,6 +45,9 @@ export class Protagonista extends Persona {
 export class Educador extends Persona {
   @Column({ type: 'enum', enum: Rama, nullable: true })
   rama!: Rama | null;
+
+  @Column({ type: 'enum', enum: CargoEducador })
+  cargo!: CargoEducador;
 }
 
 /**

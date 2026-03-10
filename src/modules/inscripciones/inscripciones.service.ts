@@ -180,7 +180,8 @@ export class InscripcionesService {
     }
 
     // Validar que campos de autorización solo se actualicen en SCOUT_ARGENTINA
-    const esScoutArgentina = inscripcion.tipo === TipoInscripcion.SCOUT_ARGENTINA;
+    const esScoutArgentina =
+      inscripcion.tipo === TipoInscripcion.SCOUT_ARGENTINA;
     const tieneAutorizaciones =
       dto.declaracionDeSalud !== undefined ||
       dto.autorizacionDeImagen !== undefined ||

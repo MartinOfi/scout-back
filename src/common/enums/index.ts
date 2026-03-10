@@ -39,6 +39,16 @@ export enum Rama {
   ROVERS = 'Rovers',
 }
 
+/**
+ * Cargos de educadores
+ * Rol que desempeña el educador en el grupo scout
+ */
+export enum CargoEducador {
+  EDUCADOR = 'Educador',
+  JEFE_DE_RAMA = 'Jefe de Rama',
+  JEFE_DE_GRUPO = 'Jefe de Grupo',
+}
+
 // ============================================================================
 // CAJAS Y MOVIMIENTOS
 // ============================================================================

@@ -6,7 +6,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Rama, EstadoPersona } from '../../../common/enums';
+import { Rama, EstadoPersona, CargoEducador } from '../../../common/enums';
 
 export class UpdatePersonaDto {
   @ApiPropertyOptional({
@@ -29,6 +29,15 @@ export class UpdatePersonaDto {
   @IsEnum(Rama)
   @IsOptional()
   rama?: Rama;
+
+  @ApiPropertyOptional({
+    enum: CargoEducador,
+    example: CargoEducador.EDUCADOR,
+    description: 'Cargo del educador en el grupo',
+  })
+  @IsEnum(CargoEducador)
+  @IsOptional()
+  cargo?: CargoEducador;
 
   @ApiPropertyOptional({ example: '11-5555-6666', maxLength: 100 })
   @IsString()

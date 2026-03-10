@@ -6,7 +6,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Rama } from '../../../common/enums';
+import { Rama, CargoEducador } from '../../../common/enums';
 
 export class CreateEducadorDto {
   @ApiProperty({ example: 'María García', minLength: 2, maxLength: 100 })
@@ -23,4 +23,12 @@ export class CreateEducadorDto {
   @IsEnum(Rama)
   @IsOptional()
   rama?: Rama;
+
+  @ApiProperty({
+    enum: CargoEducador,
+    example: CargoEducador.EDUCADOR,
+    description: 'Cargo del educador en el grupo',
+  })
+  @IsEnum(CargoEducador)
+  cargo!: CargoEducador;
 }
