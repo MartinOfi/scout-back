@@ -115,6 +115,9 @@ export enum ConceptoMovimiento {
 
   // Transferencias internas
   TRANSFERENCIA_BAJA = 'transferencia_baja', // Transferencia de cuenta personal a caja al dar baja
+
+  // Uso de saldo personal
+  USO_SALDO_PERSONAL = 'uso_saldo_personal', // Egreso desde caja personal para pago
 }
 
 /**
@@ -125,6 +128,7 @@ export enum ConceptoMovimiento {
 export enum MedioPago {
   EFECTIVO = 'efectivo',
   TRANSFERENCIA = 'transferencia',
+  SALDO_PERSONAL = 'saldo_personal',
 }
 
 /**
