@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { Movimiento } from '../movimientos/entities/movimiento.entity';
@@ -17,7 +17,6 @@ export class PagosService {
   constructor(
     private readonly cajasService: CajasService,
     private readonly movimientosService: MovimientosService,
-    private readonly dataSource: DataSource,
   ) {}
 
   async ejecutarPagoConManager(

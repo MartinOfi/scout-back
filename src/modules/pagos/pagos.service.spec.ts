@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PagosService } from './pagos.service';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
-import { DataSource, EntityManager } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import {
   MedioPago,
   ConceptoMovimiento,
@@ -51,10 +51,6 @@ describe('PagosService', () => {
           useValue: {
             calcularSaldo: jest.fn().mockResolvedValue(10000),
           },
-        },
-        {
-          provide: DataSource,
-          useValue: {},
         },
       ],
     }).compile();
