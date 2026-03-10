@@ -17,8 +17,11 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { InscripcionesService } from './inscripciones.service';
-import { CreateInscripcionDto } from './dtos/create-inscripcion.dto';
-import { UpdateInscripcionDto } from './dtos/update-inscripcion.dto';
+import {
+  CreateInscripcionDto,
+  UpdateInscripcionDto,
+  InscripcionResponseDto,
+} from './dtos';
 import { TipoInscripcion } from '../../common/enums';
 
 @ApiTags('Inscripciones')
@@ -27,14 +30,20 @@ export class InscripcionesController {
   constructor(private readonly inscripcionesService: InscripcionesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar todas las inscripciones' })
+  @ApiOperation({
+    summary: 'Listar todas las inscripciones con estado calculado',
+  })
   @ApiQuery({ name: 'ano', type: Number, required: false })
   @ApiQuery({ name: 'tipo', enum: TipoInscripcion, required: false })
-  @ApiResponse({ status: 200, description: 'Lista de inscripciones' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de inscripciones con estado y saldo pendiente',
+    type: [InscripcionResponseDto],
+  })
   async findAll(
     @Query('ano') ano?: number,
     @Query('tipo') tipo?: TipoInscripcion,
-  ) {
+  ): Promise<InscripcionResponseDto[]> {
     if (ano) {
       return this.inscripcionesService.findByAno(ano, tipo);
     }
@@ -42,10 +51,18 @@ export class InscripcionesController {
   }
 
   @Get('persona/:personaId')
-  @ApiOperation({ summary: 'Listar inscripciones de una persona' })
+  @ApiOperation({
+    summary: 'Listar inscripciones de una persona con estado calculado',
+  })
   @ApiParam({ name: 'personaId', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Inscripciones de la persona' })
-  async findByPersona(@Param('personaId', ParseUUIDPipe) personaId: string) {
+  @ApiResponse({
+    status: 200,
+    description: 'Inscripciones de la persona con estado y saldo pendiente',
+    type: [InscripcionResponseDto],
+  })
+  async findByPersona(
+    @Param('personaId', ParseUUIDPipe) personaId: string,
+  ): Promise<InscripcionResponseDto[]> {
     return this.inscripcionesService.findByPersona(personaId);
   }
 
@@ -56,21 +73,30 @@ export class InscripcionesController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({
     status: 200,
-    description: 'Inscripción con estado y monto pagado',
+    description: 'Inscripción con estado, monto pagado y saldo pendiente',
+    type: InscripcionResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.inscripcionesService.findOneWithEstado(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<InscripcionResponseDto> {
+    return this.inscripcionesService.findOne(id);
   }
 
   @Post()
   @ApiOperation({ summary: 'Registrar una inscripción' })
-  @ApiResponse({ status: 201, description: 'Inscripción creada' })
+  @ApiResponse({
+    status: 201,
+    description: 'Inscripción creada con estado calculado',
+    type: InscripcionResponseDto,
+  })
   @ApiResponse({
     status: 400,
     description: 'Ya existe inscripción para este año y tipo',
   })
-  async create(@Body() dto: CreateInscripcionDto) {
+  async create(
+    @Body() dto: CreateInscripcionDto,
+  ): Promise<InscripcionResponseDto> {
     return this.inscripcionesService.registrarInscripcion(dto);
   }
 
@@ -79,13 +105,17 @@ export class InscripcionesController {
     summary: 'Actualizar una inscripción (autorizaciones/bonificación)',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Inscripción actualizada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Inscripción actualizada con estado recalculado',
+    type: InscripcionResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
   @ApiResponse({ status: 400, description: 'Error de validación' })
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateInscripcionDto,
-  ) {
+  ): Promise<InscripcionResponseDto> {
     return this.inscripcionesService.update(id, dto);
   }
 
@@ -94,7 +124,7 @@ export class InscripcionesController {
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Inscripción eliminada' })
   @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
+  async remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.inscripcionesService.remove(id);
   }
 }

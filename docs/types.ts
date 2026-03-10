@@ -363,6 +363,10 @@ export interface CreateInscripcionDto {
   autorizacionDeImagen?: boolean;
   salidasCercanas?: boolean;
   autorizacionIngreso?: boolean;
+  /** Monto pagado al crear la inscripción. Si > 0, se crea movimiento automáticamente */
+  montoPagado?: number;
+  /** Requerido si montoPagado > 0 */
+  medioPago?: MedioPago;
 }
 
 export interface UpdateInscripcionDto {

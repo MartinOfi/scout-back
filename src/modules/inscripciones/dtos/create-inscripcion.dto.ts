@@ -9,7 +9,7 @@ import {
   Max,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TipoInscripcion } from '../../../common/enums';
+import { TipoInscripcion, MedioPago } from '../../../common/enums';
 
 export class CreateInscripcionDto {
   @ApiProperty({ format: 'uuid', description: 'ID de la persona' })
@@ -84,4 +84,27 @@ export class CreateInscripcionDto {
   @IsBoolean()
   @IsOptional()
   autorizacionIngreso?: boolean;
+
+  // =========================================================================
+  // Pago inicial (opcional)
+  // =========================================================================
+
+  @ApiPropertyOptional({
+    example: 5000.0,
+    minimum: 0,
+    description:
+      'Monto pagado al momento de crear la inscripción (default: 0). Si es mayor a 0, se crea automáticamente un movimiento.',
+  })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  montoPagado?: number;
+
+  @ApiPropertyOptional({
+    enum: MedioPago,
+    example: MedioPago.EFECTIVO,
+  })
+  @IsEnum(MedioPago)
+  @IsOptional()
+  medioPago?: MedioPago;
 }

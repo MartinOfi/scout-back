@@ -1,4 +1,4 @@
-import { Entity, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { TipoInscripcion } from '../../../common/enums';
 import { Persona } from '../../personas/entities/persona.entity';
@@ -10,7 +10,10 @@ import { Persona } from '../../personas/entities/persona.entity';
  * Payment status is calculated dynamically from related movements.
  */
 @Entity('inscripciones')
-@Unique(['personaId', 'ano', 'tipo'])
+@Index('UQ_inscripcion_persona_ano_tipo_active', ['personaId', 'ano', 'tipo'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
 export class Inscripcion extends BaseEntity {
   @ManyToOne(() => Persona, { nullable: false })
   @JoinColumn({ name: 'persona_id' })

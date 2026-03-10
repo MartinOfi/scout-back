@@ -5,12 +5,14 @@ import { InscripcionesService } from './inscripciones.service';
 import { InscripcionesController } from './inscripciones.controller';
 import { PersonasModule } from '../personas/personas.module';
 import { MovimientosModule } from '../movimientos/movimientos.module';
+import { CajasModule } from '../cajas/cajas.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Inscripcion]),
     PersonasModule,
     forwardRef(() => MovimientosModule),
+    CajasModule,
   ],
   controllers: [InscripcionesController],
   providers: [InscripcionesService],

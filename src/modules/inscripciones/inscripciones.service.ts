@@ -10,12 +10,19 @@ import { Repository } from 'typeorm';
 import { Inscripcion } from './entities/inscripcion.entity';
 import { CreateInscripcionDto } from './dtos/create-inscripcion.dto';
 import { UpdateInscripcionDto } from './dtos/update-inscripcion.dto';
+import {
+  InscripcionResponseDto,
+  MovimientoInscripcionDto,
+} from './dtos/inscripcion-response.dto';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
+import { CajasService } from '../cajas/cajas.service';
 import {
   EstadoInscripcion,
   TipoInscripcion,
   TipoMovimiento,
+  ConceptoMovimiento,
+  EstadoPago,
 } from '../../common/enums';
 
 @Injectable()
@@ -26,47 +33,137 @@ export class InscripcionesService {
     private readonly personasService: PersonasService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
+    private readonly cajasService: CajasService,
   ) {}
 
-  async findAll(): Promise<Inscripcion[]> {
-    return this.inscripcionRepository.find({
+  /**
+   * Transforma una inscripción a DTO con campos calculados
+   */
+  private async toResponseDto(
+    inscripcion: Inscripcion,
+  ): Promise<InscripcionResponseDto> {
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'inscripcion',
+      inscripcion.id,
+    );
+
+    const movimientosDto: MovimientoInscripcionDto[] = movimientos
+      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
+      .map((m) => ({
+        id: m.id,
+        monto: Number(m.monto),
+        medioPago: m.medioPago,
+        fecha: m.fecha,
+        descripcion: m.descripcion,
+      }));
+
+    const montoPagado = movimientosDto.reduce((sum, m) => sum + m.monto, 0);
+    const montoTotal = Number(inscripcion.montoTotal);
+    const montoBonificado = Number(inscripcion.montoBonificado);
+    const saldoPendiente = Math.max(
+      0,
+      montoTotal - montoBonificado - montoPagado,
+    );
+
+    let estado: EstadoInscripcion;
+    if (saldoPendiente === 0) {
+      estado = EstadoInscripcion.PAGADO;
+    } else if (montoPagado > 0 || montoBonificado > 0) {
+      estado = EstadoInscripcion.PARCIAL;
+    } else {
+      estado = EstadoInscripcion.PENDIENTE;
+    }
+
+    return {
+      id: inscripcion.id,
+      personaId: inscripcion.personaId,
+      tipo: inscripcion.tipo,
+      ano: inscripcion.ano,
+      montoTotal,
+      montoBonificado,
+      declaracionDeSalud: inscripcion.declaracionDeSalud,
+      autorizacionDeImagen: inscripcion.autorizacionDeImagen,
+      salidasCercanas: inscripcion.salidasCercanas,
+      autorizacionIngreso: inscripcion.autorizacionIngreso,
+      createdAt: inscripcion.createdAt,
+      updatedAt: inscripcion.updatedAt,
+      estado,
+      montoPagado,
+      saldoPendiente,
+      persona: inscripcion.persona
+        ? {
+            id: inscripcion.persona.id,
+            nombre: inscripcion.persona.nombre,
+          }
+        : undefined,
+      movimientos: movimientosDto,
+    };
+  }
+
+  /**
+   * Transforma múltiples inscripciones a DTOs
+   */
+  private async toResponseDtos(
+    inscripciones: Inscripcion[],
+  ): Promise<InscripcionResponseDto[]> {
+    return Promise.all(inscripciones.map((i) => this.toResponseDto(i)));
+  }
+
+  async findAll(): Promise<InscripcionResponseDto[]> {
+    const inscripciones = await this.inscripcionRepository.find({
       relations: ['persona'],
       order: { ano: 'DESC', createdAt: 'DESC' },
     });
+    return this.toResponseDtos(inscripciones);
   }
 
-  async findByPersona(personaId: string): Promise<Inscripcion[]> {
-    return this.inscripcionRepository.find({
+  async findByPersona(personaId: string): Promise<InscripcionResponseDto[]> {
+    const inscripciones = await this.inscripcionRepository.find({
       where: { personaId },
+      relations: ['persona'],
       order: { ano: 'DESC' },
     });
+    return this.toResponseDtos(inscripciones);
   }
 
-  async findByAno(ano: number, tipo?: TipoInscripcion): Promise<Inscripcion[]> {
+  async findByAno(
+    ano: number,
+    tipo?: TipoInscripcion,
+  ): Promise<InscripcionResponseDto[]> {
     const where: { ano: number; tipo?: TipoInscripcion } = { ano };
     if (tipo) {
       where.tipo = tipo;
     }
 
-    return this.inscripcionRepository.find({
+    const inscripciones = await this.inscripcionRepository.find({
       where,
       relations: ['persona'],
       order: { createdAt: 'DESC' },
     });
+    return this.toResponseDtos(inscripciones);
   }
 
   async findByAnoAndTipo(
     ano: number,
     tipo: TipoInscripcion,
-  ): Promise<Inscripcion[]> {
-    return this.inscripcionRepository.find({
+  ): Promise<InscripcionResponseDto[]> {
+    const inscripciones = await this.inscripcionRepository.find({
       where: { ano, tipo },
       relations: ['persona'],
       order: { createdAt: 'DESC' },
     });
+    return this.toResponseDtos(inscripciones);
   }
 
-  async findOne(id: string): Promise<Inscripcion> {
+  async findOne(id: string): Promise<InscripcionResponseDto> {
+    const inscripcion = await this.findOneEntity(id);
+    return this.toResponseDto(inscripcion);
+  }
+
+  /**
+   * Internal method to get raw entity (used by other methods)
+   */
+  private async findOneEntity(id: string): Promise<Inscripcion> {
     const inscripcion = await this.inscripcionRepository.findOne({
       where: { id },
       relations: ['persona'],
@@ -79,19 +176,16 @@ export class InscripcionesService {
     return inscripcion;
   }
 
-  async findOneWithEstado(id: string): Promise<{
-    inscripcion: Inscripcion;
-    montoPagado: number;
-    estado: EstadoInscripcion;
-  }> {
-    const inscripcion = await this.findOne(id);
-    const montoPagado = await this.getMontoPagado(id);
-    const estado = await this.getEstado(inscripcion);
-
-    return { inscripcion, montoPagado, estado };
+  /**
+   * @deprecated Use findOne instead - returns same data
+   */
+  async findOneWithEstado(id: string): Promise<InscripcionResponseDto> {
+    return this.findOne(id);
   }
 
-  async registrarInscripcion(dto: CreateInscripcionDto): Promise<Inscripcion> {
+  async registrarInscripcion(
+    dto: CreateInscripcionDto,
+  ): Promise<InscripcionResponseDto> {
     await this.personasService.findOne(dto.personaId);
 
     const existente = await this.inscripcionRepository.findOne({
@@ -114,6 +208,8 @@ export class InscripcionesService {
         'El monto bonificado no puede exceder el monto total',
       );
     }
+
+    const montoPagado = dto.montoPagado ?? 0;
 
     // Campos de autorización solo aplican a SCOUT_ARGENTINA
     const esScoutArgentina = dto.tipo === TipoInscripcion.SCOUT_ARGENTINA;
@@ -139,7 +235,32 @@ export class InscripcionesService {
         : false,
     });
 
-    return this.inscripcionRepository.save(inscripcion);
+    const savedInscripcion = await this.inscripcionRepository.save(inscripcion);
+
+    // Si hay un pago inicial, crear el movimiento automáticamente
+    if (montoPagado > 0) {
+      const cajaGrupo = await this.cajasService.findCajaGrupo();
+      const concepto =
+        dto.tipo === TipoInscripcion.SCOUT_ARGENTINA
+          ? ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA
+          : ConceptoMovimiento.INSCRIPCION_GRUPO;
+
+      await this.movimientosService.create({
+        cajaId: cajaGrupo.id,
+        tipo: TipoMovimiento.INGRESO,
+        monto: montoPagado,
+        concepto,
+        descripcion: `Pago inscripción ${dto.tipo} ${dto.ano}`,
+        responsableId: dto.personaId,
+        medioPago: dto.medioPago,
+        estadoPago: EstadoPago.PAGADO,
+        inscripcionId: savedInscripcion.id,
+      });
+    }
+
+    // Reload with persona relation for response
+    const reloaded = await this.findOneEntity(savedInscripcion.id);
+    return this.toResponseDto(reloaded);
   }
 
   async getMontoPagado(inscripcionId: string): Promise<number> {
@@ -166,8 +287,11 @@ export class InscripcionesService {
     return EstadoInscripcion.PENDIENTE;
   }
 
-  async update(id: string, dto: UpdateInscripcionDto): Promise<Inscripcion> {
-    const inscripcion = await this.findOne(id);
+  async update(
+    id: string,
+    dto: UpdateInscripcionDto,
+  ): Promise<InscripcionResponseDto> {
+    const inscripcion = await this.findOneEntity(id);
 
     // Validar que montoBonificado no exceda montoTotal si se actualiza
     if (
@@ -213,11 +337,12 @@ export class InscripcionesService {
       }
     }
 
-    return this.inscripcionRepository.save(inscripcion);
+    await this.inscripcionRepository.save(inscripcion);
+    return this.toResponseDto(inscripcion);
   }
 
   async remove(id: string): Promise<void> {
-    const inscripcion = await this.findOne(id);
+    const inscripcion = await this.findOneEntity(id);
     await this.inscripcionRepository.softRemove(inscripcion);
   }
 }

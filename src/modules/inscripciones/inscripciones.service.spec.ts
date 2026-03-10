@@ -6,6 +6,7 @@ import { InscripcionesService } from './inscripciones.service';
 import { Inscripcion } from './entities/inscripcion.entity';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
+import { CajasService } from '../cajas/cajas.service';
 import {
   TipoInscripcion,
   TipoMovimiento,
@@ -17,6 +18,7 @@ describe('InscripcionesService', () => {
   let repository: jest.Mocked<Repository<Inscripcion>>;
   let personasService: jest.Mocked<PersonasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
+  let cajasService: jest.Mocked<CajasService>;
 
   const mockInscripcion: Partial<Inscripcion> = {
     id: 'inscripcion-uuid',
@@ -25,6 +27,12 @@ describe('InscripcionesService', () => {
     ano: 2026,
     montoTotal: 10000,
     montoBonificado: 0,
+    declaracionDeSalud: false,
+    autorizacionDeImagen: false,
+    salidasCercanas: false,
+    autorizacionIngreso: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
   };
 
   beforeEach(async () => {
@@ -50,7 +58,14 @@ describe('InscripcionesService', () => {
         {
           provide: MovimientosService,
           useValue: {
-            findByRelatedEntity: jest.fn(),
+            findByRelatedEntity: jest.fn().mockResolvedValue([]),
+            create: jest.fn(),
+          },
+        },
+        {
+          provide: CajasService,
+          useValue: {
+            findCajaGrupo: jest.fn(),
           },
         },
       ],
@@ -60,6 +75,7 @@ describe('InscripcionesService', () => {
     repository = module.get(getRepositoryToken(Inscripcion));
     personasService = module.get(PersonasService);
     movimientosService = module.get(MovimientosService);
+    cajasService = module.get(CajasService);
   });
 
   it('should be defined', () => {
@@ -67,13 +83,18 @@ describe('InscripcionesService', () => {
   });
 
   describe('findAll', () => {
-    it('should return all inscriptions ordered by ano DESC', async () => {
+    it('should return all inscriptions with calculated fields', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.findAll();
 
-      expect(result).toEqual(inscripciones);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('inscripcion-uuid');
+      expect(result[0].estado).toBe(EstadoInscripcion.PENDIENTE);
+      expect(result[0].montoPagado).toBe(0);
+      expect(result[0].saldoPendiente).toBe(10000);
       expect(repository.find).toHaveBeenCalledWith({
         relations: ['persona'],
         order: { ano: 'DESC', createdAt: 'DESC' },
@@ -82,28 +103,33 @@ describe('InscripcionesService', () => {
   });
 
   describe('findByPersona', () => {
-    it('should return inscriptions for a specific persona', async () => {
+    it('should return inscriptions for a specific persona with calculated fields', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.findByPersona('persona-uuid');
 
-      expect(result).toEqual(inscripciones);
+      expect(result).toHaveLength(1);
+      expect(result[0].estado).toBe(EstadoInscripcion.PENDIENTE);
       expect(repository.find).toHaveBeenCalledWith({
         where: { personaId: 'persona-uuid' },
+        relations: ['persona'],
         order: { ano: 'DESC' },
       });
     });
   });
 
   describe('findByAno', () => {
-    it('should return inscriptions for a specific year', async () => {
+    it('should return inscriptions for a specific year with calculated fields', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.findByAno(2026);
 
-      expect(result).toEqual(inscripciones);
+      expect(result).toHaveLength(1);
+      expect(result[0].estado).toBe(EstadoInscripcion.PENDIENTE);
       expect(repository.find).toHaveBeenCalledWith({
         where: { ano: 2026 },
         relations: ['persona'],
@@ -114,10 +140,11 @@ describe('InscripcionesService', () => {
     it('should filter by tipo when provided', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.findByAno(2026, TipoInscripcion.GRUPO);
 
-      expect(result).toEqual(inscripciones);
+      expect(result).toHaveLength(1);
       expect(repository.find).toHaveBeenCalledWith({
         where: { ano: 2026, tipo: TipoInscripcion.GRUPO },
         relations: ['persona'],
@@ -127,12 +154,18 @@ describe('InscripcionesService', () => {
   });
 
   describe('findOne', () => {
-    it('should return an inscription by id', async () => {
+    it('should return an inscription with calculated fields', async () => {
       repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 5000 },
+      ] as any);
 
       const result = await service.findOne('inscripcion-uuid');
 
-      expect(result).toEqual(mockInscripcion);
+      expect(result.id).toBe('inscripcion-uuid');
+      expect(result.estado).toBe(EstadoInscripcion.PARCIAL);
+      expect(result.montoPagado).toBe(5000);
+      expect(result.saldoPendiente).toBe(5000);
       expect(repository.findOne).toHaveBeenCalledWith({
         where: { id: 'inscripcion-uuid' },
         relations: ['persona'],
@@ -149,11 +182,14 @@ describe('InscripcionesService', () => {
   });
 
   describe('registrarInscripcion', () => {
-    it('should create inscription when valid', async () => {
+    it('should create inscription and return with calculated fields', async () => {
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne.mockResolvedValue(null);
+      repository.findOne
+        .mockResolvedValueOnce(null) // Check for existing
+        .mockResolvedValueOnce(mockInscripcion as Inscripcion); // Reload after save
       repository.create.mockReturnValue(mockInscripcion as Inscripcion);
       repository.save.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.registrarInscripcion({
         personaId: 'persona-uuid',
@@ -162,7 +198,10 @@ describe('InscripcionesService', () => {
         montoTotal: 10000,
       });
 
-      expect(result).toEqual(mockInscripcion);
+      expect(result.id).toBe('inscripcion-uuid');
+      expect(result.estado).toBe(EstadoInscripcion.PENDIENTE);
+      expect(result.montoPagado).toBe(0);
+      expect(result.saldoPendiente).toBe(10000);
       expect(personasService.findOne).toHaveBeenCalledWith('persona-uuid');
       expect(repository.create).toHaveBeenCalledWith({
         personaId: 'persona-uuid',
@@ -208,9 +247,12 @@ describe('InscripcionesService', () => {
 
     it('should set montoBonificado to 0 when not provided', async () => {
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne.mockResolvedValue(null);
+      repository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(mockInscripcion as Inscripcion);
       repository.create.mockReturnValue(mockInscripcion as Inscripcion);
       repository.save.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       await service.registrarInscripcion({
         personaId: 'persona-uuid',
@@ -222,6 +264,106 @@ describe('InscripcionesService', () => {
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({ montoBonificado: 0 }),
       );
+    });
+
+    it('should create movimiento when montoPagado > 0', async () => {
+      const savedInscripcion = {
+        ...mockInscripcion,
+        id: 'new-inscripcion-uuid',
+      };
+      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
+      repository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(savedInscripcion as Inscripcion);
+      repository.create.mockReturnValue(savedInscripcion as Inscripcion);
+      repository.save.mockResolvedValue(savedInscripcion as Inscripcion);
+      cajasService.findCajaGrupo.mockResolvedValue({
+        id: 'caja-grupo-uuid',
+      } as any);
+      movimientosService.create.mockResolvedValue({} as any);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 5000 },
+      ] as any);
+
+      const result = await service.registrarInscripcion({
+        personaId: 'persona-uuid',
+        tipo: TipoInscripcion.GRUPO,
+        ano: 2026,
+        montoTotal: 10000,
+        montoPagado: 5000,
+        medioPago: 'efectivo' as any,
+      });
+
+      expect(cajasService.findCajaGrupo).toHaveBeenCalled();
+      expect(movimientosService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cajaId: 'caja-grupo-uuid',
+          tipo: TipoMovimiento.INGRESO,
+          monto: 5000,
+          inscripcionId: 'new-inscripcion-uuid',
+        }),
+      );
+      expect(result.montoPagado).toBe(5000);
+    });
+
+    it('should create movimiento with undefined medioPago when montoPagado > 0', async () => {
+      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
+      repository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(mockInscripcion as Inscripcion);
+      repository.create.mockReturnValue({
+        ...mockInscripcion,
+        id: 'new-inscripcion-uuid',
+      } as Inscripcion);
+      repository.save.mockResolvedValue({
+        ...mockInscripcion,
+        id: 'new-inscripcion-uuid',
+      } as Inscripcion);
+      cajasService.findCajaGrupo.mockResolvedValue({
+        id: 'caja-grupo-uuid',
+      } as any);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 5000 } as any,
+      ]);
+
+      const result = await service.registrarInscripcion({
+        personaId: 'persona-uuid',
+        tipo: TipoInscripcion.GRUPO,
+        ano: 2026,
+        montoTotal: 10000,
+        montoPagado: 5000,
+      });
+
+      expect(cajasService.findCajaGrupo).toHaveBeenCalled();
+      expect(movimientosService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cajaId: 'caja-grupo-uuid',
+          monto: 5000,
+          medioPago: undefined,
+        }),
+      );
+      expect(result.montoPagado).toBe(5000);
+    });
+
+    it('should not create movimiento when montoPagado is 0', async () => {
+      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
+      repository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(mockInscripcion as Inscripcion);
+      repository.create.mockReturnValue(mockInscripcion as Inscripcion);
+      repository.save.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      await service.registrarInscripcion({
+        personaId: 'persona-uuid',
+        tipo: TipoInscripcion.GRUPO,
+        ano: 2026,
+        montoTotal: 10000,
+        montoPagado: 0,
+      });
+
+      expect(cajasService.findCajaGrupo).not.toHaveBeenCalled();
+      expect(movimientosService.create).not.toHaveBeenCalled();
     });
   });
 
@@ -298,7 +440,7 @@ describe('InscripcionesService', () => {
   });
 
   describe('findOneWithEstado', () => {
-    it('should return inscription with montoPagado and estado', async () => {
+    it('should return inscription response DTO (same as findOne)', async () => {
       repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
       movimientosService.findByRelatedEntity.mockResolvedValue([
         { tipo: TipoMovimiento.INGRESO, monto: 5000 },
@@ -306,9 +448,10 @@ describe('InscripcionesService', () => {
 
       const result = await service.findOneWithEstado('inscripcion-uuid');
 
-      expect(result.inscripcion).toEqual(mockInscripcion);
+      expect(result.id).toBe('inscripcion-uuid');
       expect(result.montoPagado).toBe(5000);
       expect(result.estado).toBe(EstadoInscripcion.PARCIAL);
+      expect(result.saldoPendiente).toBe(5000);
     });
   });
 
@@ -325,6 +468,7 @@ describe('InscripcionesService', () => {
         declaracionDeSalud: true,
         autorizacionDeImagen: true,
       } as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.update('inscripcion-uuid', {
         declaracionDeSalud: true,
@@ -333,6 +477,7 @@ describe('InscripcionesService', () => {
 
       expect(result.declaracionDeSalud).toBe(true);
       expect(result.autorizacionDeImagen).toBe(true);
+      expect(result.estado).toBe(EstadoInscripcion.PENDIENTE);
     });
 
     it('should update montoBonificado on any inscription type', async () => {
@@ -346,12 +491,14 @@ describe('InscripcionesService', () => {
         ...existingInscripcion,
         montoBonificado: 5000,
       } as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.update('inscripcion-uuid', {
         montoBonificado: 5000,
       });
 
       expect(result.montoBonificado).toBe(5000);
+      expect(result.saldoPendiente).toBe(5000); // 10000 - 5000 bonificado
     });
 
     it('should throw if montoBonificado exceeds montoTotal', async () => {
@@ -397,6 +544,7 @@ describe('InscripcionesService', () => {
         ...scoutArgentinaInscripcion,
         declaracionDeSalud: true,
       } as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.update('inscripcion-uuid', {
         declaracionDeSalud: true,
@@ -416,6 +564,7 @@ describe('InscripcionesService', () => {
         ...grupoInscripcion,
         montoBonificado: 3000,
       } as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       const result = await service.update('inscripcion-uuid', {
         montoBonificado: 3000,

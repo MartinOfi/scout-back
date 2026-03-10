@@ -455,6 +455,9 @@ interface CreateInscripcionDto {
   autorizacionDeImagen?: boolean;
   salidasCercanas?: boolean;
   autorizacionIngreso?: boolean;
+  // Pago inicial (opcional):
+  montoPagado?: number;           // Min: 0. Si > 0, crea movimiento automáticamente
+  medioPago?: MedioPago;          // Requerido si montoPagado > 0
 }
 ```
 
@@ -792,6 +795,20 @@ Base: `/inscripciones`
   "tipo": "grupo",
   "ano": 2026,
   "montoTotal": 5000.00
+}
+
+// Body (con pago inicial - crea movimiento automáticamente):
+{
+  "personaId": "persona-uuid",
+  "tipo": "scout_argentina",
+  "ano": 2026,
+  "montoTotal": 15000.00,
+  "declaracionDeSalud": true,
+  "autorizacionDeImagen": true,
+  "salidasCercanas": true,
+  "autorizacionIngreso": false,
+  "montoPagado": 5000.00,
+  "medioPago": "efectivo"
 }
 ```
 

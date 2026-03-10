@@ -22,7 +22,8 @@
     "db:test:start": "docker-compose -f docker-compose.test.yml up -d",
     "db:test:stop": "docker-compose -f docker-compose.test.yml down",
     "db:test:logs": "docker-compose -f docker-compose.test.yml logs -f",
-    "db:test:reset": "docker-compose -f docker-compose.test.yml down -v && docker-compose -f docker-compose.test.yml up -d"
+    "db:test:reset": "docker-compose -f docker-compose.test.yml down -v && docker-compose -f docker-compose.test.yml up -d",
+    "seed": "ts-node src/database/seeds/run-seeds.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -33,6 +34,7 @@
     "@nestjs/typeorm": "^11.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
+    "dotenv": "^17.3.1",
     "pg": "^8.18.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

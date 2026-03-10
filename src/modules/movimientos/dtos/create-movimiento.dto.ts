@@ -58,9 +58,10 @@ export class CreateMovimientoDto {
   @IsUUID()
   responsableId!: string;
 
-  @ApiProperty({ enum: MedioPago, example: MedioPago.EFECTIVO })
+  @ApiPropertyOptional({ enum: MedioPago, example: MedioPago.EFECTIVO })
   @IsEnum(MedioPago)
-  medioPago!: MedioPago;
+  @IsOptional()
+  medioPago?: MedioPago;
 
   @ApiPropertyOptional({ example: true, default: true })
   @IsBoolean()

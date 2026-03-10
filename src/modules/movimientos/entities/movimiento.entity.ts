@@ -74,7 +74,7 @@ export class Movimiento extends BaseEntity {
   /**
    * Payment method
    */
-  @Column({ type: 'enum', enum: MedioPago })
+  @Column({ type: 'enum', enum: MedioPago, default: MedioPago.EFECTIVO })
   medioPago!: MedioPago;
 
   /**
