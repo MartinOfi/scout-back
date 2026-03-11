@@ -20,6 +20,7 @@ import { InscripcionesService } from './inscripciones.service';
 import {
   CreateInscripcionDto,
   UpdateInscripcionDto,
+  PagarInscripcionDto,
   InscripcionResponseDto,
 } from './dtos';
 import { TipoInscripcion } from '../../common/enums';
@@ -117,6 +118,31 @@ export class InscripcionesController {
     @Body() dto: UpdateInscripcionDto,
   ): Promise<InscripcionResponseDto> {
     return this.inscripcionesService.update(id, dto);
+  }
+
+  @Post(':id/pagar')
+  @ApiOperation({
+    summary: 'Registrar un pago para una inscripción',
+    description:
+      'Permite realizar pagos parciales o totales, opcionalmente usando saldo de la caja personal',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pago registrado exitosamente',
+    type: InscripcionResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Error de validación (inscripción ya pagada, monto excede saldo pendiente, saldo personal insuficiente)',
+  })
+  async pagar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PagarInscripcionDto,
+  ): Promise<InscripcionResponseDto> {
+    return this.inscripcionesService.pagar(id, dto);
   }
 
   @Delete(':id')

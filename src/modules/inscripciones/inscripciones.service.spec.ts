@@ -1,16 +1,18 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { InscripcionesService } from './inscripciones.service';
 import { Inscripcion } from './entities/inscripcion.entity';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
-import { CajasService } from '../cajas/cajas.service';
+import { PagosService } from '../pagos/pagos.service';
 import {
   TipoInscripcion,
   TipoMovimiento,
   EstadoInscripcion,
+  MedioPago,
+  ConceptoMovimiento,
 } from '../../common/enums';
 
 describe('InscripcionesService', () => {
@@ -18,7 +20,8 @@ describe('InscripcionesService', () => {
   let repository: jest.Mocked<Repository<Inscripcion>>;
   let personasService: jest.Mocked<PersonasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
-  let cajasService: jest.Mocked<CajasService>;
+  let pagosService: jest.Mocked<PagosService>;
+  let dataSource: jest.Mocked<DataSource>;
 
   const mockInscripcion: Partial<Inscripcion> = {
     id: 'inscripcion-uuid',
@@ -35,19 +38,40 @@ describe('InscripcionesService', () => {
     updatedAt: new Date(),
   };
 
+  // Mock EntityManager for transactions
+  const createMockManager = (
+    repository: jest.Mocked<Repository<Inscripcion>>,
+  ): jest.Mocked<EntityManager> =>
+    ({
+      create: jest.fn().mockImplementation((_, data) => data),
+      save: jest.fn().mockImplementation((entity) => Promise.resolve(entity)),
+      findOne: repository.findOne,
+    }) as unknown as jest.Mocked<EntityManager>;
+
   beforeEach(async () => {
+    const mockRepository = {
+      find: jest.fn(),
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      softRemove: jest.fn(),
+    };
+
+    const mockDataSource = {
+      transaction: jest.fn().mockImplementation(async (cb) => {
+        const mockManager = createMockManager(
+          mockRepository as jest.Mocked<Repository<Inscripcion>>,
+        );
+        return cb(mockManager);
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InscripcionesService,
         {
           provide: getRepositoryToken(Inscripcion),
-          useValue: {
-            find: jest.fn(),
-            findOne: jest.fn(),
-            create: jest.fn(),
-            save: jest.fn(),
-            softRemove: jest.fn(),
-          },
+          useValue: mockRepository,
         },
         {
           provide: PersonasService,
@@ -63,10 +87,21 @@ describe('InscripcionesService', () => {
           },
         },
         {
-          provide: CajasService,
+          provide: PagosService,
           useValue: {
-            findCajaGrupo: jest.fn(),
+            ejecutarPagoConManager: jest.fn().mockResolvedValue({
+              movimientoIngreso: { id: 'mov-id', monto: 5000 },
+              desglose: {
+                montoSaldoPersonal: 0,
+                montoFisico: 5000,
+                total: 5000,
+              },
+            }),
           },
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
         },
       ],
     }).compile();
@@ -75,7 +110,8 @@ describe('InscripcionesService', () => {
     repository = module.get(getRepositoryToken(Inscripcion));
     personasService = module.get(PersonasService);
     movimientosService = module.get(MovimientosService);
-    cajasService = module.get(CajasService);
+    pagosService = module.get(PagosService);
+    dataSource = module.get(DataSource);
   });
 
   it('should be defined', () => {
@@ -184,12 +220,17 @@ describe('InscripcionesService', () => {
   describe('registrarInscripcion', () => {
     it('should create inscription and return with calculated fields', async () => {
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne
-        .mockResolvedValueOnce(null) // Check for existing
-        .mockResolvedValueOnce(mockInscripcion as Inscripcion); // Reload after save
-      repository.create.mockReturnValue(mockInscripcion as Inscripcion);
-      repository.save.mockResolvedValue(mockInscripcion as Inscripcion);
+      repository.findOne.mockResolvedValueOnce(null); // Check for existing
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        const mockManager = {
+          create: jest.fn().mockReturnValue(mockInscripcion),
+          save: jest.fn().mockResolvedValue(mockInscripcion),
+          findOne: jest.fn().mockResolvedValue(mockInscripcion),
+        };
+        return cb(mockManager);
+      });
 
       const result = await service.registrarInscripcion({
         personaId: 'persona-uuid',
@@ -203,17 +244,6 @@ describe('InscripcionesService', () => {
       expect(result.montoPagado).toBe(0);
       expect(result.saldoPendiente).toBe(10000);
       expect(personasService.findOne).toHaveBeenCalledWith('persona-uuid');
-      expect(repository.create).toHaveBeenCalledWith({
-        personaId: 'persona-uuid',
-        tipo: TipoInscripcion.GRUPO,
-        ano: 2026,
-        montoTotal: 10000,
-        montoBonificado: 0,
-        declaracionDeSalud: false,
-        autorizacionDeImagen: false,
-        salidasCercanas: false,
-        autorizacionIngreso: false,
-      });
     });
 
     it('should throw if inscription already exists for year and type', async () => {
@@ -247,12 +277,21 @@ describe('InscripcionesService', () => {
 
     it('should set montoBonificado to 0 when not provided', async () => {
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(mockInscripcion as Inscripcion);
-      repository.create.mockReturnValue(mockInscripcion as Inscripcion);
-      repository.save.mockResolvedValue(mockInscripcion as Inscripcion);
+      repository.findOne.mockResolvedValueOnce(null);
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      let capturedCreateData: any;
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        const mockManager = {
+          create: jest.fn().mockImplementation((_, data) => {
+            capturedCreateData = data;
+            return mockInscripcion;
+          }),
+          save: jest.fn().mockResolvedValue(mockInscripcion),
+          findOne: jest.fn().mockResolvedValue(mockInscripcion),
+        };
+        return cb(mockManager);
+      });
 
       await service.registrarInscripcion({
         personaId: 'persona-uuid',
@@ -261,29 +300,31 @@ describe('InscripcionesService', () => {
         montoTotal: 10000,
       });
 
-      expect(repository.create).toHaveBeenCalledWith(
+      expect(capturedCreateData).toEqual(
         expect.objectContaining({ montoBonificado: 0 }),
       );
     });
 
-    it('should create movimiento when montoPagado > 0', async () => {
+    it('should call pagosService when montoPagado > 0', async () => {
       const savedInscripcion = {
         ...mockInscripcion,
         id: 'new-inscripcion-uuid',
       };
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(savedInscripcion as Inscripcion);
-      repository.create.mockReturnValue(savedInscripcion as Inscripcion);
-      repository.save.mockResolvedValue(savedInscripcion as Inscripcion);
-      cajasService.findCajaGrupo.mockResolvedValue({
-        id: 'caja-grupo-uuid',
-      } as any);
-      movimientosService.create.mockResolvedValue({} as any);
+      repository.findOne.mockResolvedValueOnce(null); // Check for existing
       movimientosService.findByRelatedEntity.mockResolvedValue([
         { tipo: TipoMovimiento.INGRESO, monto: 5000 },
       ] as any);
+
+      // Mock the transaction to simulate what happens inside
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        const mockManager = {
+          create: jest.fn().mockReturnValue(savedInscripcion),
+          save: jest.fn().mockResolvedValue(savedInscripcion),
+          findOne: jest.fn().mockResolvedValue(savedInscripcion),
+        };
+        return cb(mockManager);
+      });
 
       const result = await service.registrarInscripcion({
         personaId: 'persona-uuid',
@@ -291,40 +332,40 @@ describe('InscripcionesService', () => {
         ano: 2026,
         montoTotal: 10000,
         montoPagado: 5000,
-        medioPago: 'efectivo' as any,
+        medioPago: MedioPago.EFECTIVO,
       });
 
-      expect(cajasService.findCajaGrupo).toHaveBeenCalled();
-      expect(movimientosService.create).toHaveBeenCalledWith(
+      expect(pagosService.ejecutarPagoConManager).toHaveBeenCalledWith(
+        expect.any(Object),
         expect.objectContaining({
-          cajaId: 'caja-grupo-uuid',
-          tipo: TipoMovimiento.INGRESO,
-          monto: 5000,
+          personaId: 'persona-uuid',
+          montoTotal: 5000,
+          concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
           inscripcionId: 'new-inscripcion-uuid',
         }),
       );
       expect(result.montoPagado).toBe(5000);
     });
 
-    it('should create movimiento with undefined medioPago when montoPagado > 0', async () => {
+    it('should use efectivo as default medioPago when not provided', async () => {
+      const savedInscripcion = {
+        ...mockInscripcion,
+        id: 'new-inscripcion-uuid',
+      };
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(mockInscripcion as Inscripcion);
-      repository.create.mockReturnValue({
-        ...mockInscripcion,
-        id: 'new-inscripcion-uuid',
-      } as Inscripcion);
-      repository.save.mockResolvedValue({
-        ...mockInscripcion,
-        id: 'new-inscripcion-uuid',
-      } as Inscripcion);
-      cajasService.findCajaGrupo.mockResolvedValue({
-        id: 'caja-grupo-uuid',
-      } as any);
+      repository.findOne.mockResolvedValueOnce(null);
       movimientosService.findByRelatedEntity.mockResolvedValue([
         { tipo: TipoMovimiento.INGRESO, monto: 5000 } as any,
       ]);
+
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        const mockManager = {
+          create: jest.fn().mockReturnValue(savedInscripcion),
+          save: jest.fn().mockResolvedValue(savedInscripcion),
+          findOne: jest.fn().mockResolvedValue(savedInscripcion),
+        };
+        return cb(mockManager);
+      });
 
       const result = await service.registrarInscripcion({
         personaId: 'persona-uuid',
@@ -334,25 +375,30 @@ describe('InscripcionesService', () => {
         montoPagado: 5000,
       });
 
-      expect(cajasService.findCajaGrupo).toHaveBeenCalled();
-      expect(movimientosService.create).toHaveBeenCalledWith(
+      // When medioPago is not provided, pagosService uses efectivo by default
+      expect(pagosService.ejecutarPagoConManager).toHaveBeenCalledWith(
+        expect.any(Object),
         expect.objectContaining({
-          cajaId: 'caja-grupo-uuid',
-          monto: 5000,
-          medioPago: undefined,
+          montoTotal: 5000,
+          medioPago: undefined, // Service passes undefined, PagosService defaults to EFECTIVO
         }),
       );
       expect(result.montoPagado).toBe(5000);
     });
 
-    it('should not create movimiento when montoPagado is 0', async () => {
+    it('should not call pagosService when montoPagado is 0', async () => {
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(mockInscripcion as Inscripcion);
-      repository.create.mockReturnValue(mockInscripcion as Inscripcion);
-      repository.save.mockResolvedValue(mockInscripcion as Inscripcion);
+      repository.findOne.mockResolvedValueOnce(null);
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        const mockManager = {
+          create: jest.fn().mockReturnValue(mockInscripcion),
+          save: jest.fn().mockResolvedValue(mockInscripcion),
+          findOne: jest.fn().mockResolvedValue(mockInscripcion),
+        };
+        return cb(mockManager);
+      });
 
       await service.registrarInscripcion({
         personaId: 'persona-uuid',
@@ -362,8 +408,7 @@ describe('InscripcionesService', () => {
         montoPagado: 0,
       });
 
-      expect(cajasService.findCajaGrupo).not.toHaveBeenCalled();
-      expect(movimientosService.create).not.toHaveBeenCalled();
+      expect(pagosService.ejecutarPagoConManager).not.toHaveBeenCalled();
     });
   });
 
@@ -589,6 +634,123 @@ describe('InscripcionesService', () => {
 
       await expect(service.remove('non-existent-id')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+  });
+
+  describe('pagar', () => {
+    it('should process payment and return updated inscription', async () => {
+      repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity
+        .mockResolvedValueOnce([]) // For getMontoPagado
+        .mockResolvedValueOnce([
+          { tipo: TipoMovimiento.INGRESO, monto: 5000 },
+        ] as any); // For toResponseDto
+
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        const mockManager = {};
+        return cb(mockManager);
+      });
+
+      const result = await service.pagar('inscripcion-uuid', {
+        montoPagado: 5000,
+      });
+
+      expect(pagosService.ejecutarPagoConManager).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          personaId: 'persona-uuid',
+          montoTotal: 5000,
+          montoConSaldoPersonal: 0,
+          concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
+          inscripcionId: 'inscripcion-uuid',
+        }),
+      );
+      expect(result.id).toBe('inscripcion-uuid');
+    });
+
+    it('should throw NotFoundException when inscription not found', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.pagar('non-existent-id', { montoPagado: 5000 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw BadRequestException when inscription is fully paid', async () => {
+      repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 10000 },
+      ] as any);
+
+      await expect(
+        service.pagar('inscripcion-uuid', { montoPagado: 1000 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when monto exceeds saldoPendiente', async () => {
+      repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 8000 },
+      ] as any); // saldoPendiente = 2000
+
+      await expect(
+        service.pagar('inscripcion-uuid', { montoPagado: 5000 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when montoConSaldoPersonal exceeds montoPagado', async () => {
+      repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      await expect(
+        service.pagar('inscripcion-uuid', {
+          montoPagado: 5000,
+          montoConSaldoPersonal: 6000,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should use SCOUT_ARGENTINA concept for scout inscriptions', async () => {
+      const scoutInscripcion = {
+        ...mockInscripcion,
+        tipo: TipoInscripcion.SCOUT_ARGENTINA,
+      };
+      repository.findOne.mockResolvedValue(scoutInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        return cb({});
+      });
+
+      await service.pagar('inscripcion-uuid', { montoPagado: 5000 });
+
+      expect(pagosService.ejecutarPagoConManager).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          concepto: ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA,
+        }),
+      );
+    });
+
+    it('should pass medioPago to pagosService', async () => {
+      repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        return cb({});
+      });
+
+      await service.pagar('inscripcion-uuid', {
+        montoPagado: 5000,
+        medioPago: MedioPago.TRANSFERENCIA,
+      });
+
+      expect(pagosService.ejecutarPagoConManager).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          medioPago: MedioPago.TRANSFERENCIA,
+        }),
       );
     });
   });

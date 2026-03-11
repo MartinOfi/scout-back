@@ -6,23 +6,23 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Inscripcion } from './entities/inscripcion.entity';
 import { CreateInscripcionDto } from './dtos/create-inscripcion.dto';
 import { UpdateInscripcionDto } from './dtos/update-inscripcion.dto';
+import { PagarInscripcionDto } from './dtos/pagar-inscripcion.dto';
 import {
   InscripcionResponseDto,
   MovimientoInscripcionDto,
 } from './dtos/inscripcion-response.dto';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
-import { CajasService } from '../cajas/cajas.service';
+import { PagosService } from '../pagos/pagos.service';
 import {
   EstadoInscripcion,
   TipoInscripcion,
   TipoMovimiento,
   ConceptoMovimiento,
-  EstadoPago,
 } from '../../common/enums';
 
 @Injectable()
@@ -33,7 +33,9 @@ export class InscripcionesService {
     private readonly personasService: PersonasService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
-    private readonly cajasService: CajasService,
+    @Inject(forwardRef(() => PagosService))
+    private readonly pagosService: PagosService,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -85,6 +87,7 @@ export class InscripcionesService {
       autorizacionDeImagen: inscripcion.autorizacionDeImagen,
       salidasCercanas: inscripcion.salidasCercanas,
       autorizacionIngreso: inscripcion.autorizacionIngreso,
+      certificadoAptitudFisica: inscripcion.certificadoAptitudFisica,
       createdAt: inscripcion.createdAt,
       updatedAt: inscripcion.updatedAt,
       estado,
@@ -210,57 +213,72 @@ export class InscripcionesService {
     }
 
     const montoPagado = dto.montoPagado ?? 0;
+    const montoConSaldoPersonal = dto.montoConSaldoPersonal ?? 0;
+
+    // Validar que montoConSaldoPersonal <= montoPagado
+    if (montoConSaldoPersonal > montoPagado) {
+      throw new BadRequestException(
+        'El monto de saldo personal no puede superar el monto pagado',
+      );
+    }
 
     // Campos de autorización solo aplican a SCOUT_ARGENTINA
     const esScoutArgentina = dto.tipo === TipoInscripcion.SCOUT_ARGENTINA;
 
-    const inscripcion = this.inscripcionRepository.create({
-      personaId: dto.personaId,
-      tipo: dto.tipo,
-      ano: dto.ano,
-      montoTotal: dto.montoTotal,
-      montoBonificado,
-      // Autorizaciones: solo se guardan para SCOUT_ARGENTINA, siempre false para GRUPO
-      declaracionDeSalud: esScoutArgentina
-        ? (dto.declaracionDeSalud ?? false)
-        : false,
-      autorizacionDeImagen: esScoutArgentina
-        ? (dto.autorizacionDeImagen ?? false)
-        : false,
-      salidasCercanas: esScoutArgentina
-        ? (dto.salidasCercanas ?? false)
-        : false,
-      autorizacionIngreso: esScoutArgentina
-        ? (dto.autorizacionIngreso ?? false)
-        : false,
-    });
-
-    const savedInscripcion = await this.inscripcionRepository.save(inscripcion);
-
-    // Si hay un pago inicial, crear el movimiento automáticamente
-    if (montoPagado > 0) {
-      const cajaGrupo = await this.cajasService.findCajaGrupo();
-      const concepto =
-        dto.tipo === TipoInscripcion.SCOUT_ARGENTINA
-          ? ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA
-          : ConceptoMovimiento.INSCRIPCION_GRUPO;
-
-      await this.movimientosService.create({
-        cajaId: cajaGrupo.id,
-        tipo: TipoMovimiento.INGRESO,
-        monto: montoPagado,
-        concepto,
-        descripcion: `Pago inscripción ${dto.tipo} ${dto.ano}`,
-        responsableId: dto.personaId,
-        medioPago: dto.medioPago,
-        estadoPago: EstadoPago.PAGADO,
-        inscripcionId: savedInscripcion.id,
+    // Usar transacción para crear inscripción y movimientos
+    return this.dataSource.transaction(async (manager) => {
+      const inscripcion = manager.create(Inscripcion, {
+        personaId: dto.personaId,
+        tipo: dto.tipo,
+        ano: dto.ano,
+        montoTotal: dto.montoTotal,
+        montoBonificado,
+        // Autorizaciones: solo se guardan para SCOUT_ARGENTINA, siempre false para GRUPO
+        declaracionDeSalud: esScoutArgentina
+          ? (dto.declaracionDeSalud ?? false)
+          : false,
+        autorizacionDeImagen: esScoutArgentina
+          ? (dto.autorizacionDeImagen ?? false)
+          : false,
+        salidasCercanas: esScoutArgentina
+          ? (dto.salidasCercanas ?? false)
+          : false,
+        autorizacionIngreso: esScoutArgentina
+          ? (dto.autorizacionIngreso ?? false)
+          : false,
+        certificadoAptitudFisica: esScoutArgentina
+          ? (dto.certificadoAptitudFisica ?? false)
+          : false,
       });
-    }
 
-    // Reload with persona relation for response
-    const reloaded = await this.findOneEntity(savedInscripcion.id);
-    return this.toResponseDto(reloaded);
+      const savedInscripcion = await manager.save(inscripcion);
+
+      // Si hay un pago inicial, usar PagosService
+      if (montoPagado > 0) {
+        const concepto =
+          dto.tipo === TipoInscripcion.SCOUT_ARGENTINA
+            ? ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA
+            : ConceptoMovimiento.INSCRIPCION_GRUPO;
+
+        await this.pagosService.ejecutarPagoConManager(manager, {
+          personaId: dto.personaId,
+          montoTotal: montoPagado,
+          montoConSaldoPersonal,
+          medioPago: dto.medioPago,
+          concepto,
+          inscripcionId: savedInscripcion.id,
+          descripcion: `Pago inscripción ${dto.tipo} ${dto.ano}`,
+        });
+      }
+
+      // Reload with persona relation for response
+      const reloaded = await manager.findOne(Inscripcion, {
+        where: { id: savedInscripcion.id },
+        relations: ['persona'],
+      });
+
+      return this.toResponseDto(reloaded!);
+    });
   }
 
   async getMontoPagado(inscripcionId: string): Promise<number> {
@@ -310,7 +328,8 @@ export class InscripcionesService {
       dto.declaracionDeSalud !== undefined ||
       dto.autorizacionDeImagen !== undefined ||
       dto.salidasCercanas !== undefined ||
-      dto.autorizacionIngreso !== undefined;
+      dto.autorizacionIngreso !== undefined ||
+      dto.certificadoAptitudFisica !== undefined;
 
     if (tieneAutorizaciones && !esScoutArgentina) {
       throw new BadRequestException(
@@ -335,6 +354,9 @@ export class InscripcionesService {
       if (dto.autorizacionIngreso !== undefined) {
         inscripcion.autorizacionIngreso = dto.autorizacionIngreso;
       }
+      if (dto.certificadoAptitudFisica !== undefined) {
+        inscripcion.certificadoAptitudFisica = dto.certificadoAptitudFisica;
+      }
     }
 
     await this.inscripcionRepository.save(inscripcion);
@@ -344,5 +366,66 @@ export class InscripcionesService {
   async remove(id: string): Promise<void> {
     const inscripcion = await this.findOneEntity(id);
     await this.inscripcionRepository.softRemove(inscripcion);
+  }
+
+  async pagar(
+    id: string,
+    dto: PagarInscripcionDto,
+  ): Promise<InscripcionResponseDto> {
+    const inscripcion = await this.findOneEntity(id);
+
+    // Calcular saldo pendiente
+    const montoPagadoActual = await this.getMontoPagado(id);
+    const montoTotal = Number(inscripcion.montoTotal);
+    const montoBonificado = Number(inscripcion.montoBonificado);
+    const saldoPendiente = Math.max(
+      0,
+      montoTotal - montoBonificado - montoPagadoActual,
+    );
+
+    // Validar que la inscripción no esté completamente pagada
+    if (saldoPendiente === 0) {
+      throw new BadRequestException(
+        'La inscripción ya está completamente pagada',
+      );
+    }
+
+    // Validar que el monto a pagar no exceda el saldo pendiente
+    if (dto.montoPagado > saldoPendiente) {
+      throw new BadRequestException(
+        `El monto a pagar ($${dto.montoPagado}) excede el saldo pendiente ($${saldoPendiente})`,
+      );
+    }
+
+    const montoConSaldoPersonal = dto.montoConSaldoPersonal ?? 0;
+
+    // Validar que montoConSaldoPersonal <= montoPagado
+    if (montoConSaldoPersonal > dto.montoPagado) {
+      throw new BadRequestException(
+        'El monto de saldo personal no puede superar el monto a pagar',
+      );
+    }
+
+    // Ejecutar pago en transacción
+    return this.dataSource.transaction(async (manager) => {
+      const concepto =
+        inscripcion.tipo === TipoInscripcion.SCOUT_ARGENTINA
+          ? ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA
+          : ConceptoMovimiento.INSCRIPCION_GRUPO;
+
+      await this.pagosService.ejecutarPagoConManager(manager, {
+        personaId: inscripcion.personaId,
+        montoTotal: dto.montoPagado,
+        montoConSaldoPersonal,
+        medioPago: dto.medioPago,
+        concepto,
+        inscripcionId: inscripcion.id,
+        descripcion:
+          dto.descripcion ??
+          `Pago inscripción ${inscripcion.tipo} ${inscripcion.ano}`,
+      });
+
+      return this.toResponseDto(inscripcion);
+    });
   }
 }

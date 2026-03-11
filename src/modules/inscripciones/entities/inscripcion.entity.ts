@@ -65,4 +65,11 @@ export class Inscripcion extends BaseEntity {
     default: false,
   })
   autorizacionIngreso!: boolean;
+
+  @Column({
+    name: 'certificado_aptitud_fisica',
+    type: 'boolean',
+    default: false,
+  })
+  certificadoAptitudFisica!: boolean;
 }

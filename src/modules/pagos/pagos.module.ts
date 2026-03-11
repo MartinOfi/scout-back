@@ -4,10 +4,7 @@ import { CajasModule } from '../cajas/cajas.module';
 import { MovimientosModule } from '../movimientos/movimientos.module';
 
 @Module({
-  imports: [
-    forwardRef(() => CajasModule),
-    forwardRef(() => MovimientosModule),
-  ],
+  imports: [forwardRef(() => CajasModule), forwardRef(() => MovimientosModule)],
   providers: [PagosService],
   exports: [PagosService],
 })

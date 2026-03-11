@@ -1,6 +1,7 @@
 import {
   IsString,
   IsEnum,
+  IsBoolean,
   IsOptional,
   MinLength,
   MaxLength,
@@ -49,4 +50,40 @@ export class UpdatePersonaDto {
   @IsString()
   @IsOptional()
   notas?: string;
+
+  // =========================================================================
+  // Documentación entregada (solo para Protagonistas)
+  // =========================================================================
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Partida de nacimiento entregada',
+  })
+  @IsBoolean()
+  @IsOptional()
+  partidaNacimiento?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'DNI entregado',
+  })
+  @IsBoolean()
+  @IsOptional()
+  dni?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'DNI de los padres entregado',
+  })
+  @IsBoolean()
+  @IsOptional()
+  dniPadres?: boolean;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Carnet de obra social entregado',
+  })
+  @IsBoolean()
+  @IsOptional()
+  carnetObraSocial?: boolean;
 }

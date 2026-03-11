@@ -16,8 +16,7 @@ export function ValidarMontoSaldoPersonal(
       validator: {
         validate(value: unknown, args: ValidationArguments) {
           const obj = args.object as Record<string, unknown>;
-          const montoConSaldoPersonal =
-            typeof value === 'number' ? value : 0;
+          const montoConSaldoPersonal = typeof value === 'number' ? value : 0;
           const montoPagado =
             typeof obj.montoPagado === 'number' ? obj.montoPagado : 0;
           return montoConSaldoPersonal <= montoPagado;

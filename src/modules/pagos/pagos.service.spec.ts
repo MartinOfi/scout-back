@@ -3,11 +3,7 @@ import { PagosService } from './pagos.service';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { EntityManager } from 'typeorm';
-import {
-  MedioPago,
-  ConceptoMovimiento,
-  CajaType,
-} from '../../common/enums';
+import { MedioPago, ConceptoMovimiento, CajaType } from '../../common/enums';
 import { BadRequestException } from '@nestjs/common';
 
 describe('PagosService', () => {

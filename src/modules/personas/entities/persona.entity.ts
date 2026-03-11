@@ -34,6 +34,22 @@ export abstract class Persona extends BaseEntity {
 export class Protagonista extends Persona {
   @Column({ type: 'enum', enum: Rama })
   rama!: Rama;
+
+  // =========================================================================
+  // Documentación entregada
+  // =========================================================================
+
+  @Column({ name: 'partida_nacimiento', type: 'boolean', default: false })
+  partidaNacimiento!: boolean;
+
+  @Column({ name: 'dni', type: 'boolean', default: false })
+  dni!: boolean;
+
+  @Column({ name: 'dni_padres', type: 'boolean', default: false })
+  dniPadres!: boolean;
+
+  @Column({ name: 'carnet_obra_social', type: 'boolean', default: false })
+  carnetObraSocial!: boolean;
 }
 
 /**
