@@ -12,7 +12,7 @@ RUN npm install
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN npm run build && ls -la dist/ && ls -la dist/main.js
 
 # Production stage
 FROM node:22-alpine AS production
@@ -27,6 +27,9 @@ RUN npm install --omit=dev
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
+
+# Verify dist was copied
+RUN ls -la dist/ && ls -la dist/main.js
 
 # Expose port
 EXPOSE 3000
