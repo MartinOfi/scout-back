@@ -9,21 +9,15 @@ import {
   ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiParam,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { InscripcionesService } from './inscripciones.service';
 import {
   CreateInscripcionDto,
   UpdateInscripcionDto,
   PagarInscripcionDto,
   InscripcionResponseDto,
+  GetInscripcionesQueryDto,
 } from './dtos';
-import { TipoInscripcion } from '../../common/enums';
 
 @ApiTags('Inscripciones')
 @Controller('inscripciones')
@@ -34,21 +28,15 @@ export class InscripcionesController {
   @ApiOperation({
     summary: 'Listar todas las inscripciones con estado calculado',
   })
-  @ApiQuery({ name: 'ano', type: Number, required: false })
-  @ApiQuery({ name: 'tipo', enum: TipoInscripcion, required: false })
   @ApiResponse({
     status: 200,
     description: 'Lista de inscripciones con estado y saldo pendiente',
     type: [InscripcionResponseDto],
   })
   async findAll(
-    @Query('ano') ano?: number,
-    @Query('tipo') tipo?: TipoInscripcion,
+    @Query() query: GetInscripcionesQueryDto,
   ): Promise<InscripcionResponseDto[]> {
-    if (ano) {
-      return this.inscripcionesService.findByAno(ano, tipo);
-    }
-    return this.inscripcionesService.findAll();
+    return this.inscripcionesService.findAll(query);
   }
 
   @Get('persona/:personaId')

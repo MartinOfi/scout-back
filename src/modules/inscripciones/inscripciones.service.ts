@@ -11,6 +11,7 @@ import { Inscripcion } from './entities/inscripcion.entity';
 import { CreateInscripcionDto } from './dtos/create-inscripcion.dto';
 import { UpdateInscripcionDto } from './dtos/update-inscripcion.dto';
 import { PagarInscripcionDto } from './dtos/pagar-inscripcion.dto';
+import { GetInscripcionesQueryDto } from './dtos/get-inscripciones-query.dto';
 import {
   InscripcionResponseDto,
   MovimientoInscripcionDto,
@@ -114,12 +115,61 @@ export class InscripcionesService {
     return Promise.all(inscripciones.map((i) => this.toResponseDto(i)));
   }
 
-  async findAll(): Promise<InscripcionResponseDto[]> {
+  /**
+   * Determina si una inscripción califica como "deudor"
+   * Condiciones:
+   * 1. Tiene saldo pendiente (debe dinero)
+   * 2. O le falta algún documento (solo para SCOUT_ARGENTINA)
+   */
+  private isDeudor(dto: InscripcionResponseDto): boolean {
+    // Tiene saldo pendiente
+    if (dto.saldoPendiente > 0) {
+      return true;
+    }
+
+    // Solo verificar documentos para inscripciones SCOUT_ARGENTINA
+    if (dto.tipo === TipoInscripcion.SCOUT_ARGENTINA) {
+      const faltaDocumento =
+        !dto.declaracionDeSalud ||
+        !dto.autorizacionDeImagen ||
+        !dto.salidasCercanas ||
+        !dto.autorizacionIngreso ||
+        !dto.certificadoAptitudFisica;
+
+      if (faltaDocumento) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  async findAll(
+    query?: GetInscripcionesQueryDto,
+  ): Promise<InscripcionResponseDto[]> {
+    const where: { ano?: number; tipo?: TipoInscripcion } = {};
+
+    if (query?.ano) {
+      where.ano = query.ano;
+    }
+    if (query?.tipo) {
+      where.tipo = query.tipo;
+    }
+
     const inscripciones = await this.inscripcionRepository.find({
+      where: Object.keys(where).length > 0 ? where : undefined,
       relations: ['persona'],
       order: { ano: 'DESC', createdAt: 'DESC' },
     });
-    return this.toResponseDtos(inscripciones);
+
+    const dtos = await this.toResponseDtos(inscripciones);
+
+    // Aplicar filtro de deudores si está activo
+    if (query?.deudores) {
+      return dtos.filter((dto) => this.isDeudor(dto));
+    }
+
+    return dtos;
   }
 
   async findByPersona(personaId: string): Promise<InscripcionResponseDto[]> {

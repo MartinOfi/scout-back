@@ -143,9 +143,150 @@ describe('InscripcionesService', () => {
       expect(result[0].montoPagado).toBe(0);
       expect(result[0].saldoPendiente).toBe(10000);
       expect(repository.find).toHaveBeenCalledWith({
+        where: undefined,
         relations: ['persona'],
         order: { ano: 'DESC', createdAt: 'DESC' },
       });
+    });
+
+    it('should filter by ano when provided', async () => {
+      const inscripciones = [mockInscripcion as Inscripcion];
+      repository.find.mockResolvedValue(inscripciones);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      const result = await service.findAll({ ano: 2026 });
+
+      expect(result).toHaveLength(1);
+      expect(repository.find).toHaveBeenCalledWith({
+        where: { ano: 2026 },
+        relations: ['persona'],
+        order: { ano: 'DESC', createdAt: 'DESC' },
+      });
+    });
+
+    it('should filter by tipo when provided', async () => {
+      const inscripciones = [mockInscripcion as Inscripcion];
+      repository.find.mockResolvedValue(inscripciones);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      const result = await service.findAll({ tipo: TipoInscripcion.GRUPO });
+
+      expect(result).toHaveLength(1);
+      expect(repository.find).toHaveBeenCalledWith({
+        where: { tipo: TipoInscripcion.GRUPO },
+        relations: ['persona'],
+        order: { ano: 'DESC', createdAt: 'DESC' },
+      });
+    });
+
+    it('should filter deudores with saldo pendiente', async () => {
+      const inscripcionConDeuda = {
+        ...mockInscripcion,
+        id: 'con-deuda',
+        montoTotal: 10000,
+      };
+      const inscripcionPagada = {
+        ...mockInscripcion,
+        id: 'pagada',
+        montoTotal: 10000,
+      };
+      repository.find.mockResolvedValue([
+        inscripcionConDeuda,
+        inscripcionPagada,
+      ] as Inscripcion[]);
+
+      // Mock diferentes pagos para cada inscripción
+      movimientosService.findByRelatedEntity
+        .mockResolvedValueOnce([]) // con-deuda: no payments
+        .mockResolvedValueOnce([
+          { tipo: TipoMovimiento.INGRESO, monto: 10000 },
+        ] as any); // pagada: fully paid
+
+      const result = await service.findAll({ deudores: true });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('con-deuda');
+      expect(result[0].saldoPendiente).toBeGreaterThan(0);
+    });
+
+    it('should filter deudores with missing documents for SCOUT_ARGENTINA', async () => {
+      const inscripcionSinDocumentos = {
+        ...mockInscripcion,
+        id: 'sin-docs',
+        tipo: TipoInscripcion.SCOUT_ARGENTINA,
+        montoTotal: 10000,
+        declaracionDeSalud: false,
+        autorizacionDeImagen: true,
+        salidasCercanas: true,
+        autorizacionIngreso: true,
+        certificadoAptitudFisica: true,
+      };
+      const inscripcionCompleta = {
+        ...mockInscripcion,
+        id: 'completa',
+        tipo: TipoInscripcion.SCOUT_ARGENTINA,
+        montoTotal: 10000,
+        declaracionDeSalud: true,
+        autorizacionDeImagen: true,
+        salidasCercanas: true,
+        autorizacionIngreso: true,
+        certificadoAptitudFisica: true,
+      };
+      repository.find.mockResolvedValue([
+        inscripcionSinDocumentos,
+        inscripcionCompleta,
+      ] as Inscripcion[]);
+
+      // Ambas completamente pagadas
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 10000 },
+      ] as any);
+
+      const result = await service.findAll({ deudores: true });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('sin-docs');
+      expect(result[0].declaracionDeSalud).toBe(false);
+    });
+
+    it('should not consider missing documents for GRUPO type when filtering deudores', async () => {
+      const inscripcionGrupoPagada = {
+        ...mockInscripcion,
+        id: 'grupo-pagada',
+        tipo: TipoInscripcion.GRUPO,
+        montoTotal: 10000,
+        declaracionDeSalud: false, // Los docs en false no importan para GRUPO
+        autorizacionDeImagen: false,
+      };
+      repository.find.mockResolvedValue([
+        inscripcionGrupoPagada,
+      ] as Inscripcion[]);
+
+      // Completamente pagada
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 10000 },
+      ] as any);
+
+      const result = await service.findAll({ deudores: true });
+
+      // No debe aparecer porque está pagada y los docs no aplican a GRUPO
+      expect(result).toHaveLength(0);
+    });
+
+    it('should return all inscriptions when deudores is false', async () => {
+      const inscripcionPagada = {
+        ...mockInscripcion,
+        id: 'pagada',
+        montoTotal: 10000,
+      };
+      repository.find.mockResolvedValue([inscripcionPagada] as Inscripcion[]);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 10000 },
+      ] as any);
+
+      const result = await service.findAll({ deudores: false });
+
+      expect(result).toHaveLength(1);
     });
   });
 
