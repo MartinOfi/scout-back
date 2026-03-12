@@ -14,63 +14,49 @@ import {
   ApiOperation,
   ApiResponse,
   ApiParam,
-  ApiQuery,
   ApiBody,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import { MovimientosService } from './movimientos.service';
-import { CreateMovimientoDto } from './dtos/create-movimiento.dto';
-import { UpdateMovimientoDto } from './dtos/update-movimiento.dto';
 import {
-  TipoMovimiento,
-  ConceptoMovimiento,
-  EstadoPago,
-  MedioPago,
-} from '../../common/enums';
+  CreateMovimientoDto,
+  UpdateMovimientoDto,
+  FilterMovimientosDto,
+} from './dtos';
+import { PaginatedResponseDto, PaginationMeta } from '../../common/dtos';
+import { MedioPago, EstadoPago } from '../../common/enums';
+import { Movimiento } from './entities/movimiento.entity';
 
 @ApiTags('Movimientos')
+@ApiExtraModels(PaginatedResponseDto, PaginationMeta, Movimiento)
 @Controller('movimientos')
 export class MovimientosController {
   constructor(private readonly movimientosService: MovimientosService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar movimientos con filtros' })
-  @ApiQuery({ name: 'cajaId', type: String, required: false })
-  @ApiQuery({ name: 'tipo', enum: TipoMovimiento, required: false })
-  @ApiQuery({ name: 'concepto', enum: ConceptoMovimiento, required: false })
-  @ApiQuery({ name: 'responsableId', type: String, required: false })
-  @ApiQuery({ name: 'estadoPago', enum: EstadoPago, required: false })
-  @ApiQuery({ name: 'fechaInicio', type: String, required: false })
-  @ApiQuery({ name: 'fechaFin', type: String, required: false })
-  @ApiResponse({ status: 200, description: 'Lista de movimientos' })
+  @ApiOperation({
+    summary: 'Listar movimientos con filtros y paginación',
+    description:
+      'Retorna movimientos paginados. Por defecto página 1 con 20 elementos.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada de movimientos',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: '#/components/schemas/Movimiento' },
+        },
+        meta: { $ref: '#/components/schemas/PaginationMeta' },
+      },
+    },
+  })
   async findAll(
-    @Query('cajaId') cajaId?: string,
-    @Query('tipo') tipo?: TipoMovimiento,
-    @Query('concepto') concepto?: ConceptoMovimiento,
-    @Query('responsableId') responsableId?: string,
-    @Query('estadoPago') estadoPago?: EstadoPago,
-    @Query('fechaInicio') fechaInicio?: string,
-    @Query('fechaFin') fechaFin?: string,
-  ) {
-    // Si hay algún filtro, usar el método con filtros
-    if (
-      cajaId ||
-      tipo ||
-      concepto ||
-      responsableId ||
-      estadoPago ||
-      fechaInicio
-    ) {
-      return this.movimientosService.findWithFilters({
-        cajaId,
-        tipo,
-        concepto,
-        responsableId,
-        estadoPago,
-        fechaInicio: fechaInicio ? new Date(fechaInicio) : undefined,
-        fechaFin: fechaFin ? new Date(fechaFin) : undefined,
-      });
-    }
-    return this.movimientosService.findAll();
+    @Query() filters: FilterMovimientosDto,
+  ): Promise<PaginatedResponseDto<Movimiento>> {
+    return this.movimientosService.findWithFilters(filters);
   }
 
   @Get('reembolsos-pendientes')

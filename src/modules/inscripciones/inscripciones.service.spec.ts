@@ -7,6 +7,7 @@ import { Inscripcion } from './entities/inscripcion.entity';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import {
   TipoInscripcion,
   TipoMovimiento,
@@ -21,6 +22,7 @@ describe('InscripcionesService', () => {
   let personasService: jest.Mocked<PersonasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
   let pagosService: jest.Mocked<PagosService>;
+  let deletionValidator: jest.Mocked<DeletionValidatorService>;
   let dataSource: jest.Mocked<DataSource>;
 
   const mockInscripcion: Partial<Inscripcion> = {
@@ -103,6 +105,14 @@ describe('InscripcionesService', () => {
           provide: DataSource,
           useValue: mockDataSource,
         },
+        {
+          provide: DeletionValidatorService,
+          useValue: {
+            canDeleteInscripcion: jest
+              .fn()
+              .mockResolvedValue({ canDelete: true }),
+          },
+        },
       ],
     }).compile();
 
@@ -111,6 +121,7 @@ describe('InscripcionesService', () => {
     personasService = module.get(PersonasService);
     movimientosService = module.get(MovimientosService);
     pagosService = module.get(PagosService);
+    deletionValidator = module.get(DeletionValidatorService);
     dataSource = module.get(DataSource);
   });
 
@@ -620,12 +631,18 @@ describe('InscripcionesService', () => {
   });
 
   describe('remove', () => {
-    it('should soft remove the inscription', async () => {
+    it('should soft remove the inscription when no movements exist', async () => {
       repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
       repository.softRemove.mockResolvedValue(mockInscripcion as Inscripcion);
+      deletionValidator.canDeleteInscripcion.mockResolvedValue({
+        canDelete: true,
+      });
 
       await service.remove('inscripcion-uuid');
 
+      expect(deletionValidator.canDeleteInscripcion).toHaveBeenCalledWith(
+        'inscripcion-uuid',
+      );
       expect(repository.softRemove).toHaveBeenCalledWith(mockInscripcion);
     });
 
@@ -635,6 +652,20 @@ describe('InscripcionesService', () => {
       await expect(service.remove('non-existent-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('should throw BadRequestException when inscription has movements', async () => {
+      repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+      deletionValidator.canDeleteInscripcion.mockResolvedValue({
+        canDelete: false,
+        reason: 'No se puede eliminar: la inscripción tiene 3 movimiento(s)',
+        movementCount: 3,
+      });
+
+      await expect(service.remove('inscripcion-uuid')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(repository.softRemove).not.toHaveBeenCalled();
     });
   });
 

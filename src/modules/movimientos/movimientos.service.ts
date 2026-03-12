@@ -9,8 +9,10 @@ import { Repository, Between, FindOptionsWhere } from 'typeorm';
 import { Movimiento } from './entities/movimiento.entity';
 import { CreateMovimientoDto } from './dtos/create-movimiento.dto';
 import { UpdateMovimientoDto } from './dtos/update-movimiento.dto';
+import { FilterMovimientosDto } from './dtos/filter-movimientos.dto';
 import { CajasService } from '../cajas/cajas.service';
 import { PersonasService } from '../personas/personas.service';
+import { PaginatedResponseDto } from '../../common/dtos';
 import {
   TipoMovimiento,
   ConceptoMovimiento,
@@ -36,15 +38,13 @@ export class MovimientosService {
     });
   }
 
-  async findWithFilters(filters: {
-    cajaId?: string;
-    tipo?: TipoMovimiento;
-    concepto?: ConceptoMovimiento;
-    responsableId?: string;
-    fechaInicio?: Date;
-    fechaFin?: Date;
-    estadoPago?: EstadoPago;
-  }): Promise<Movimiento[]> {
+  async findWithFilters(
+    filters: FilterMovimientosDto,
+  ): Promise<PaginatedResponseDto<Movimiento>> {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 20;
+    const skip = (page - 1) * limit;
+
     const queryBuilder = this.movimientoRepository
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.caja', 'caja')
@@ -77,6 +77,14 @@ export class MovimientosService {
         fechaInicio: filters.fechaInicio,
         fechaFin: filters.fechaFin,
       });
+    } else if (filters.fechaInicio) {
+      queryBuilder.andWhere('m.fecha >= :fechaInicio', {
+        fechaInicio: filters.fechaInicio,
+      });
+    } else if (filters.fechaFin) {
+      queryBuilder.andWhere('m.fecha <= :fechaFin', {
+        fechaFin: filters.fechaFin,
+      });
     }
 
     if (filters.estadoPago) {
@@ -85,7 +93,14 @@ export class MovimientosService {
       });
     }
 
-    return queryBuilder.orderBy('m.fecha', 'DESC').getMany();
+    const [data, total] = await queryBuilder
+      .orderBy('m.fecha', 'DESC')
+      .addOrderBy('m.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return new PaginatedResponseDto(data, page, limit, total);
   }
 
   async findByCaja(cajaId: string): Promise<Movimiento[]> {

@@ -23,6 +23,7 @@ import {
   MedioPago,
   EstadoPago,
 } from '../../common/enums';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
 @Injectable()
 export class EventosService {
@@ -36,6 +37,7 @@ export class EventosService {
     private readonly personasService: PersonasService,
     private readonly cajasService: CajasService,
     private readonly movimientosService: MovimientosService,
+    private readonly deletionValidator: DeletionValidatorService,
   ) {}
 
   // ==================== EVENTOS ====================
@@ -71,8 +73,36 @@ export class EventosService {
     return this.eventoRepository.save(evento);
   }
 
+  /**
+   * Soft delete de evento - solo si no tiene movimientos asociados
+   *
+   * Cascada: Elimina todos los productos y ventas del evento
+   */
   async remove(id: string): Promise<void> {
     const evento = await this.findOne(id);
+
+    // Validar que no tenga movimientos asociados
+    const check = await this.deletionValidator.canDeleteEvento(id);
+    if (!check.canDelete) {
+      throw new BadRequestException(check.reason);
+    }
+
+    // Cascada: eliminar todas las ventas del evento
+    const ventas = await this.ventaProductoRepository.find({
+      where: { eventoId: id },
+    });
+    if (ventas.length > 0) {
+      await this.ventaProductoRepository.softRemove(ventas);
+    }
+
+    // Cascada: eliminar todos los productos del evento
+    const productos = await this.productoRepository.find({
+      where: { eventoId: id },
+    });
+    if (productos.length > 0) {
+      await this.productoRepository.softRemove(productos);
+    }
+
     await this.eventoRepository.softRemove(evento);
   }
 
@@ -92,11 +122,35 @@ export class EventosService {
     });
   }
 
+  /**
+   * Soft delete de producto - solo si el evento no tiene movimientos
+   *
+   * Cascada: Elimina todas las ventas de este producto
+   */
   async removeProducto(id: string): Promise<void> {
     const producto = await this.productoRepository.findOne({ where: { id } });
     if (!producto) {
       throw new NotFoundException(`Producto con ID ${id} no encontrado`);
     }
+
+    // Validar que el evento no tenga movimientos
+    const check = await this.deletionValidator.canDeleteEvento(
+      producto.eventoId,
+    );
+    if (!check.canDelete) {
+      throw new BadRequestException(
+        'No se puede eliminar: el evento tiene movimientos asociados',
+      );
+    }
+
+    // Cascada: eliminar ventas de este producto
+    const ventas = await this.ventaProductoRepository.find({
+      where: { productoId: id },
+    });
+    if (ventas.length > 0) {
+      await this.ventaProductoRepository.softRemove(ventas);
+    }
+
     await this.productoRepository.softRemove(producto);
   }
 

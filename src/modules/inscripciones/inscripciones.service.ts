@@ -24,6 +24,7 @@ import {
   TipoMovimiento,
   ConceptoMovimiento,
 } from '../../common/enums';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
 @Injectable()
 export class InscripcionesService {
@@ -36,6 +37,7 @@ export class InscripcionesService {
     @Inject(forwardRef(() => PagosService))
     private readonly pagosService: PagosService,
     private readonly dataSource: DataSource,
+    private readonly deletionValidator: DeletionValidatorService,
   ) {}
 
   /**
@@ -365,6 +367,13 @@ export class InscripcionesService {
 
   async remove(id: string): Promise<void> {
     const inscripcion = await this.findOneEntity(id);
+
+    // Validar que no tenga movimientos asociados
+    const check = await this.deletionValidator.canDeleteInscripcion(id);
+    if (!check.canDelete) {
+      throw new BadRequestException(check.reason);
+    }
+
     await this.inscripcionRepository.softRemove(inscripcion);
   }
 

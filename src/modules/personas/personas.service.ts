@@ -3,6 +3,7 @@ import {
   NotFoundException,
   Inject,
   forwardRef,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -18,6 +19,7 @@ import { CreatePersonaExternaDto } from './dtos/create-persona-externa.dto';
 import { UpdatePersonaDto } from './dtos/update-persona.dto';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import {
   PersonaType,
   EstadoPersona,
@@ -42,6 +44,7 @@ export class PersonasService {
     private readonly cajasService: CajasService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
+    private readonly deletionValidator: DeletionValidatorService,
   ) {}
 
   async findAll(): Promise<Persona[]> {
@@ -214,11 +217,32 @@ export class PersonasService {
   }
 
   /**
-   * Elimina físicamente (soft delete) - usar solo en casos excepcionales
-   * Preferir darDeBaja() para casos normales
+   * Soft delete de persona - solo si no tiene movimientos asociados
+   * Para casos normales, usar darDeBaja()
+   *
+   * Cascada: Si es Protagonista/Educador, también elimina su Caja personal
    */
   async remove(id: string): Promise<void> {
     const persona = await this.findOne(id);
+
+    // Validar que no tenga movimientos asociados
+    const check = await this.deletionValidator.canDeletePersona(id);
+    if (!check.canDelete) {
+      throw new BadRequestException(check.reason);
+    }
+
+    // Cascada: eliminar caja personal si existe (para Protagonista/Educador)
+    if (
+      persona.tipo === PersonaType.PROTAGONISTA ||
+      persona.tipo === PersonaType.EDUCADOR
+    ) {
+      const cajaPersonal = await this.cajasService.findCajaPersonal(id);
+      if (cajaPersonal) {
+        // La caja personal se puede eliminar porque ya verificamos que no hay movimientos
+        await this.cajasService.remove(cajaPersonal.id);
+      }
+    }
+
     await this.personaRepository.softRemove(persona);
   }
 }

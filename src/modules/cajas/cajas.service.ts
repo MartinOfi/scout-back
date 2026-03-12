@@ -8,12 +8,14 @@ import { Repository } from 'typeorm';
 import { Caja } from './entities/caja.entity';
 import { CreateCajaDto } from './dtos/create-caja.dto';
 import { CajaType } from '../../common/enums';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
 @Injectable()
 export class CajasService {
   constructor(
     @InjectRepository(Caja)
     private readonly cajaRepository: Repository<Caja>,
+    private readonly deletionValidator: DeletionValidatorService,
   ) {}
 
   async findAll(): Promise<Caja[]> {
@@ -97,6 +99,12 @@ export class CajasService {
 
     if (caja.tipo === CajaType.GRUPO) {
       throw new BadRequestException('No se puede eliminar la caja del grupo');
+    }
+
+    // Validar que no tenga movimientos asociados
+    const check = await this.deletionValidator.canDeleteCaja(id);
+    if (!check.canDelete) {
+      throw new BadRequestException(check.reason);
     }
 
     await this.cajaRepository.softRemove(caja);

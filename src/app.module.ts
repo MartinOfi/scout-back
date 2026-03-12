@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
+import { CommonModule } from './common/common.module';
 import { PersonasModule } from './modules/personas/personas.module';
 import { CajasModule } from './modules/cajas/cajas.module';
 import { MovimientosModule } from './modules/movimientos/movimientos.module';
@@ -19,6 +20,7 @@ import { EventosModule } from './modules/eventos/eventos.module';
       envFilePath: '.env.local',
     }),
     DatabaseModule,
+    CommonModule,
     PersonasModule,
     CajasModule,
     MovimientosModule,

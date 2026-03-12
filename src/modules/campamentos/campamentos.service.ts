@@ -18,6 +18,7 @@ import {
   MedioPago,
   EstadoPago,
 } from '../../common/enums';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
 @Injectable()
 export class CampamentosService {
@@ -27,6 +28,7 @@ export class CampamentosService {
     private readonly personasService: PersonasService,
     private readonly cajasService: CajasService,
     private readonly movimientosService: MovimientosService,
+    private readonly deletionValidator: DeletionValidatorService,
   ) {}
 
   async findAll(): Promise<Campamento[]> {
@@ -255,6 +257,13 @@ export class CampamentosService {
 
   async remove(id: string): Promise<void> {
     const campamento = await this.findOne(id);
+
+    // Validar que no tenga movimientos asociados
+    const check = await this.deletionValidator.canDeleteCampamento(id);
+    if (!check.canDelete) {
+      throw new BadRequestException(check.reason);
+    }
+
     await this.campamentoRepository.softRemove(campamento);
   }
 }

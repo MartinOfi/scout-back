@@ -17,6 +17,7 @@ import {
   MedioPago,
   EstadoPago,
 } from '../../common/enums';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
 @Injectable()
 export class CuotasService {
@@ -26,6 +27,7 @@ export class CuotasService {
     private readonly personasService: PersonasService,
     private readonly cajasService: CajasService,
     private readonly movimientosService: MovimientosService,
+    private readonly deletionValidator: DeletionValidatorService,
   ) {}
 
   async findAll(): Promise<Cuota[]> {
@@ -125,6 +127,13 @@ export class CuotasService {
 
   async remove(id: string): Promise<void> {
     const cuota = await this.findOne(id);
+
+    // Validar que no tenga movimientos asociados
+    const check = await this.deletionValidator.canDeleteCuota(id);
+    if (!check.canDelete) {
+      throw new BadRequestException(check.reason);
+    }
+
     await this.cuotaRepository.softRemove(cuota);
   }
 }
