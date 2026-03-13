@@ -34,3 +34,4 @@ export class CajaResponseDto {
   @ApiProperty({ description: 'Fecha de última actualización' })
   updatedAt!: Date;
 }
+
