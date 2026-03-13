@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -25,8 +27,11 @@ export class CampamentosService {
   constructor(
     @InjectRepository(Campamento)
     private readonly campamentoRepository: Repository<Campamento>,
+    @Inject(forwardRef(() => PersonasService))
     private readonly personasService: PersonasService,
+    @Inject(forwardRef(() => CajasService))
     private readonly cajasService: CajasService,
+    @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
     private readonly deletionValidator: DeletionValidatorService,
   ) {}
@@ -265,5 +270,36 @@ export class CampamentosService {
     }
 
     await this.campamentoRepository.softRemove(campamento);
+  }
+
+  /**
+   * Calcula el total de deuda de todos los campamentos
+   * Suma de (costoPorPersona - totalPagado) para cada participante con deuda
+   */
+  async getTotalDeudaCampamentos(): Promise<{
+    total: number;
+    cantidad: number;
+  }> {
+    const campamentos = await this.campamentoRepository.find({
+      relations: ['participantes'],
+    });
+
+    let total = 0;
+    let cantidad = 0;
+
+    for (const campamento of campamentos) {
+      const pagosPorParticipante = await this.getPagosPorParticipante(
+        campamento.id,
+      );
+
+      for (const participante of pagosPorParticipante) {
+        if (participante.saldoPendiente > 0) {
+          total += participante.saldoPendiente;
+          cantidad++;
+        }
+      }
+    }
+
+    return { total, cantidad };
   }
 }

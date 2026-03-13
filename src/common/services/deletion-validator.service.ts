@@ -106,7 +106,9 @@ export class DeletionValidatorService {
    * Check if a Campamento can be deleted
    * A campamento cannot be deleted if it has any associated movimientos
    */
-  async canDeleteCampamento(campamentoId: string): Promise<DeletionCheckResult> {
+  async canDeleteCampamento(
+    campamentoId: string,
+  ): Promise<DeletionCheckResult> {
     const count = await this.movimientoRepository.count({
       where: { campamentoId },
     });

@@ -16,7 +16,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { CajasService } from './cajas.service';
-import { CreateCajaDto } from './dtos/create-caja.dto';
+import { CreateCajaDto, ConsolidadoSaldosDto } from './dtos';
 import { CajaType } from '../../common/enums';
 
 @ApiTags('Cajas')
@@ -41,6 +41,17 @@ export class CajasController {
   @ApiResponse({ status: 404, description: 'Caja del grupo no encontrada' })
   async findCajaGrupo() {
     return this.cajasService.findCajaGrupo();
+  }
+
+  @Get('consolidado')
+  @ApiOperation({ summary: 'Obtener consolidado de saldos de todas las cajas' })
+  @ApiResponse({
+    status: 200,
+    description: 'Consolidado de saldos',
+    type: ConsolidadoSaldosDto,
+  })
+  async getConsolidadoSaldos(): Promise<ConsolidadoSaldosDto> {
+    return this.cajasService.getConsolidadoSaldos();
   }
 
   @Get(':id')

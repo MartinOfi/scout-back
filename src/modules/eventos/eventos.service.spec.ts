@@ -224,7 +224,9 @@ describe('EventosService', () => {
     describe('cascade deletion', () => {
       it('should soft remove evento without cascade when no productos/ventas exist', async () => {
         eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
-        deletionValidator.canDeleteEvento.mockResolvedValue({ canDelete: true });
+        deletionValidator.canDeleteEvento.mockResolvedValue({
+          canDelete: true,
+        });
         ventaProductoRepository.find.mockResolvedValue([]);
         productoRepository.find.mockResolvedValue([]);
         eventoRepository.softRemove.mockResolvedValue(mockEvento as Evento);
@@ -244,7 +246,9 @@ describe('EventosService', () => {
         const productos = [mockProducto as Producto];
 
         eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
-        deletionValidator.canDeleteEvento.mockResolvedValue({ canDelete: true });
+        deletionValidator.canDeleteEvento.mockResolvedValue({
+          canDelete: true,
+        });
         ventaProductoRepository.find.mockResolvedValue(ventas);
         productoRepository.find.mockResolvedValue(productos);
         ventaProductoRepository.softRemove.mockResolvedValue(ventas);
@@ -268,7 +272,9 @@ describe('EventosService', () => {
         const callOrder: string[] = [];
 
         eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
-        deletionValidator.canDeleteEvento.mockResolvedValue({ canDelete: true });
+        deletionValidator.canDeleteEvento.mockResolvedValue({
+          canDelete: true,
+        });
         ventaProductoRepository.find.mockResolvedValue([
           mockVenta as VentaProducto,
         ]);
@@ -326,9 +332,13 @@ describe('EventosService', () => {
     describe('cascade deletion', () => {
       it('should soft remove producto without cascade when no ventas exist', async () => {
         productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
-        deletionValidator.canDeleteEvento.mockResolvedValue({ canDelete: true });
+        deletionValidator.canDeleteEvento.mockResolvedValue({
+          canDelete: true,
+        });
         ventaProductoRepository.find.mockResolvedValue([]);
-        productoRepository.softRemove.mockResolvedValue(mockProducto as Producto);
+        productoRepository.softRemove.mockResolvedValue(
+          mockProducto as Producto,
+        );
 
         await service.removeProducto('producto-uuid');
 
@@ -336,17 +346,23 @@ describe('EventosService', () => {
           'evento-uuid',
         );
         expect(ventaProductoRepository.softRemove).not.toHaveBeenCalled();
-        expect(productoRepository.softRemove).toHaveBeenCalledWith(mockProducto);
+        expect(productoRepository.softRemove).toHaveBeenCalledWith(
+          mockProducto,
+        );
       });
 
       it('should cascade delete ventas when removing producto', async () => {
         const ventas = [mockVenta as VentaProducto];
 
         productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
-        deletionValidator.canDeleteEvento.mockResolvedValue({ canDelete: true });
+        deletionValidator.canDeleteEvento.mockResolvedValue({
+          canDelete: true,
+        });
         ventaProductoRepository.find.mockResolvedValue(ventas);
         ventaProductoRepository.softRemove.mockResolvedValue(ventas);
-        productoRepository.softRemove.mockResolvedValue(mockProducto as Producto);
+        productoRepository.softRemove.mockResolvedValue(
+          mockProducto as Producto,
+        );
 
         await service.removeProducto('producto-uuid');
 
@@ -354,7 +370,9 @@ describe('EventosService', () => {
           where: { productoId: 'producto-uuid' },
         });
         expect(ventaProductoRepository.softRemove).toHaveBeenCalledWith(ventas);
-        expect(productoRepository.softRemove).toHaveBeenCalledWith(mockProducto);
+        expect(productoRepository.softRemove).toHaveBeenCalledWith(
+          mockProducto,
+        );
       });
     });
   });

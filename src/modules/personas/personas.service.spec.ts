@@ -100,6 +100,7 @@ describe('PersonasService', () => {
       findCajaPersonal: jest.fn(),
       findCajaGrupo: jest.fn(),
       remove: jest.fn(),
+      getOrCreateCajaPersonal: jest.fn(),
     };
 
     const mockMovimientosService = {
@@ -362,7 +363,7 @@ describe('PersonasService', () => {
   });
 
   describe('createProtagonista', () => {
-    it('should create a protagonista with correct defaults', async () => {
+    it('should create a protagonista with correct defaults and personal caja', async () => {
       const dto = {
         nombre: 'Nuevo Scout',
         email: 'nuevo@scout.com',
@@ -379,6 +380,9 @@ describe('PersonasService', () => {
 
       protagonistaRepository.create.mockReturnValue(created as Protagonista);
       protagonistaRepository.save.mockResolvedValue(created as Protagonista);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as Caja,
+      );
 
       const result = await service.createProtagonista(dto);
 
@@ -387,13 +391,17 @@ describe('PersonasService', () => {
         tipo: PersonaType.PROTAGONISTA,
         estado: EstadoPersona.ACTIVO,
       });
+      expect(cajasService.getOrCreateCajaPersonal).toHaveBeenCalledWith(
+        'new-uuid',
+        'Nuevo Scout',
+      );
       expect(result.tipo).toBe(PersonaType.PROTAGONISTA);
       expect(result.estado).toBe(EstadoPersona.ACTIVO);
     });
   });
 
   describe('createEducador', () => {
-    it('should create an educador with correct defaults', async () => {
+    it('should create an educador with correct defaults and personal caja', async () => {
       const dto = {
         nombre: 'Nuevo Educador',
         email: 'educador@scout.com',
@@ -410,6 +418,9 @@ describe('PersonasService', () => {
 
       educadorRepository.create.mockReturnValue(created as Educador);
       educadorRepository.save.mockResolvedValue(created as Educador);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as Caja,
+      );
 
       const result = await service.createEducador(dto);
 
@@ -418,6 +429,10 @@ describe('PersonasService', () => {
         tipo: PersonaType.EDUCADOR,
         estado: EstadoPersona.ACTIVO,
       });
+      expect(cajasService.getOrCreateCajaPersonal).toHaveBeenCalledWith(
+        'new-uuid',
+        'Nuevo Educador',
+      );
       expect(result.tipo).toBe(PersonaType.EDUCADOR);
       expect(result.estado).toBe(EstadoPersona.ACTIVO);
     });

@@ -32,6 +32,7 @@ export class InscripcionesService {
   constructor(
     @InjectRepository(Inscripcion)
     private readonly inscripcionRepository: Repository<Inscripcion>,
+    @Inject(forwardRef(() => PersonasService))
     private readonly personasService: PersonasService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
@@ -425,6 +426,37 @@ export class InscripcionesService {
     }
 
     await this.inscripcionRepository.softRemove(inscripcion);
+  }
+
+  /**
+   * Calcula el total de deuda de todas las inscripciones
+   * Suma de saldoPendiente de todas las inscripciones con deuda > 0
+   */
+  async getTotalDeudaInscripciones(): Promise<{
+    total: number;
+    cantidad: number;
+  }> {
+    const inscripciones = await this.inscripcionRepository.find();
+
+    let total = 0;
+    let cantidad = 0;
+
+    for (const inscripcion of inscripciones) {
+      const montoPagado = await this.getMontoPagado(inscripcion.id);
+      const saldoPendiente = Math.max(
+        0,
+        Number(inscripcion.montoTotal) -
+          Number(inscripcion.montoBonificado) -
+          montoPagado,
+      );
+
+      if (saldoPendiente > 0) {
+        total += saldoPendiente;
+        cantidad++;
+      }
+    }
+
+    return { total, cantidad };
   }
 
   async pagar(

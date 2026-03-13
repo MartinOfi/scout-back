@@ -2,6 +2,7 @@ import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
 import { seedCajas } from './cajas.seed';
 import { seedPersonas } from './personas.seed';
+import { seedCajasPersonales } from './cajas-personales.seed';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -32,6 +33,11 @@ async function runSeeds(): Promise<void> {
     // Run personas seed
     console.log('=== Seeding Personas ===');
     await seedPersonas(dataSource);
+    console.log('');
+
+    // Run cajas personales seed
+    console.log('=== Seeding Cajas Personales ===');
+    await seedCajasPersonales(dataSource);
     console.log('');
 
     console.log('All seeds completed successfully!');

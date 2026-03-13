@@ -10,7 +10,7 @@ import { PagosModule } from '../pagos/pagos.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Inscripcion]),
-    PersonasModule,
+    forwardRef(() => PersonasModule),
     forwardRef(() => MovimientosModule),
     forwardRef(() => PagosModule),
   ],

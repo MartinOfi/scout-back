@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Campamento } from './entities/campamento.entity';
 import { CampamentosService } from './campamentos.service';
@@ -10,9 +10,9 @@ import { MovimientosModule } from '../movimientos/movimientos.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([Campamento]),
-    PersonasModule,
-    CajasModule,
-    MovimientosModule,
+    forwardRef(() => PersonasModule),
+    forwardRef(() => CajasModule),
+    forwardRef(() => MovimientosModule),
   ],
   controllers: [CampamentosController],
   providers: [CampamentosService],

@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
@@ -15,7 +20,9 @@ import {
 @Injectable()
 export class PagosService {
   constructor(
+    @Inject(forwardRef(() => CajasService))
     private readonly cajasService: CajasService,
+    @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
   ) {}
 

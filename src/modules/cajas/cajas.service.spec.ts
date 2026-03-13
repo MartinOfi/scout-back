@@ -5,12 +5,20 @@ import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CajasService } from './cajas.service';
 import { Caja } from './entities/caja.entity';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
+import { MovimientosService } from '../movimientos/movimientos.service';
+import { InscripcionesService } from '../inscripciones/inscripciones.service';
+import { CuotasService } from '../cuotas/cuotas.service';
+import { CampamentosService } from '../campamentos/campamentos.service';
 import { CajaType } from '../../common/enums';
 
 describe('CajasService', () => {
   let service: CajasService;
   let cajaRepository: jest.Mocked<Repository<Caja>>;
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
+  let movimientosService: jest.Mocked<MovimientosService>;
+  let inscripcionesService: jest.Mocked<InscripcionesService>;
+  let cuotasService: jest.Mocked<CuotasService>;
+  let campamentosService: jest.Mocked<CampamentosService>;
 
   const mockCajaGrupo: Partial<Caja> = {
     id: 'caja-grupo-uuid',
@@ -55,6 +63,29 @@ describe('CajasService', () => {
       canDeleteCaja: jest.fn().mockResolvedValue({ canDelete: true }),
     };
 
+    const mockMovimientosService = {
+      calcularSaldo: jest.fn().mockResolvedValue(0),
+      findReembolsosPendientes: jest.fn().mockResolvedValue([]),
+    };
+
+    const mockInscripcionesService = {
+      getTotalDeudaInscripciones: jest
+        .fn()
+        .mockResolvedValue({ total: 0, cantidad: 0 }),
+    };
+
+    const mockCuotasService = {
+      getTotalDeudaCuotas: jest
+        .fn()
+        .mockResolvedValue({ total: 0, cantidad: 0 }),
+    };
+
+    const mockCampamentosService = {
+      getTotalDeudaCampamentos: jest
+        .fn()
+        .mockResolvedValue({ total: 0, cantidad: 0 }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CajasService,
@@ -66,12 +97,32 @@ describe('CajasService', () => {
           provide: DeletionValidatorService,
           useValue: mockDeletionValidator,
         },
+        {
+          provide: MovimientosService,
+          useValue: mockMovimientosService,
+        },
+        {
+          provide: InscripcionesService,
+          useValue: mockInscripcionesService,
+        },
+        {
+          provide: CuotasService,
+          useValue: mockCuotasService,
+        },
+        {
+          provide: CampamentosService,
+          useValue: mockCampamentosService,
+        },
       ],
     }).compile();
 
     service = module.get<CajasService>(CajasService);
     cajaRepository = module.get(getRepositoryToken(Caja));
     deletionValidator = module.get(DeletionValidatorService);
+    movimientosService = module.get(MovimientosService);
+    inscripcionesService = module.get(InscripcionesService);
+    cuotasService = module.get(CuotasService);
+    campamentosService = module.get(CampamentosService);
   });
 
   it('should be defined', () => {
@@ -150,7 +201,9 @@ describe('CajasService', () => {
         expect(deletionValidator.canDeleteCaja).toHaveBeenCalledWith(
           'caja-personal-uuid',
         );
-        expect(cajaRepository.softRemove).toHaveBeenCalledWith(mockCajaPersonal);
+        expect(cajaRepository.softRemove).toHaveBeenCalledWith(
+          mockCajaPersonal,
+        );
       });
 
       it('should soft remove caja de rama when no movements exist', async () => {
@@ -282,20 +335,26 @@ describe('CajasService', () => {
         id: 'new-caja-uuid',
         tipo: CajaType.PERSONAL,
         propietarioId: 'new-persona-uuid',
+        nombre: 'Cuenta Personal - Juan Scout',
       };
 
       cajaRepository.findOne.mockResolvedValue(null);
       cajaRepository.create.mockReturnValue(newCaja as Caja);
       cajaRepository.save.mockResolvedValue(newCaja as Caja);
 
-      const result = await service.getOrCreateCajaPersonal('new-persona-uuid');
+      const result = await service.getOrCreateCajaPersonal(
+        'new-persona-uuid',
+        'Juan Scout',
+      );
 
       expect(cajaRepository.create).toHaveBeenCalledWith({
         tipo: CajaType.PERSONAL,
         propietarioId: 'new-persona-uuid',
+        nombre: 'Cuenta Personal - Juan Scout',
       });
       expect(cajaRepository.save).toHaveBeenCalled();
       expect(result.tipo).toBe(CajaType.PERSONAL);
+      expect(result.nombre).toBe('Cuenta Personal - Juan Scout');
     });
   });
 
@@ -325,6 +384,156 @@ describe('CajasService', () => {
         relations: ['propietario'],
         order: { tipo: 'ASC', nombre: 'ASC' },
       });
+    });
+  });
+
+  describe('getConsolidadoSaldos', () => {
+    const mockCajaRamaManada = {
+      id: 'caja-rama-manada-uuid',
+      tipo: CajaType.RAMA_MANADA,
+      nombre: 'Fondo Manada',
+    } as Caja;
+
+    const mockCajaRamaUnidad = {
+      id: 'caja-rama-unidad-uuid',
+      tipo: CajaType.RAMA_UNIDAD,
+      nombre: 'Fondo Unidad',
+    } as Caja;
+
+    beforeEach(() => {
+      // Reset mocks for consolidado tests
+      cajaRepository.findOne.mockReset();
+      cajaRepository.find.mockReset();
+    });
+
+    it('should return consolidado with all saldos and deudas', async () => {
+      // Setup mock data
+      cajaRepository.findOne.mockResolvedValue(mockCajaGrupo as Caja);
+      cajaRepository.find
+        .mockResolvedValueOnce([mockCajaRamaManada, mockCajaRamaUnidad]) // cajasRama
+        .mockResolvedValueOnce([mockCajaPersonal as Caja]); // cajasPersonales
+
+      movimientosService.calcularSaldo
+        .mockResolvedValueOnce(10000) // saldo grupo
+        .mockResolvedValueOnce(2000) // saldo rama manada
+        .mockResolvedValueOnce(3000) // saldo rama unidad
+        .mockResolvedValueOnce(500); // saldo personal
+
+      movimientosService.findReembolsosPendientes.mockResolvedValue([
+        { propietarioId: 'p1', totalPendiente: 1000 },
+      ]);
+
+      inscripcionesService.getTotalDeudaInscripciones.mockResolvedValue({
+        total: 5000,
+        cantidad: 10,
+      });
+
+      cuotasService.getTotalDeudaCuotas.mockResolvedValue({
+        total: 8000,
+        cantidad: 20,
+      });
+
+      campamentosService.getTotalDeudaCampamentos.mockResolvedValue({
+        total: 3000,
+        cantidad: 5,
+      });
+
+      const result = await service.getConsolidadoSaldos();
+
+      // Verify structure
+      expect(result.fecha).toBeDefined();
+      expect(result.resumen).toBeDefined();
+      expect(result.cajaGrupo).toBeDefined();
+      expect(result.fondosRama).toBeDefined();
+      expect(result.cuentasPersonales).toBeDefined();
+      expect(result.reembolsosPendientes).toBeDefined();
+      expect(result.deudasTotales).toBeDefined();
+
+      // Verify values
+      expect(result.cajaGrupo.saldo).toBe(10000);
+      expect(result.fondosRama.total).toBe(5000); // 2000 + 3000
+      expect(result.fondosRama.detalle).toHaveLength(2);
+      expect(result.cuentasPersonales.total).toBe(500);
+      expect(result.cuentasPersonales.cantidad).toBe(1);
+      expect(result.reembolsosPendientes.total).toBe(1000);
+      expect(result.reembolsosPendientes.cantidad).toBe(1);
+
+      // Verify deudas
+      expect(result.deudasTotales.total).toBe(16000); // 5000 + 8000 + 3000
+      expect(result.deudasTotales.inscripciones.total).toBe(5000);
+      expect(result.deudasTotales.cuotas.total).toBe(8000);
+      expect(result.deudasTotales.campamentos.total).toBe(3000);
+
+      // Verify resumen calculations
+      const totalGeneral = 10000 + 5000 + 500; // grupo + ramas + personales
+      expect(result.resumen.totalGeneral).toBe(totalGeneral);
+      expect(result.resumen.totalDisponible).toBe(totalGeneral - 1000); // - reembolsos
+      expect(result.resumen.totalPorCobrar).toBe(16000);
+    });
+
+    it('should handle empty cajas gracefully', async () => {
+      cajaRepository.findOne.mockResolvedValue(null); // no caja grupo
+      cajaRepository.find
+        .mockResolvedValueOnce([]) // no cajasRama
+        .mockResolvedValueOnce([]); // no cajasPersonales
+
+      movimientosService.findReembolsosPendientes.mockResolvedValue([]);
+      inscripcionesService.getTotalDeudaInscripciones.mockResolvedValue({
+        total: 0,
+        cantidad: 0,
+      });
+      cuotasService.getTotalDeudaCuotas.mockResolvedValue({
+        total: 0,
+        cantidad: 0,
+      });
+      campamentosService.getTotalDeudaCampamentos.mockResolvedValue({
+        total: 0,
+        cantidad: 0,
+      });
+
+      const result = await service.getConsolidadoSaldos();
+
+      expect(result.cajaGrupo.id).toBe('');
+      expect(result.cajaGrupo.saldo).toBe(0);
+      expect(result.fondosRama.total).toBe(0);
+      expect(result.fondosRama.detalle).toHaveLength(0);
+      expect(result.cuentasPersonales.total).toBe(0);
+      expect(result.cuentasPersonales.cantidad).toBe(0);
+      expect(result.resumen.totalGeneral).toBe(0);
+      expect(result.resumen.totalDisponible).toBe(0);
+      expect(result.resumen.totalPorCobrar).toBe(0);
+    });
+
+    it('should use rama type as nombre when caja has no nombre', async () => {
+      const cajaRamaSinNombre = {
+        id: 'caja-rama-uuid',
+        tipo: CajaType.RAMA_MANADA,
+        nombre: null,
+      } as Caja;
+
+      cajaRepository.findOne.mockResolvedValue(null);
+      cajaRepository.find
+        .mockResolvedValueOnce([cajaRamaSinNombre])
+        .mockResolvedValueOnce([]);
+
+      movimientosService.calcularSaldo.mockResolvedValue(1000);
+      movimientosService.findReembolsosPendientes.mockResolvedValue([]);
+      inscripcionesService.getTotalDeudaInscripciones.mockResolvedValue({
+        total: 0,
+        cantidad: 0,
+      });
+      cuotasService.getTotalDeudaCuotas.mockResolvedValue({
+        total: 0,
+        cantidad: 0,
+      });
+      campamentosService.getTotalDeudaCampamentos.mockResolvedValue({
+        total: 0,
+        cantidad: 0,
+      });
+
+      const result = await service.getConsolidadoSaldos();
+
+      expect(result.fondosRama.detalle[0].nombre).toBe('Fondo Manada');
     });
   });
 });

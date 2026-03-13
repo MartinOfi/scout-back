@@ -118,7 +118,12 @@ export class PersonasService {
       estado: EstadoPersona.ACTIVO,
     });
 
-    return this.protagonistaRepository.save(protagonista);
+    const saved = await this.protagonistaRepository.save(protagonista);
+
+    // Crear caja personal automáticamente
+    await this.cajasService.getOrCreateCajaPersonal(saved.id, saved.nombre);
+
+    return saved;
   }
 
   async createEducador(dto: CreateEducadorDto): Promise<Educador> {
@@ -128,7 +133,12 @@ export class PersonasService {
       estado: EstadoPersona.ACTIVO,
     });
 
-    return this.educadorRepository.save(educador);
+    const saved = await this.educadorRepository.save(educador);
+
+    // Crear caja personal automáticamente
+    await this.cajasService.getOrCreateCajaPersonal(saved.id, saved.nombre);
+
+    return saved;
   }
 
   async createPersonaExterna(

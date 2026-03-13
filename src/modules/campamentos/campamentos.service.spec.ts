@@ -108,7 +108,9 @@ describe('CampamentosService', () => {
 
   describe('findOne', () => {
     it('should return a campamento when found', async () => {
-      campamentoRepository.findOne.mockResolvedValue(mockCampamento as Campamento);
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
 
       const result = await service.findOne('campamento-uuid');
 
@@ -130,16 +132,24 @@ describe('CampamentosService', () => {
 
   describe('remove', () => {
     it('should soft remove campamento when no movements exist', async () => {
-      campamentoRepository.findOne.mockResolvedValue(mockCampamento as Campamento);
-      deletionValidator.canDeleteCampamento.mockResolvedValue({ canDelete: true });
-      campamentoRepository.softRemove.mockResolvedValue(mockCampamento as Campamento);
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+      deletionValidator.canDeleteCampamento.mockResolvedValue({
+        canDelete: true,
+      });
+      campamentoRepository.softRemove.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
 
       await service.remove('campamento-uuid');
 
       expect(deletionValidator.canDeleteCampamento).toHaveBeenCalledWith(
         'campamento-uuid',
       );
-      expect(campamentoRepository.softRemove).toHaveBeenCalledWith(mockCampamento);
+      expect(campamentoRepository.softRemove).toHaveBeenCalledWith(
+        mockCampamento,
+      );
     });
 
     it('should throw NotFoundException when campamento does not exist', async () => {
@@ -152,7 +162,9 @@ describe('CampamentosService', () => {
     });
 
     it('should throw BadRequestException when campamento has movements', async () => {
-      campamentoRepository.findOne.mockResolvedValue(mockCampamento as Campamento);
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
       deletionValidator.canDeleteCampamento.mockResolvedValue({
         canDelete: false,
         reason: 'No se puede eliminar: el campamento tiene 10 movimiento(s)',
@@ -199,7 +211,10 @@ describe('CampamentosService', () => {
 
   describe('addParticipante', () => {
     it('should add a participant to campamento', async () => {
-      const campamentoSinParticipantes = { ...mockCampamento, participantes: [] };
+      const campamentoSinParticipantes = {
+        ...mockCampamento,
+        participantes: [],
+      };
       campamentoRepository.findOne.mockResolvedValue(
         campamentoSinParticipantes as Campamento,
       );
@@ -225,10 +240,14 @@ describe('CampamentosService', () => {
       );
 
       await expect(
-        service.addParticipante('campamento-uuid', { personaId: 'persona-uuid' }),
+        service.addParticipante('campamento-uuid', {
+          personaId: 'persona-uuid',
+        }),
       ).rejects.toThrow(BadRequestException);
       await expect(
-        service.addParticipante('campamento-uuid', { personaId: 'persona-uuid' }),
+        service.addParticipante('campamento-uuid', {
+          personaId: 'persona-uuid',
+        }),
       ).rejects.toThrow(/ya está inscrita/);
     });
   });
@@ -257,7 +276,9 @@ describe('CampamentosService', () => {
 
   describe('registrarPago', () => {
     it('should register payment and create movement', async () => {
-      campamentoRepository.findOne.mockResolvedValue(mockCampamento as Campamento);
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
 
       await service.registrarPago(
         'campamento-uuid',
@@ -280,7 +301,9 @@ describe('CampamentosService', () => {
 
   describe('registrarGasto', () => {
     it('should register expense and create movement', async () => {
-      campamentoRepository.findOne.mockResolvedValue(mockCampamento as Campamento);
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
 
       await service.registrarGasto(
         'campamento-uuid',
@@ -304,7 +327,10 @@ describe('CampamentosService', () => {
     it('should return financial summary', async () => {
       const campamentoConParticipantes = {
         ...mockCampamento,
-        participantes: [mockPersona as Persona, { id: 'persona2', nombre: 'Maria' }],
+        participantes: [
+          mockPersona as Persona,
+          { id: 'persona2', nombre: 'Maria' },
+        ],
       };
       campamentoRepository.findOne.mockResolvedValue(
         campamentoConParticipantes as Campamento,
@@ -323,7 +349,9 @@ describe('CampamentosService', () => {
 
   describe('findAll', () => {
     it('should return all campamentos ordered by fechaInicio DESC', async () => {
-      campamentoRepository.find.mockResolvedValue([mockCampamento as Campamento]);
+      campamentoRepository.find.mockResolvedValue([
+        mockCampamento as Campamento,
+      ]);
 
       const result = await service.findAll();
 

@@ -2,6 +2,8 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -24,8 +26,11 @@ export class CuotasService {
   constructor(
     @InjectRepository(Cuota)
     private readonly cuotaRepository: Repository<Cuota>,
+    @Inject(forwardRef(() => PersonasService))
     private readonly personasService: PersonasService,
+    @Inject(forwardRef(() => CajasService))
     private readonly cajasService: CajasService,
+    @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
     private readonly deletionValidator: DeletionValidatorService,
   ) {}
@@ -135,5 +140,24 @@ export class CuotasService {
     }
 
     await this.cuotaRepository.softRemove(cuota);
+  }
+
+  /**
+   * Calcula el total de deuda de todas las cuotas
+   * Usa query SQL optimizada para sumar (montoTotal - montoPagado) donde hay saldo pendiente
+   */
+  async getTotalDeudaCuotas(): Promise<{ total: number; cantidad: number }> {
+    const result = await this.cuotaRepository
+      .createQueryBuilder('c')
+      .select('SUM(c.montoTotal - c.montoPagado)', 'total')
+      .addSelect('COUNT(*)', 'cantidad')
+      .where('c.deletedAt IS NULL')
+      .andWhere('c.montoTotal > c.montoPagado')
+      .getRawOne<{ total: string | null; cantidad: string }>();
+
+    return {
+      total: Number(result?.total ?? 0),
+      cantidad: Number(result?.cantidad ?? 0),
+    };
   }
 }
