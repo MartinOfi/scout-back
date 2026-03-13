@@ -130,16 +130,23 @@ describe('CajasService', () => {
   });
 
   describe('findOne', () => {
-    it('should return a caja when found', async () => {
+    it('should return a caja with saldoActual when found', async () => {
       cajaRepository.findOne.mockResolvedValue(mockCajaPersonal as Caja);
+      movimientosService.calcularSaldo.mockResolvedValue(1500);
 
       const result = await service.findOne('caja-personal-uuid');
 
-      expect(result).toEqual(mockCajaPersonal);
+      expect(result.id).toBe('caja-personal-uuid');
+      expect(result.tipo).toBe(CajaType.PERSONAL);
+      expect(result.nombre).toBe('Cuenta Personal - Juan');
+      expect(result.saldoActual).toBe(1500);
       expect(cajaRepository.findOne).toHaveBeenCalledWith({
         where: { id: 'caja-personal-uuid' },
         relations: ['propietario'],
       });
+      expect(movimientosService.calcularSaldo).toHaveBeenCalledWith(
+        'caja-personal-uuid',
+      );
     });
 
     it('should throw NotFoundException when caja not found', async () => {
@@ -222,15 +229,22 @@ describe('CajasService', () => {
   });
 
   describe('findCajaGrupo', () => {
-    it('should return the group caja', async () => {
+    it('should return the group caja with saldoActual', async () => {
       cajaRepository.findOne.mockResolvedValue(mockCajaGrupo as Caja);
+      movimientosService.calcularSaldo.mockResolvedValue(25000);
 
       const result = await service.findCajaGrupo();
 
-      expect(result).toEqual(mockCajaGrupo);
+      expect(result.id).toBe('caja-grupo-uuid');
+      expect(result.tipo).toBe(CajaType.GRUPO);
+      expect(result.nombre).toBe('Caja del Grupo');
+      expect(result.saldoActual).toBe(25000);
       expect(cajaRepository.findOne).toHaveBeenCalledWith({
         where: { tipo: CajaType.GRUPO },
       });
+      expect(movimientosService.calcularSaldo).toHaveBeenCalledWith(
+        'caja-grupo-uuid',
+      );
     });
 
     it('should throw NotFoundException when group caja does not exist', async () => {

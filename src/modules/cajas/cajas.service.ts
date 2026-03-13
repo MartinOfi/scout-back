@@ -51,6 +51,16 @@ export class CajasService {
   }
 
   async findOne(id: string): Promise<CajaResponseDto> {
+    const caja = await this.findOneEntity(id);
+    const saldo = await this.movimientosService.calcularSaldo(caja.id);
+    return this.mapCajaToResponse(caja, saldo);
+  }
+
+  /**
+   * Internal method to find a Caja entity by ID
+   * Use this for internal operations that need the entity (not the DTO)
+   */
+  private async findOneEntity(id: string): Promise<Caja> {
     const caja = await this.cajaRepository.findOne({
       where: { id },
       relations: ['propietario'],
@@ -60,8 +70,7 @@ export class CajasService {
       throw new NotFoundException(`Caja con ID ${id} no encontrada`);
     }
 
-    const saldo = await this.movimientosService.calcularSaldo(caja.id);
-    return this.mapCajaToResponse(caja, saldo);
+    return caja;
   }
 
   /**
@@ -150,7 +159,7 @@ export class CajasService {
   }
 
   async remove(id: string): Promise<void> {
-    const caja = await this.findOne(id);
+    const caja = await this.findOneEntity(id);
 
     if (caja.tipo === CajaType.GRUPO) {
       throw new BadRequestException('No se puede eliminar la caja del grupo');
