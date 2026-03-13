@@ -121,7 +121,10 @@ export class PersonasDashboardService {
       (sum, i) => sum + i.saldoPendiente,
       0,
     );
-    const deudaCuotas = cuotaItems.reduce((sum, c) => sum + c.saldoPendiente, 0);
+    const deudaCuotas = cuotaItems.reduce(
+      (sum, c) => sum + c.saldoPendiente,
+      0,
+    );
 
     // 9. Map movements (last 5)
     const ultimosMovimientos: MovimientoDashboardDto[] = movimientos
@@ -157,9 +160,11 @@ export class PersonasDashboardService {
         id: persona.id,
         nombre: persona.nombre,
         tipo:
-          persona.tipo === PersonaType.PROTAGONISTA ? 'Protagonista' : 'Educador',
+          persona.tipo === PersonaType.PROTAGONISTA
+            ? 'Protagonista'
+            : 'Educador',
         estado: persona.estado,
-        rama: persona.rama ?? null,
+        rama: (persona as any).rama ?? null,
         cargo:
           persona.tipo === PersonaType.EDUCADOR
             ? (persona as any).cargo

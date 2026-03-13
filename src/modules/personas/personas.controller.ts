@@ -17,16 +17,21 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { PersonasService } from './personas.service';
+import { PersonasDashboardService } from './services/personas-dashboard.service';
 import { CreateProtagonistaDto } from './dtos/create-protagonista.dto';
 import { CreateEducadorDto } from './dtos/create-educador.dto';
 import { CreatePersonaExternaDto } from './dtos/create-persona-externa.dto';
 import { UpdatePersonaDto } from './dtos/update-persona.dto';
+import { PersonaDashboardDto } from './dtos/persona-dashboard.dto';
 import { PersonaType } from '../../common/enums';
 
 @ApiTags('Personas')
 @Controller('personas')
 export class PersonasController {
-  constructor(private readonly personasService: PersonasService) {}
+  constructor(
+    private readonly personasService: PersonasService,
+    private readonly dashboardService: PersonasDashboardService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar todas las personas' })
@@ -53,6 +58,22 @@ export class PersonasController {
   @ApiResponse({ status: 200, description: 'Lista de personas con deudas' })
   async findConDeudas() {
     return this.personasService.findConDeudas();
+  }
+
+  @Get(':id/dashboard')
+  @ApiOperation({ summary: 'Obtener dashboard consolidado de persona' })
+  @ApiParam({ name: 'id', type: 'string', description: 'UUID de la persona' })
+  @ApiResponse({
+    status: 200,
+    description: 'Dashboard de la persona',
+    type: PersonaDashboardDto,
+  })
+  @ApiResponse({ status: 400, description: 'Persona es PersonaExterna' })
+  @ApiResponse({ status: 404, description: 'Persona no encontrada' })
+  async getDashboard(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<PersonaDashboardDto> {
+    return this.dashboardService.getDashboard(id);
   }
 
   @Get(':id')
