@@ -8,6 +8,7 @@ import {
   EstadoCuota,
   TipoMovimiento,
   MedioPago,
+  PersonaType,
 } from '../../../common/enums';
 
 /**
@@ -20,8 +21,8 @@ export class PersonaDashboardPersonaDto {
   @ApiProperty({ example: 'Juan Pérez' })
   nombre!: string;
 
-  @ApiProperty({ enum: ['Protagonista', 'Educador'] })
-  tipo!: 'Protagonista' | 'Educador';
+  @ApiProperty({ enum: PersonaType })
+  tipo!: PersonaType;
 
   @ApiProperty({ enum: EstadoPersona })
   estado!: EstadoPersona;

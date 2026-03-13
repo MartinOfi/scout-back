@@ -7,7 +7,18 @@ import { CajasService } from '../../cajas/cajas.service';
 import { InscripcionesService } from '../../inscripciones/inscripciones.service';
 import { CuotasService } from '../../cuotas/cuotas.service';
 import { MovimientosService } from '../../movimientos/movimientos.service';
-import { PersonaType, EstadoPersona, Rama, TipoInscripcion, EstadoInscripcion, EstadoCuota, TipoMovimiento, MedioPago, ConceptoMovimiento, CajaType } from '../../../common/enums';
+import {
+  PersonaType,
+  EstadoPersona,
+  Rama,
+  TipoInscripcion,
+  EstadoInscripcion,
+  EstadoCuota,
+  TipoMovimiento,
+  MedioPago,
+  ConceptoMovimiento,
+  CajaType,
+} from '../../../common/enums';
 
 describe('PersonasDashboardService', () => {
   let service: PersonasDashboardService;
@@ -139,16 +150,20 @@ describe('PersonasDashboardService', () => {
   describe('getDashboard', () => {
     it('should return complete dashboard for Protagonista', async () => {
       personasService.findOne.mockResolvedValue(mockProtagonista as any);
-      cajasService.getOrCreateCajaPersonal.mockResolvedValue(mockCajaPersonal as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
       movimientosService.calcularSaldo.mockResolvedValue(1500);
-      inscripcionesService.findByPersona.mockResolvedValue([mockInscripcion2026] as any);
+      inscripcionesService.findByPersona.mockResolvedValue([
+        mockInscripcion2026,
+      ] as any);
       cuotasService.findByPersona.mockResolvedValue([mockCuota2026] as any);
       movimientosService.findByCaja.mockResolvedValue([mockMovimiento] as any);
 
       const result = await service.getDashboard('persona-1');
 
       expect(result.persona.id).toBe('persona-1');
-      expect(result.persona.tipo).toBe('Protagonista');
+      expect(result.persona.tipo).toBe(PersonaType.PROTAGONISTA);
       expect(result.cuentaPersonal.saldo).toBe(1500);
       expect(result.documentacionPersonal).toBeDefined();
       expect(result.documentacionPersonal?.completa).toBe(false);
@@ -159,7 +174,9 @@ describe('PersonasDashboardService', () => {
 
     it('should return dashboard for Educador without documentacionPersonal', async () => {
       personasService.findOne.mockResolvedValue(mockEducador as any);
-      cajasService.getOrCreateCajaPersonal.mockResolvedValue(mockCajaPersonal as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
       cuotasService.findByPersona.mockResolvedValue([]);
@@ -167,21 +184,29 @@ describe('PersonasDashboardService', () => {
 
       const result = await service.getDashboard('persona-2');
 
-      expect(result.persona.tipo).toBe('Educador');
+      expect(result.persona.tipo).toBe(PersonaType.EDUCADOR);
       expect(result.documentacionPersonal).toBeNull();
     });
 
     it('should throw NotFoundException if persona not found', async () => {
-      personasService.findOne.mockRejectedValue(new NotFoundException('Persona no encontrada'));
+      personasService.findOne.mockRejectedValue(
+        new NotFoundException('Persona no encontrada'),
+      );
 
-      await expect(service.getDashboard('non-existent')).rejects.toThrow(NotFoundException);
+      await expect(service.getDashboard('non-existent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should throw BadRequestException if persona is PersonaExterna', async () => {
       personasService.findOne.mockResolvedValue(mockPersonaExterna as any);
 
-      await expect(service.getDashboard('persona-3')).rejects.toThrow(BadRequestException);
-      await expect(service.getDashboard('persona-3')).rejects.toThrow('Dashboard no disponible para PersonaExterna');
+      await expect(service.getDashboard('persona-3')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.getDashboard('persona-3')).rejects.toThrow(
+        'Dashboard no disponible para PersonaExterna',
+      );
     });
 
     it('should filter inscriptions to current year + past years with debt', async () => {
@@ -200,7 +225,9 @@ describe('PersonasDashboardService', () => {
       };
 
       personasService.findOne.mockResolvedValue(mockProtagonista as any);
-      cajasService.getOrCreateCajaPersonal.mockResolvedValue(mockCajaPersonal as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([
         mockInscripcion2026,
@@ -214,9 +241,9 @@ describe('PersonasDashboardService', () => {
 
       // Should include 2026 (current) and 2024 (has debt), exclude 2025 (no debt, not current)
       expect(result.inscripciones.items).toHaveLength(2);
-      expect(result.inscripciones.items.map(i => i.ano)).toContain(2026);
-      expect(result.inscripciones.items.map(i => i.ano)).toContain(2024);
-      expect(result.inscripciones.items.map(i => i.ano)).not.toContain(2025);
+      expect(result.inscripciones.items.map((i) => i.ano)).toContain(2026);
+      expect(result.inscripciones.items.map((i) => i.ano)).toContain(2024);
+      expect(result.inscripciones.items.map((i) => i.ano)).not.toContain(2025);
     });
 
     it('should filter cuotas to current year + past years with debt', async () => {
@@ -229,10 +256,15 @@ describe('PersonasDashboardService', () => {
       };
 
       personasService.findOne.mockResolvedValue(mockProtagonista as any);
-      cajasService.getOrCreateCajaPersonal.mockResolvedValue(mockCajaPersonal as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([mockCuota2026, cuota2025SinDeuda] as any);
+      cuotasService.findByPersona.mockResolvedValue([
+        mockCuota2026,
+        cuota2025SinDeuda,
+      ] as any);
       movimientosService.findByCaja.mockResolvedValue([]);
 
       const result = await service.getDashboard('persona-1');
@@ -250,7 +282,9 @@ describe('PersonasDashboardService', () => {
       }));
 
       personasService.findOne.mockResolvedValue(mockProtagonista as any);
-      cajasService.getOrCreateCajaPersonal.mockResolvedValue(mockCajaPersonal as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
       cuotasService.findByPersona.mockResolvedValue([]);
@@ -263,9 +297,13 @@ describe('PersonasDashboardService', () => {
 
     it('should calculate total debt correctly', async () => {
       personasService.findOne.mockResolvedValue(mockProtagonista as any);
-      cajasService.getOrCreateCajaPersonal.mockResolvedValue(mockCajaPersonal as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
       movimientosService.calcularSaldo.mockResolvedValue(0);
-      inscripcionesService.findByPersona.mockResolvedValue([mockInscripcion2026] as any);
+      inscripcionesService.findByPersona.mockResolvedValue([
+        mockInscripcion2026,
+      ] as any);
       cuotasService.findByPersona.mockResolvedValue([mockCuota2026] as any);
       movimientosService.findByCaja.mockResolvedValue([]);
 
@@ -287,7 +325,9 @@ describe('PersonasDashboardService', () => {
       };
 
       personasService.findOne.mockResolvedValue(protagonistaCompleto as any);
-      cajasService.getOrCreateCajaPersonal.mockResolvedValue(mockCajaPersonal as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
       cuotasService.findByPersona.mockResolvedValue([]);
@@ -306,16 +346,25 @@ describe('PersonasDashboardService', () => {
       };
 
       personasService.findOne.mockResolvedValue(mockProtagonista as any);
-      cajasService.getOrCreateCajaPersonal.mockResolvedValue(mockCajaPersonal as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
       movimientosService.calcularSaldo.mockResolvedValue(0);
-      inscripcionesService.findByPersona.mockResolvedValue([mockInscripcion2026, inscripcionGrupo] as any);
+      inscripcionesService.findByPersona.mockResolvedValue([
+        mockInscripcion2026,
+        inscripcionGrupo,
+      ] as any);
       cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue([]);
 
       const result = await service.getDashboard('persona-1');
 
-      const scoutArgentina = result.inscripciones.items.find(i => i.tipo === TipoInscripcion.SCOUT_ARGENTINA);
-      const grupo = result.inscripciones.items.find(i => i.tipo === TipoInscripcion.GRUPO);
+      const scoutArgentina = result.inscripciones.items.find(
+        (i) => i.tipo === TipoInscripcion.SCOUT_ARGENTINA,
+      );
+      const grupo = result.inscripciones.items.find(
+        (i) => i.tipo === TipoInscripcion.GRUPO,
+      );
 
       expect(scoutArgentina?.autorizaciones).toBeDefined();
       expect(grupo?.autorizaciones).toBeUndefined();
