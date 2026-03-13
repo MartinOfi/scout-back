@@ -12,6 +12,7 @@ import { InscripcionesModule } from './modules/inscripciones/inscripciones.modul
 import { CuotasModule } from './modules/cuotas/cuotas.module';
 import { CampamentosModule } from './modules/campamentos/campamentos.module';
 import { EventosModule } from './modules/eventos/eventos.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { EventosModule } from './modules/eventos/eventos.module';
     }),
     DatabaseModule,
     CommonModule,
+    AuthModule,
     PersonasModule,
     CajasModule,
     MovimientosModule,

@@ -23,6 +23,19 @@ export abstract class Persona extends BaseEntity {
 
   @Column({ type: 'varchar', length: 20 })
   tipo!: PersonaType;
+
+  // =========================================================================
+  // Authentication (optional - not all personas need credentials)
+  // =========================================================================
+
+  @Column({ type: 'varchar', length: 255, nullable: true, unique: true })
+  email!: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true, select: false })
+  passwordHash!: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  emailVerified!: boolean;
 }
 
 /**
