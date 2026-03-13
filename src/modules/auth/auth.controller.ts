@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   HttpCode,
   HttpStatus,
@@ -17,7 +18,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dtos/login.dto';
 import { RegisterDto } from './dtos/register.dto';
 import { RefreshTokenDto } from './dtos/refresh-token.dto';
-import { AuthResponseDto } from './dtos/auth-response.dto';
+import { AuthResponseDto, AuthUserDto } from './dtos/auth-response.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Persona } from '../personas/entities/persona.entity';
@@ -104,5 +105,26 @@ export class AuthController {
     @Body() dto?: RefreshTokenDto,
   ): Promise<void> {
     await this.authService.logout(user.id, dto?.refreshToken);
+  }
+
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Obtener perfil del usuario actual',
+    description: 'Retorna la información del usuario autenticado',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil del usuario',
+    type: AuthUserDto,
+  })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  getMe(@CurrentUser() user: Persona): AuthUserDto {
+    return {
+      id: user.id,
+      nombre: user.nombre,
+      email: user.email!,
+      tipo: user.tipo,
+    };
   }
 }

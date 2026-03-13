@@ -306,4 +306,46 @@ describe('Auth (e2e)', () => {
       expect(Array.isArray(response.body)).toBe(true);
     });
   });
+
+  describe('GET /api/v1/auth/me', () => {
+    let accessToken: string;
+
+    beforeEach(async () => {
+      // Register and get token
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          personaId: testPersona.id,
+          email: 'me-test@example.com',
+          password: 'Password123!',
+        });
+
+      accessToken = response.body.accessToken;
+    });
+
+    it('should return current user profile with valid token', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        id: testPersona.id,
+        nombre: 'Test E2E User',
+        email: 'me-test@example.com',
+        tipo: PersonaType.EDUCADOR,
+      });
+    });
+
+    it('should return 401 without access token', async () => {
+      await request(app.getHttpServer()).get('/api/v1/auth/me').expect(401);
+    });
+
+    it('should return 401 with invalid access token', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', 'Bearer invalid-token')
+        .expect(401);
+    });
+  });
 });
