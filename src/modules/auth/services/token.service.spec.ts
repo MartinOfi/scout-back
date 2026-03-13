@@ -41,8 +41,8 @@ describe('TokenService', () => {
     }).compile();
 
     service = module.get<TokenService>(TokenService);
-    jwtService = module.get(JwtService) as jest.Mocked<JwtService>;
-    configService = module.get(ConfigService) as jest.Mocked<ConfigService>;
+    jwtService = module.get(JwtService);
+    configService = module.get(ConfigService);
   });
 
   it('should be defined', () => {

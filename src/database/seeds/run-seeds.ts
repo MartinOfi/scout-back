@@ -3,6 +3,8 @@ import { config } from 'dotenv';
 import { seedCajas } from './cajas.seed';
 import { seedPersonas } from './personas.seed';
 import { seedCajasPersonales } from './cajas-personales.seed';
+import { seedSuperadmin } from './superadmin.seed';
+import { seedMovimientosAjusteInicial } from './movimientos-ajuste-inicial.seed';
 
 // Load environment variables
 config({ path: '.env.local' });
@@ -38,6 +40,16 @@ async function runSeeds(): Promise<void> {
     // Run cajas personales seed
     console.log('=== Seeding Cajas Personales ===');
     await seedCajasPersonales(dataSource);
+    console.log('');
+
+    // Run superadmin seed
+    console.log('=== Seeding Superadmin ===');
+    await seedSuperadmin(dataSource);
+    console.log('');
+
+    // Run movimientos ajuste inicial seed
+    console.log('=== Seeding Movimientos Ajuste Inicial ===');
+    await seedMovimientosAjusteInicial(dataSource);
     console.log('');
 
     console.log('All seeds completed successfully!');

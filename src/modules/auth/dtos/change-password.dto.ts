@@ -11,8 +11,12 @@ export class ChangePasswordDto {
     minLength: 8,
   })
   @IsString()
-  @MinLength(8, { message: 'Contraseña actual debe tener al menos 8 caracteres' })
-  @MaxLength(128, { message: 'Contraseña actual no puede exceder 128 caracteres' })
+  @MinLength(8, {
+    message: 'Contraseña actual debe tener al menos 8 caracteres',
+  })
+  @MaxLength(128, {
+    message: 'Contraseña actual no puede exceder 128 caracteres',
+  })
   currentPassword!: string;
 
   @ApiProperty({
@@ -21,7 +25,11 @@ export class ChangePasswordDto {
     minLength: 8,
   })
   @IsString()
-  @MinLength(8, { message: 'Nueva contraseña debe tener al menos 8 caracteres' })
-  @MaxLength(128, { message: 'Nueva contraseña no puede exceder 128 caracteres' })
+  @MinLength(8, {
+    message: 'Nueva contraseña debe tener al menos 8 caracteres',
+  })
+  @MaxLength(128, {
+    message: 'Nueva contraseña no puede exceder 128 caracteres',
+  })
   newPassword!: string;
 }

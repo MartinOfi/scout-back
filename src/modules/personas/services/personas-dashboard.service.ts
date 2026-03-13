@@ -32,7 +32,7 @@ export class PersonasDashboardService {
     private readonly cuotasService: CuotasService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
-  ) { }
+  ) {}
 
   async getDashboard(personaId: string): Promise<PersonaDashboardDto> {
     // 1. Get persona and validate type
@@ -142,16 +142,16 @@ export class PersonasDashboardService {
     const documentacionPersonal =
       persona.tipo === PersonaType.PROTAGONISTA
         ? {
-          partidaNacimiento: (persona as any).partidaNacimiento ?? false,
-          dni: (persona as any).dni ?? false,
-          dniPadres: (persona as any).dniPadres ?? false,
-          carnetObraSocial: (persona as any).carnetObraSocial ?? false,
-          completa:
-            ((persona as any).partidaNacimiento ?? false) &&
-            ((persona as any).dni ?? false) &&
-            ((persona as any).dniPadres ?? false) &&
-            ((persona as any).carnetObraSocial ?? false),
-        }
+            partidaNacimiento: (persona as any).partidaNacimiento ?? false,
+            dni: (persona as any).dni ?? false,
+            dniPadres: (persona as any).dniPadres ?? false,
+            carnetObraSocial: (persona as any).carnetObraSocial ?? false,
+            completa:
+              ((persona as any).partidaNacimiento ?? false) &&
+              ((persona as any).dni ?? false) &&
+              ((persona as any).dniPadres ?? false) &&
+              ((persona as any).carnetObraSocial ?? false),
+          }
         : null;
 
     // 11. Assemble response

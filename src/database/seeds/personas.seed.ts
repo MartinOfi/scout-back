@@ -116,15 +116,7 @@ const PROTAGONISTAS: ProtagonistaData[] = [
     carnetObraSocial: true,
   },
   {
-    nombre: 'Lanzetti, Julian',
-    rama: Rama.ROVERS,
-    partidaNacimiento: true,
-    dni: true,
-    dniPadres: true,
-    carnetObraSocial: true,
-  },
-  {
-    nombre: 'Mai, Mateo',
+    nombre: 'Frisari, Mateo',
     rama: Rama.ROVERS,
     partidaNacimiento: true,
     dni: true,
@@ -393,6 +385,14 @@ const PROTAGONISTAS: ProtagonistaData[] = [
   },
 
   // Manada (7-11 años)
+  {
+    nombre: 'Lanzetti, Julian',
+    rama: Rama.MANADA,
+    partidaNacimiento: true,
+    dni: true,
+    dniPadres: true,
+    carnetObraSocial: true,
+  },
   {
     nombre: 'Acevedo Merlo, Santiago',
     rama: Rama.MANADA,

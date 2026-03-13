@@ -16,7 +16,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { CajasService } from './cajas.service';
-import { CreateCajaDto, ConsolidadoSaldosDto } from './dtos';
+import { CreateCajaDto, ConsolidadoSaldosDto, CajaResponseDto } from './dtos';
 import { CajaType } from '../../common/enums';
 
 @ApiTags('Cajas')
@@ -25,10 +25,14 @@ export class CajasController {
   constructor(private readonly cajasService: CajasService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar todas las cajas' })
+  @ApiOperation({ summary: 'Listar todas las cajas con saldo actual' })
   @ApiQuery({ name: 'tipo', enum: CajaType, required: false })
-  @ApiResponse({ status: 200, description: 'Lista de cajas' })
-  async findAll(@Query('tipo') tipo?: CajaType) {
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de cajas con saldo calculado',
+    type: [CajaResponseDto],
+  })
+  async findAll(@Query('tipo') tipo?: CajaType): Promise<CajaResponseDto[]> {
     if (tipo) {
       return this.cajasService.findByTipo(tipo);
     }
@@ -36,10 +40,14 @@ export class CajasController {
   }
 
   @Get('grupo')
-  @ApiOperation({ summary: 'Obtener la caja del grupo' })
-  @ApiResponse({ status: 200, description: 'Caja del grupo' })
+  @ApiOperation({ summary: 'Obtener la caja del grupo con saldo actual' })
+  @ApiResponse({
+    status: 200,
+    description: 'Caja del grupo con saldo calculado',
+    type: CajaResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Caja del grupo no encontrada' })
-  async findCajaGrupo() {
+  async findCajaGrupo(): Promise<CajaResponseDto> {
     return this.cajasService.findCajaGrupo();
   }
 
@@ -55,11 +63,17 @@ export class CajasController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener una caja por ID' })
+  @ApiOperation({ summary: 'Obtener una caja por ID con saldo actual' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Caja encontrada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Caja encontrada con saldo calculado',
+    type: CajaResponseDto,
+  })
   @ApiResponse({ status: 404, description: 'Caja no encontrada' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CajaResponseDto> {
     return this.cajasService.findOne(id);
   }
 

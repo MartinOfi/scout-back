@@ -44,7 +44,7 @@ const PERSONAS_DATA: Array<{ id: string; nombre: string; tipo: string }> = [
   },
   {
     id: '07b63127-4796-4843-97ae-21cb24ebffec',
-    nombre: 'Mai, Mateo',
+    nombre: 'Frisari, Mateo',
     tipo: 'protagonista',
   },
   {

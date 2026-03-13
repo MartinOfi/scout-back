@@ -84,16 +84,10 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    personaRepository = module.get(getRepositoryToken(Persona)) as jest.Mocked<
-      Repository<Persona>
-    >;
-    refreshTokenRepository = module.get(
-      getRepositoryToken(RefreshToken),
-    ) as jest.Mocked<Repository<RefreshToken>>;
-    passwordService = module.get(
-      PasswordService,
-    ) as jest.Mocked<PasswordService>;
-    tokenService = module.get(TokenService) as jest.Mocked<TokenService>;
+    personaRepository = module.get(getRepositoryToken(Persona));
+    refreshTokenRepository = module.get(getRepositoryToken(RefreshToken));
+    passwordService = module.get(PasswordService);
+    tokenService = module.get(TokenService);
   });
 
   it('should be defined', () => {

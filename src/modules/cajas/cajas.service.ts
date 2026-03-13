@@ -8,7 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Caja } from './entities/caja.entity';
-import { CreateCajaDto, ConsolidadoSaldosDto } from './dtos';
+import { CreateCajaDto, ConsolidadoSaldosDto, CajaResponseDto } from './dtos';
 import { CajaType } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
@@ -32,21 +32,25 @@ export class CajasService {
     private readonly campamentosService: CampamentosService,
   ) {}
 
-  async findAll(): Promise<Caja[]> {
-    return this.cajaRepository.find({
+  async findAll(): Promise<CajaResponseDto[]> {
+    const cajas = await this.cajaRepository.find({
       relations: ['propietario'],
       order: { tipo: 'ASC', nombre: 'ASC' },
     });
+
+    return this.mapCajasWithSaldo(cajas);
   }
 
-  async findByTipo(tipo: CajaType): Promise<Caja[]> {
-    return this.cajaRepository.find({
+  async findByTipo(tipo: CajaType): Promise<CajaResponseDto[]> {
+    const cajas = await this.cajaRepository.find({
       where: { tipo },
       relations: ['propietario'],
     });
+
+    return this.mapCajasWithSaldo(cajas);
   }
 
-  async findOne(id: string): Promise<Caja> {
+  async findOne(id: string): Promise<CajaResponseDto> {
     const caja = await this.cajaRepository.findOne({
       where: { id },
       relations: ['propietario'],
@@ -56,10 +60,46 @@ export class CajasService {
       throw new NotFoundException(`Caja con ID ${id} no encontrada`);
     }
 
-    return caja;
+    const saldo = await this.movimientosService.calcularSaldo(caja.id);
+    return this.mapCajaToResponse(caja, saldo);
   }
 
-  async findCajaGrupo(): Promise<Caja> {
+  /**
+   * Maps an array of Caja entities to CajaResponseDto with calculated saldo
+   */
+  private async mapCajasWithSaldo(cajas: Caja[]): Promise<CajaResponseDto[]> {
+    const saldosPromises = cajas.map((caja) =>
+      this.movimientosService.calcularSaldo(caja.id),
+    );
+    const saldos = await Promise.all(saldosPromises);
+
+    return cajas.map((caja, index) =>
+      this.mapCajaToResponse(caja, saldos[index]),
+    );
+  }
+
+  /**
+   * Maps a single Caja entity to CajaResponseDto
+   */
+  private mapCajaToResponse(caja: Caja, saldo: number): CajaResponseDto {
+    return {
+      id: caja.id,
+      tipo: caja.tipo,
+      nombre: caja.nombre,
+      propietarioId: caja.propietarioId,
+      propietario: caja.propietario
+        ? {
+            id: caja.propietario.id,
+            nombre: caja.propietario.nombre,
+          }
+        : null,
+      saldoActual: saldo,
+      createdAt: caja.createdAt,
+      updatedAt: caja.updatedAt,
+    };
+  }
+
+  async findCajaGrupo(): Promise<CajaResponseDto> {
     const caja = await this.cajaRepository.findOne({
       where: { tipo: CajaType.GRUPO },
     });
@@ -68,7 +108,8 @@ export class CajasService {
       throw new NotFoundException('Caja del grupo no encontrada');
     }
 
-    return caja;
+    const saldo = await this.movimientosService.calcularSaldo(caja.id);
+    return this.mapCajaToResponse(caja, saldo);
   }
 
   async findCajaPersonal(propietarioId: string): Promise<Caja | null> {
