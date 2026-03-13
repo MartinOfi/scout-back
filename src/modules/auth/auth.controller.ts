@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Body,
   HttpCode,
   HttpStatus,
@@ -18,6 +19,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dtos/login.dto';
 import { RegisterDto } from './dtos/register.dto';
 import { RefreshTokenDto } from './dtos/refresh-token.dto';
+import { ChangePasswordDto } from './dtos/change-password.dto';
 import { AuthResponseDto, AuthUserDto } from './dtos/auth-response.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -105,6 +107,27 @@ export class AuthController {
     @Body() dto?: RefreshTokenDto,
   ): Promise<void> {
     await this.authService.logout(user.id, dto?.refreshToken);
+  }
+
+  @Patch('password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cambiar contraseña',
+    description:
+      'Cambia la contraseña del usuario autenticado. Requiere la contraseña actual.',
+  })
+  @ApiResponse({ status: 204, description: 'Contraseña cambiada exitosamente' })
+  @ApiResponse({
+    status: 400,
+    description: 'Nueva contraseña igual a la actual',
+  })
+  @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
+  async changePassword(
+    @CurrentUser() user: Persona,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    await this.authService.changePassword(user.id, dto);
   }
 
   @Get('me')

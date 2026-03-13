@@ -348,4 +348,127 @@ describe('Auth (e2e)', () => {
         .expect(401);
     });
   });
+
+  describe('PATCH /api/v1/auth/password', () => {
+    let accessToken: string;
+    let refreshToken: string;
+
+    beforeEach(async () => {
+      // Register and get tokens
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/register')
+        .send({
+          personaId: testPersona.id,
+          email: 'password-test@example.com',
+          password: 'Password123!',
+        });
+
+      accessToken = response.body.accessToken;
+      refreshToken = response.body.refreshToken;
+    });
+
+    it('should change password successfully', async () => {
+      await request(app.getHttpServer())
+        .patch('/api/v1/auth/password')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'NewPassword456!',
+        })
+        .expect(204);
+
+      // Verify new password works
+      const loginResponse = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'password-test@example.com',
+          password: 'NewPassword456!',
+        })
+        .expect(200);
+
+      expect(loginResponse.body).toHaveProperty('accessToken');
+    });
+
+    it('should invalidate old password after change', async () => {
+      // Change password
+      await request(app.getHttpServer())
+        .patch('/api/v1/auth/password')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'NewPassword456!',
+        })
+        .expect(204);
+
+      // Try to login with old password
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({
+          email: 'password-test@example.com',
+          password: 'Password123!',
+        })
+        .expect(401);
+    });
+
+    it('should revoke refresh tokens after password change', async () => {
+      // Change password
+      await request(app.getHttpServer())
+        .patch('/api/v1/auth/password')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'NewPassword456!',
+        })
+        .expect(204);
+
+      // Try to use old refresh token
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken })
+        .expect(401);
+    });
+
+    it('should return 401 for wrong current password', async () => {
+      await request(app.getHttpServer())
+        .patch('/api/v1/auth/password')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          currentPassword: 'WrongPassword!',
+          newPassword: 'NewPassword456!',
+        })
+        .expect(401);
+    });
+
+    it('should return 400 when new password is same as current', async () => {
+      await request(app.getHttpServer())
+        .patch('/api/v1/auth/password')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'Password123!',
+        })
+        .expect(400);
+    });
+
+    it('should return 400 for password too short', async () => {
+      await request(app.getHttpServer())
+        .patch('/api/v1/auth/password')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'short',
+        })
+        .expect(400);
+    });
+
+    it('should return 401 without access token', async () => {
+      await request(app.getHttpServer())
+        .patch('/api/v1/auth/password')
+        .send({
+          currentPassword: 'Password123!',
+          newPassword: 'NewPassword456!',
+        })
+        .expect(401);
+    });
+  });
 });

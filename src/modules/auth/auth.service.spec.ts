@@ -14,6 +14,7 @@ import { PasswordService } from './services/password.service';
 import { TokenService } from './services/token.service';
 import { LoginDto } from './dtos/login.dto';
 import { RegisterDto } from './dtos/register.dto';
+import { ChangePasswordDto } from './dtos/change-password.dto';
 import { PersonaType, EstadoPersona } from '../../common/enums';
 
 describe('AuthService', () => {
@@ -83,9 +84,9 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    personaRepository = module.get(
-      getRepositoryToken(Persona),
-    ) as jest.Mocked<Repository<Persona>>;
+    personaRepository = module.get(getRepositoryToken(Persona)) as jest.Mocked<
+      Repository<Persona>
+    >;
     refreshTokenRepository = module.get(
       getRepositoryToken(RefreshToken),
     ) as jest.Mocked<Repository<RefreshToken>>;
@@ -414,6 +415,109 @@ describe('AuthService', () => {
         { personaId: 'user-id', revoked: false },
         expect.objectContaining({ revoked: true }),
       );
+    });
+  });
+
+  describe('changePassword', () => {
+    const changePasswordDto: ChangePasswordDto = {
+      currentPassword: 'OldPassword123!',
+      newPassword: 'NewPassword456!',
+    };
+
+    const setupQueryBuilder = (persona: Partial<Persona> | null) => {
+      const queryBuilder = {
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(persona),
+      };
+      personaRepository.createQueryBuilder.mockReturnValue(queryBuilder as any);
+      return queryBuilder;
+    };
+
+    it('should change password successfully', async () => {
+      setupQueryBuilder(mockPersona);
+      passwordService.compare
+        .mockResolvedValueOnce(true) // current password valid
+        .mockResolvedValueOnce(false); // new password is different
+      passwordService.hash.mockResolvedValue('new-hashed-password');
+      personaRepository.update.mockResolvedValue({ affected: 1 } as any);
+      refreshTokenRepository.update.mockResolvedValue({ affected: 2 } as any);
+
+      await service.changePassword('persona-uuid-123', changePasswordDto);
+
+      expect(passwordService.compare).toHaveBeenCalledWith(
+        'OldPassword123!',
+        'hashed-password',
+      );
+      expect(passwordService.hash).toHaveBeenCalledWith('NewPassword456!');
+      expect(personaRepository.update).toHaveBeenCalledWith(
+        'persona-uuid-123',
+        {
+          passwordHash: 'new-hashed-password',
+        },
+      );
+      // Should revoke all tokens for security
+      expect(refreshTokenRepository.update).toHaveBeenCalledWith(
+        { personaId: 'persona-uuid-123', revoked: false },
+        expect.objectContaining({ revoked: true }),
+      );
+    });
+
+    it('should throw UnauthorizedException when user not found', async () => {
+      setupQueryBuilder(null);
+
+      await expect(
+        service.changePassword('non-existent', changePasswordDto),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException when user has no password hash', async () => {
+      setupQueryBuilder({ ...mockPersona, passwordHash: null });
+
+      await expect(
+        service.changePassword('persona-uuid-123', changePasswordDto),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException when current password is wrong', async () => {
+      setupQueryBuilder(mockPersona);
+      passwordService.compare.mockResolvedValue(false);
+
+      await expect(
+        service.changePassword('persona-uuid-123', changePasswordDto),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException with correct message when current password is wrong', async () => {
+      setupQueryBuilder(mockPersona);
+      passwordService.compare.mockResolvedValue(false);
+
+      await expect(
+        service.changePassword('persona-uuid-123', changePasswordDto),
+      ).rejects.toThrow('Contraseña actual incorrecta');
+    });
+
+    it('should throw BadRequestException when new password is same as current', async () => {
+      setupQueryBuilder(mockPersona);
+      passwordService.compare
+        .mockResolvedValueOnce(true) // current password valid
+        .mockResolvedValueOnce(true); // new password is same
+
+      await expect(
+        service.changePassword('persona-uuid-123', changePasswordDto),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException with correct message when passwords are same', async () => {
+      setupQueryBuilder(mockPersona);
+      passwordService.compare
+        .mockResolvedValueOnce(true) // current password valid
+        .mockResolvedValueOnce(true); // new password is same
+
+      await expect(
+        service.changePassword('persona-uuid-123', changePasswordDto),
+      ).rejects.toThrow('La nueva contraseña debe ser diferente a la actual');
     });
   });
 });

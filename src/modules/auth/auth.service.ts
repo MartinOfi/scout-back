@@ -13,6 +13,7 @@ import { PasswordService } from './services/password.service';
 import { TokenService } from './services/token.service';
 import { LoginDto } from './dtos/login.dto';
 import { RegisterDto } from './dtos/register.dto';
+import { ChangePasswordDto } from './dtos/change-password.dto';
 import { AuthResponseDto, AuthUserDto } from './dtos/auth-response.dto';
 import { EstadoPersona } from '../../common/enums';
 
@@ -171,6 +172,59 @@ export class AuthService {
         { revoked: true, revokedAt: new Date() },
       );
     }
+  }
+
+  /**
+   * Change password for authenticated user
+   * Verifies current password before updating
+   * Revokes all existing refresh tokens for security
+   */
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+    // 1. Get persona with password hash
+    const persona = await this.personaRepository
+      .createQueryBuilder('persona')
+      .addSelect('persona.passwordHash')
+      .where('persona.id = :id', { id: userId })
+      .andWhere('persona.deletedAt IS NULL')
+      .getOne();
+
+    if (!persona || !persona.passwordHash) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    // 2. Verify current password
+    const isCurrentPasswordValid = await this.passwordService.compare(
+      dto.currentPassword,
+      persona.passwordHash,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('Contraseña actual incorrecta');
+    }
+
+    // 3. Ensure new password is different
+    const isSamePassword = await this.passwordService.compare(
+      dto.newPassword,
+      persona.passwordHash,
+    );
+
+    if (isSamePassword) {
+      throw new BadRequestException(
+        'La nueva contraseña debe ser diferente a la actual',
+      );
+    }
+
+    // 4. Hash and update new password
+    const newPasswordHash = await this.passwordService.hash(dto.newPassword);
+    await this.personaRepository.update(userId, {
+      passwordHash: newPasswordHash,
+    });
+
+    // 5. Revoke all refresh tokens for security
+    await this.refreshTokenRepository.update(
+      { personaId: userId, revoked: false },
+      { revoked: true, revokedAt: new Date() },
+    );
   }
 
   /**
