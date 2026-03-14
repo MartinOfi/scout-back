@@ -101,7 +101,7 @@ export class CreateInscripcionDto {
     example: 5000.0,
     minimum: 0,
     description:
-      'Monto pagado al momento de crear la inscripción (default: 0). Si es mayor a 0, se crea automáticamente un movimiento.',
+      'Monto pagado en efectivo/transferencia (default: 0). NO incluye el monto de saldo personal.',
   })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
@@ -111,6 +111,8 @@ export class CreateInscripcionDto {
   @ApiPropertyOptional({
     enum: MedioPago,
     example: MedioPago.EFECTIVO,
+    description:
+      'Medio de pago para montoPagado (solo aplica si montoPagado > 0)',
   })
   @IsEnum(MedioPago)
   @IsOptional()
@@ -120,7 +122,7 @@ export class CreateInscripcionDto {
     example: 3000.0,
     minimum: 0,
     description:
-      'Monto a descontar de la caja personal (default: 0). Debe ser menor o igual a montoPagado.',
+      'Monto a descontar de la caja personal (default: 0). Independiente de montoPagado. Total ingresado = montoPagado + montoConSaldoPersonal.',
   })
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)

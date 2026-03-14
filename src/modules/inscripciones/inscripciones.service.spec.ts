@@ -871,16 +871,40 @@ describe('InscripcionesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw BadRequestException when montoConSaldoPersonal exceeds montoPagado', async () => {
+    it('should throw BadRequestException when total payment (montoPagado + montoConSaldoPersonal) exceeds saldo pendiente', async () => {
       repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
+      // saldoPendiente = 10000, total payment = 5000 + 6000 = 11000 > 10000
       await expect(
         service.pagar('inscripcion-uuid', {
           montoPagado: 5000,
           montoConSaldoPersonal: 6000,
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should allow montoConSaldoPersonal to exceed montoPagado when total does not exceed saldo', async () => {
+      repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
+        return cb({});
+      });
+
+      // montoConSaldoPersonal (6000) > montoPagado (3000), but total (9000) < saldoPendiente (10000)
+      await service.pagar('inscripcion-uuid', {
+        montoPagado: 3000,
+        montoConSaldoPersonal: 6000,
+      });
+
+      expect(pagosService.ejecutarPagoConManager).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          montoTotal: 9000, // montoPagado + montoConSaldoPersonal
+          montoConSaldoPersonal: 6000,
+        }),
+      );
     });
 
     it('should use SCOUT_ARGENTINA concept for scout inscriptions', async () => {

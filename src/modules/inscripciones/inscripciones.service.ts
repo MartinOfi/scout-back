@@ -53,17 +53,21 @@ export class InscripcionesService {
       inscripcion.id,
     );
 
-    const movimientosDto: MovimientoInscripcionDto[] = movimientos
-      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
-      .map((m) => ({
-        id: m.id,
-        monto: Number(m.monto),
-        medioPago: m.medioPago,
-        fecha: m.fecha,
-        descripcion: m.descripcion,
-      }));
+    // Include ALL movements (both INGRESO and EGRESO from personal accounts)
+    const movimientosDto: MovimientoInscripcionDto[] = movimientos.map((m) => ({
+      id: m.id,
+      monto: Number(m.monto),
+      medioPago: m.medioPago,
+      fecha: m.fecha,
+      descripcion: m.descripcion,
+      tipo: m.tipo,
+      concepto: m.concepto,
+    }));
 
-    const montoPagado = movimientosDto.reduce((sum, m) => sum + m.monto, 0);
+    // Calculate montoPagado only from INGRESO movements (money that entered the group)
+    const montoPagado = movimientos
+      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
+      .reduce((sum, m) => sum + Number(m.monto), 0);
     const montoTotal = Number(inscripcion.montoTotal);
     const montoBonificado = Number(inscripcion.montoBonificado);
     const saldoPendiente = Math.max(
@@ -267,13 +271,7 @@ export class InscripcionesService {
 
     const montoPagado = dto.montoPagado ?? 0;
     const montoConSaldoPersonal = dto.montoConSaldoPersonal ?? 0;
-
-    // Validar que montoConSaldoPersonal <= montoPagado
-    if (montoConSaldoPersonal > montoPagado) {
-      throw new BadRequestException(
-        'El monto de saldo personal no puede superar el monto pagado',
-      );
-    }
+    const montoTotalPago = montoPagado + montoConSaldoPersonal;
 
     // Campos de autorización solo aplican a SCOUT_ARGENTINA
     const esScoutArgentina = dto.tipo === TipoInscripcion.SCOUT_ARGENTINA;
@@ -306,8 +304,8 @@ export class InscripcionesService {
 
       const savedInscripcion = await manager.save(inscripcion);
 
-      // Si hay un pago inicial, usar PagosService
-      if (montoPagado > 0) {
+      // Si hay un pago inicial (efectivo/transferencia o saldo personal), usar PagosService
+      if (montoTotalPago > 0) {
         const concepto =
           dto.tipo === TipoInscripcion.SCOUT_ARGENTINA
             ? ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA
@@ -315,7 +313,7 @@ export class InscripcionesService {
 
         await this.pagosService.ejecutarPagoConManager(manager, {
           personaId: dto.personaId,
-          montoTotal: montoPagado,
+          montoTotal: montoTotalPago,
           montoConSaldoPersonal,
           medioPago: dto.medioPago,
           concepto,
@@ -481,19 +479,13 @@ export class InscripcionesService {
       );
     }
 
-    // Validar que el monto a pagar no exceda el saldo pendiente
-    if (dto.montoPagado > saldoPendiente) {
-      throw new BadRequestException(
-        `El monto a pagar ($${dto.montoPagado}) excede el saldo pendiente ($${saldoPendiente})`,
-      );
-    }
-
     const montoConSaldoPersonal = dto.montoConSaldoPersonal ?? 0;
+    const montoTotalPago = dto.montoPagado + montoConSaldoPersonal;
 
-    // Validar que montoConSaldoPersonal <= montoPagado
-    if (montoConSaldoPersonal > dto.montoPagado) {
+    // Validar que el monto total a pagar no exceda el saldo pendiente
+    if (montoTotalPago > saldoPendiente) {
       throw new BadRequestException(
-        'El monto de saldo personal no puede superar el monto a pagar',
+        `El monto total a pagar ($${montoTotalPago}) excede el saldo pendiente ($${saldoPendiente})`,
       );
     }
 
@@ -506,7 +498,7 @@ export class InscripcionesService {
 
       await this.pagosService.ejecutarPagoConManager(manager, {
         personaId: inscripcion.personaId,
-        montoTotal: dto.montoPagado,
+        montoTotal: montoTotalPago,
         montoConSaldoPersonal,
         medioPago: dto.medioPago,
         concepto,

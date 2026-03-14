@@ -2,6 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   EstadoInscripcion,
   TipoInscripcion,
+  TipoMovimiento,
+  ConceptoMovimiento,
   MedioPago,
 } from '../../../common/enums';
 
@@ -23,6 +25,12 @@ export class MovimientoInscripcionDto {
 
   @ApiProperty({ nullable: true })
   descripcion!: string | null;
+
+  @ApiProperty({ enum: TipoMovimiento })
+  tipo!: TipoMovimiento;
+
+  @ApiProperty({ enum: ConceptoMovimiento })
+  concepto!: ConceptoMovimiento;
 }
 
 /**
