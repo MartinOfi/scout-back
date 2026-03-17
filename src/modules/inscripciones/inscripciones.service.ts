@@ -16,6 +16,10 @@ import {
   InscripcionResponseDto,
   MovimientoInscripcionDto,
 } from './dtos/inscripcion-response.dto';
+import {
+  InscripcionesConsolidadoDto,
+  DistribucionPorRamaDto,
+} from './dtos/inscripciones-consolidado.dto';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
@@ -24,6 +28,10 @@ import {
   TipoInscripcion,
   TipoMovimiento,
   ConceptoMovimiento,
+  TipoDeuda,
+  Rama,
+  PersonaType,
+  MedioPago,
 } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
@@ -44,15 +52,21 @@ export class InscripcionesService {
 
   /**
    * Transforma una inscripción a DTO con campos calculados
+   * @param inscripcion La inscripción a transformar
+   * @param preloadedMovimientos Movimientos pre-cargados (para batch loading)
    */
-  private async toResponseDto(
+  private toResponseDtoWithMovimientos(
     inscripcion: Inscripcion,
-  ): Promise<InscripcionResponseDto> {
-    const movimientos = await this.movimientosService.findByRelatedEntity(
-      'inscripcion',
-      inscripcion.id,
-    );
-
+    movimientos: {
+      id: string;
+      monto: number;
+      medioPago: MedioPago;
+      fecha: Date;
+      descripcion: string | null;
+      tipo: TipoMovimiento;
+      concepto: ConceptoMovimiento;
+    }[],
+  ): InscripcionResponseDto {
     // Include ALL movements (both INGRESO and EGRESO from personal accounts)
     const movimientosDto: MovimientoInscripcionDto[] = movimientos.map((m) => ({
       id: m.id,
@@ -105,6 +119,8 @@ export class InscripcionesService {
         ? {
             id: inscripcion.persona.id,
             nombre: inscripcion.persona.nombre,
+            tipo: inscripcion.persona.tipo,
+            rama: (inscripcion.persona as { rama?: Rama }).rama ?? null,
           }
         : undefined,
       movimientos: movimientosDto,
@@ -112,41 +128,94 @@ export class InscripcionesService {
   }
 
   /**
-   * Transforma múltiples inscripciones a DTOs
+   * Transforma una inscripción a DTO (carga movimientos individualmente)
+   * Use toResponseDtos for batch operations to avoid N+1 queries
+   */
+  private async toResponseDto(
+    inscripcion: Inscripcion,
+  ): Promise<InscripcionResponseDto> {
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'inscripcion',
+      inscripcion.id,
+    );
+
+    return this.toResponseDtoWithMovimientos(inscripcion, movimientos);
+  }
+
+  /**
+   * Transforma múltiples inscripciones a DTOs con batch loading
+   * Reduces N+1 queries to 2 queries total
    */
   private async toResponseDtos(
     inscripciones: Inscripcion[],
   ): Promise<InscripcionResponseDto[]> {
-    return Promise.all(inscripciones.map((i) => this.toResponseDto(i)));
+    if (inscripciones.length === 0) return [];
+
+    // Batch load ALL movements in a single query
+    const inscripcionIds = inscripciones.map((i) => i.id);
+    const movimientosByInscripcion =
+      await this.movimientosService.findByInscripcionIds(inscripcionIds);
+
+    // Transform with pre-loaded movements (no additional queries)
+    return inscripciones.map((inscripcion) =>
+      this.toResponseDtoWithMovimientos(
+        inscripcion,
+        movimientosByInscripcion.get(inscripcion.id) || [],
+      ),
+    );
   }
 
   /**
-   * Determina si una inscripción califica como "deudor"
-   * Condiciones:
-   * 1. Tiene saldo pendiente (debe dinero)
-   * 2. O le falta algún documento (solo para SCOUT_ARGENTINA)
+   * Check if inscription has money debt (saldoPendiente > 0)
    */
-  private isDeudor(dto: InscripcionResponseDto): boolean {
-    // Tiene saldo pendiente
-    if (dto.saldoPendiente > 0) {
-      return true;
+  private hasMoneyDebt(dto: InscripcionResponseDto): boolean {
+    return dto.saldoPendiente > 0;
+  }
+
+  /**
+   * Check if inscription has documentation debt (missing documents)
+   * Only applies to SCOUT_ARGENTINA inscriptions
+   */
+  private hasDocumentationDebt(dto: InscripcionResponseDto): boolean {
+    if (dto.tipo !== TipoInscripcion.SCOUT_ARGENTINA) {
+      return false;
+    }
+    return (
+      !dto.declaracionDeSalud ||
+      !dto.autorizacionDeImagen ||
+      !dto.salidasCercanas ||
+      !dto.autorizacionIngreso ||
+      !dto.certificadoAptitudFisica
+    );
+  }
+
+  /**
+   * Check if inscription matches the specified debt type filter
+   * @param dto The inscription response DTO
+   * @param tipoDeuda Optional debt type filter. If not specified, matches any debt.
+   */
+  private matchesDebtType(
+    dto: InscripcionResponseDto,
+    tipoDeuda?: TipoDeuda,
+  ): boolean {
+    const hasMoney = this.hasMoneyDebt(dto);
+    const hasDocs = this.hasDocumentationDebt(dto);
+
+    if (!tipoDeuda) {
+      // No specific type: return any debtor (money OR documentation)
+      return hasMoney || hasDocs;
     }
 
-    // Solo verificar documentos para inscripciones SCOUT_ARGENTINA
-    if (dto.tipo === TipoInscripcion.SCOUT_ARGENTINA) {
-      const faltaDocumento =
-        !dto.declaracionDeSalud ||
-        !dto.autorizacionDeImagen ||
-        !dto.salidasCercanas ||
-        !dto.autorizacionIngreso ||
-        !dto.certificadoAptitudFisica;
-
-      if (faltaDocumento) {
-        return true;
-      }
+    switch (tipoDeuda) {
+      case TipoDeuda.DINERO:
+        return hasMoney;
+      case TipoDeuda.DOCUMENTACION:
+        return hasDocs;
+      case TipoDeuda.AMBOS:
+        return hasMoney && hasDocs;
+      default:
+        return hasMoney || hasDocs;
     }
-
-    return false;
   }
 
   async findAll(
@@ -167,14 +236,42 @@ export class InscripcionesService {
       order: { ano: 'DESC', createdAt: 'DESC' },
     });
 
-    const dtos = await this.toResponseDtos(inscripciones);
+    let dtos = await this.toResponseDtos(inscripciones);
+
+    // Filtrar por rama o tipo de persona
+    if (query?.rama) {
+      dtos = this.filterByRamaOrPersonaType(dtos, query.rama);
+    }
 
     // Aplicar filtro de deudores si está activo
-    if (query?.deudores) {
-      return dtos.filter((dto) => this.isDeudor(dto));
+    if (query?.tipoDeuda) {
+      dtos = dtos.filter((dto) => this.matchesDebtType(dto, query.tipoDeuda));
     }
 
     return dtos;
+  }
+
+  /**
+   * Filter inscriptions by rama or persona type
+   * - If rama is a Rama value (Manada, Unidad, etc.): show only Protagonistas with that rama
+   * - If rama is 'educador': show only Educadores (regardless of their rama)
+   */
+  private filterByRamaOrPersonaType(
+    dtos: InscripcionResponseDto[],
+    ramaFilter: Rama | typeof PersonaType.EDUCADOR,
+  ): InscripcionResponseDto[] {
+    if (ramaFilter === PersonaType.EDUCADOR) {
+      // Filter only educators (any rama or no rama)
+      return dtos.filter((dto) => dto.persona?.tipo === PersonaType.EDUCADOR);
+    }
+
+    // Filter by rama - only show Protagonistas with matching rama
+    // Educators should NOT appear even if they have the same rama
+    return dtos.filter(
+      (dto) =>
+        dto.persona?.rama === ramaFilter &&
+        dto.persona?.tipo === PersonaType.PROTAGONISTA,
+    );
   }
 
   async findByPersona(personaId: string): Promise<InscripcionResponseDto[]> {
@@ -510,5 +607,176 @@ export class InscripcionesService {
 
       return this.toResponseDto(inscripcion);
     });
+  }
+
+  /**
+   * Get rama category for an inscription (for aggregation)
+   * - Protagonistas are categorized by their rama
+   * - Educadores ALWAYS go to 'educadores' (regardless of their rama)
+   * - PersonaExterna goes to 'educadores'
+   */
+  private getRamaCategory(
+    dto: InscripcionResponseDto,
+  ): keyof Omit<DistribucionPorRamaDto, 'total'> {
+    const persona = dto.persona;
+    if (!persona) {
+      return 'educadores'; // Default for missing persona
+    }
+
+    // Educadores and PersonaExterna always go to 'educadores'
+    if (
+      persona.tipo === PersonaType.EDUCADOR ||
+      persona.tipo === PersonaType.EXTERNA
+    ) {
+      return 'educadores';
+    }
+
+    // Only Protagonistas are categorized by their rama
+    switch (persona.rama) {
+      case Rama.MANADA:
+        return 'manada';
+      case Rama.UNIDAD:
+        return 'unidad';
+      case Rama.CAMINANTES:
+        return 'caminantes';
+      case Rama.ROVERS:
+        return 'rovers';
+      default:
+        return 'educadores';
+    }
+  }
+
+  /**
+   * Create empty distribution DTO with all zeros
+   */
+  private createEmptyDistribucion(): DistribucionPorRamaDto {
+    return {
+      total: 0,
+      manada: 0,
+      unidad: 0,
+      caminantes: 0,
+      rovers: 0,
+      educadores: 0,
+    };
+  }
+
+  /**
+   * Increment distribution counter for a rama category
+   */
+  private incrementDistribucion(
+    dist: DistribucionPorRamaDto,
+    rama: keyof Omit<DistribucionPorRamaDto, 'total'>,
+  ): void {
+    dist[rama]++;
+    dist.total++;
+  }
+
+  /**
+   * Get consolidated statistics for inscriptions
+   * Aggregates totals, financials, and debtors by rama
+   */
+  async getConsolidado(
+    query?: GetInscripcionesQueryDto,
+  ): Promise<InscripcionesConsolidadoDto> {
+    // Get all inscriptions matching basic filters (ano, tipo)
+    const where: { ano?: number; tipo?: TipoInscripcion } = {};
+    if (query?.ano) {
+      where.ano = query.ano;
+    }
+    if (query?.tipo) {
+      where.tipo = query.tipo;
+    }
+
+    const inscripciones = await this.inscripcionRepository.find({
+      where: Object.keys(where).length > 0 ? where : undefined,
+      relations: ['persona'],
+      order: { ano: 'DESC', createdAt: 'DESC' },
+    });
+
+    let dtos = await this.toResponseDtos(inscripciones);
+
+    // Filtrar por rama o tipo de persona
+    if (query?.rama) {
+      dtos = this.filterByRamaOrPersonaType(dtos, query.rama);
+    }
+
+    // Initialize counters
+    const porRama = this.createEmptyDistribucion();
+    const financiero = {
+      montoEsperado: 0,
+      montoPagado: 0,
+      montoAdeudado: 0,
+      montoBonificado: 0,
+    };
+    const deudoresDinero = {
+      total: 0,
+      monto: 0,
+      porRama: this.createEmptyDistribucion(),
+    };
+    const deudoresDocumentacion = {
+      total: 0,
+      porRama: this.createEmptyDistribucion(),
+    };
+    const deudoresAmbos = this.createEmptyDistribucion();
+
+    // Process each inscription
+    for (const dto of dtos) {
+      const rama = this.getRamaCategory(dto);
+
+      // Count by rama
+      this.incrementDistribucion(porRama, rama);
+
+      // Financial summary
+      financiero.montoEsperado += dto.montoTotal;
+      financiero.montoPagado += dto.montoPagado;
+      financiero.montoBonificado += dto.montoBonificado;
+      financiero.montoAdeudado += dto.saldoPendiente;
+
+      // Debtors analysis
+      const hasMoney = this.hasMoneyDebt(dto);
+      const hasDocs = this.hasDocumentationDebt(dto);
+
+      if (hasMoney && hasDocs) {
+        // Both debts
+        this.incrementDistribucion(deudoresAmbos, rama);
+        // Also count in individual categories
+        deudoresDinero.total++;
+        deudoresDinero.monto += dto.saldoPendiente;
+        this.incrementDistribucion(deudoresDinero.porRama, rama);
+        deudoresDocumentacion.total++;
+        this.incrementDistribucion(deudoresDocumentacion.porRama, rama);
+      } else if (hasMoney) {
+        // Only money debt
+        deudoresDinero.total++;
+        deudoresDinero.monto += dto.saldoPendiente;
+        this.incrementDistribucion(deudoresDinero.porRama, rama);
+      } else if (hasDocs) {
+        // Only documentation debt
+        deudoresDocumentacion.total++;
+        this.incrementDistribucion(deudoresDocumentacion.porRama, rama);
+      }
+    }
+
+    // Apply tipoDeuda filter to results if specified
+    // Note: This doesn't change the counts, just what's included in the response
+    // The filter is reflected in the 'filtros' field for frontend awareness
+
+    return {
+      filtros: {
+        ano: query?.ano,
+        tipo: query?.tipo,
+        tipoDeuda: query?.tipoDeuda,
+        rama: query?.rama,
+      },
+      total: porRama.total,
+      porRama,
+      financiero,
+      deudores: {
+        dinero: deudoresDinero,
+        documentacion: deudoresDocumentacion,
+        ambos: deudoresAmbos,
+      },
+      fecha: new Date().toISOString(),
+    };
   }
 }

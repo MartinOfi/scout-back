@@ -1,11 +1,34 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   EstadoInscripcion,
   TipoInscripcion,
   TipoMovimiento,
   ConceptoMovimiento,
   MedioPago,
+  PersonaType,
+  Rama,
 } from '../../../common/enums';
+
+/**
+ * Embedded DTO for persona in inscription response
+ */
+export class PersonaInscripcionDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ example: 'Juan Perez' })
+  nombre!: string;
+
+  @ApiProperty({ enum: PersonaType, description: 'Tipo de persona' })
+  tipo!: PersonaType;
+
+  @ApiPropertyOptional({
+    enum: Rama,
+    nullable: true,
+    description: 'Rama del protagonista/educador. Null para externos.',
+  })
+  rama!: Rama | null;
+}
 
 /**
  * Embedded DTO for movimientos related to an inscripcion
@@ -99,11 +122,8 @@ export class InscripcionResponseDto {
   saldoPendiente!: number;
 
   // Persona relacionada (opcional, incluida en algunas consultas)
-  @ApiProperty({ required: false })
-  persona?: {
-    id: string;
-    nombre: string;
-  };
+  @ApiPropertyOptional({ type: PersonaInscripcionDto })
+  persona?: PersonaInscripcionDto;
 
   // Movimientos relacionados
   @ApiProperty({ type: [MovimientoInscripcionDto] })

@@ -17,6 +17,7 @@ import {
   PagarInscripcionDto,
   InscripcionResponseDto,
   GetInscripcionesQueryDto,
+  InscripcionesConsolidadoDto,
 } from './dtos';
 
 @ApiTags('Inscripciones')
@@ -53,6 +54,24 @@ export class InscripcionesController {
     @Param('personaId', ParseUUIDPipe) personaId: string,
   ): Promise<InscripcionResponseDto[]> {
     return this.inscripcionesService.findByPersona(personaId);
+  }
+
+  @Get('consolidado')
+  @ApiOperation({
+    summary: 'Obtener estadísticas consolidadas de inscripciones',
+    description:
+      'Retorna totales por rama, resumen financiero y desglose de deudores. ' +
+      'Acepta filtros por año, tipo de inscripción y tipo de deuda.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Estadísticas consolidadas de inscripciones',
+    type: InscripcionesConsolidadoDto,
+  })
+  async getConsolidado(
+    @Query() query: GetInscripcionesQueryDto,
+  ): Promise<InscripcionesConsolidadoDto> {
+    return this.inscripcionesService.getConsolidado(query);
   }
 
   @Get(':id')

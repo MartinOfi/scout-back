@@ -208,3 +208,18 @@ export enum DestinoGanancia {
   CUENTAS_PERSONALES = 'cuentas_personales',
   CAJA_GRUPO = 'caja_grupo',
 }
+
+// ============================================================================
+// FILTROS
+// ============================================================================
+
+/**
+ * Types of debt for filtering debtors in inscripciones
+ * Used to filter by what they owe: documentation, money, or both
+ * If not specified, returns any debtor (documentation OR money)
+ */
+export enum TipoDeuda {
+  DOCUMENTACION = 'documentacion', // Only missing documents (SCOUT_ARGENTINA only)
+  DINERO = 'dinero', // Only money owed (saldoPendiente > 0)
+  AMBOS = 'ambos', // Both money AND documentation debt
+}

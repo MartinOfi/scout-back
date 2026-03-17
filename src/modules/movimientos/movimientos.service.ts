@@ -5,7 +5,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, FindOptionsWhere } from 'typeorm';
+import { Repository, Between, FindOptionsWhere, In } from 'typeorm';
 import { Movimiento } from './entities/movimiento.entity';
 import { CreateMovimientoDto } from './dtos/create-movimiento.dto';
 import { UpdateMovimientoDto } from './dtos/update-movimiento.dto';
@@ -158,6 +158,36 @@ export class MovimientosService {
       relations: ['caja', 'responsable', 'personaAReembolsar'],
       order: { fecha: 'DESC' },
     });
+  }
+
+  /**
+   * Batch load movements for multiple inscripciones in a single query
+   * Eliminates N+1 query problem when loading multiple inscripciones
+   * @param inscripcionIds Array of inscripcion IDs
+   * @returns Map of inscripcionId -> Movimiento[]
+   */
+  async findByInscripcionIds(
+    inscripcionIds: string[],
+  ): Promise<Map<string, Movimiento[]>> {
+    if (inscripcionIds.length === 0) {
+      return new Map();
+    }
+
+    const movimientos = await this.movimientoRepository.find({
+      where: { inscripcionId: In(inscripcionIds) },
+      relations: ['caja', 'responsable', 'personaAReembolsar'],
+      order: { fecha: 'DESC' },
+    });
+
+    // Group by inscripcionId
+    const result = new Map<string, Movimiento[]>();
+    for (const mov of movimientos) {
+      if (!mov.inscripcionId) continue;
+      const existing = result.get(mov.inscripcionId) || [];
+      result.set(mov.inscripcionId, [...existing, mov]);
+    }
+
+    return result;
   }
 
   /**
