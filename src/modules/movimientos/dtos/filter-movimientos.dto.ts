@@ -1,11 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsDate, IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dtos';
 import {
   TipoMovimiento,
   ConceptoMovimiento,
   EstadoPago,
+  CajaType,
 } from '../../../common/enums';
 
 /**
@@ -19,6 +20,23 @@ export class FilterMovimientosDto extends PaginationQueryDto {
   @IsUUID()
   @IsOptional()
   cajaId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filtrar por tipo(s) de caja. Puede ser un valor único o múltiples separados por coma. ' +
+      'Ejemplo: "rama_manada,rama_unidad,rama_caminantes,rama_rovers" para ver todas las cajas de rama.',
+    enum: CajaType,
+    isArray: true,
+    example: 'rama_manada,rama_unidad',
+  })
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    if (Array.isArray(value)) return value;
+    return value.split(',').map((v: string) => v.trim());
+  })
+  @IsEnum(CajaType, { each: true })
+  @IsOptional()
+  tipoCaja?: CajaType[];
 
   @ApiPropertyOptional({
     description: 'Filtrar por tipo de movimiento',

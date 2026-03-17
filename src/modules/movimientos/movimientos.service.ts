@@ -56,6 +56,12 @@ export class MovimientosService {
       queryBuilder.andWhere('m.caja_id = :cajaId', { cajaId: filters.cajaId });
     }
 
+    if (filters.tipoCaja && filters.tipoCaja.length > 0) {
+      queryBuilder.andWhere('caja.tipo IN (:...tipoCaja)', {
+        tipoCaja: filters.tipoCaja,
+      });
+    }
+
     if (filters.tipo) {
       queryBuilder.andWhere('m.tipo = :tipo', { tipo: filters.tipo });
     }
