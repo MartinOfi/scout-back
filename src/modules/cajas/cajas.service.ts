@@ -128,6 +128,18 @@ export class CajasService {
     });
   }
 
+  /**
+   * Obtiene el saldo de la cuenta personal de una persona
+   * Retorna 0 si la persona no tiene cuenta personal
+   */
+  async getSaldoCuentaPersonal(personaId: string): Promise<number> {
+    const caja = await this.findCajaPersonal(personaId);
+    if (!caja) {
+      return 0;
+    }
+    return this.movimientosService.calcularSaldo(caja.id);
+  }
+
   async create(dto: CreateCajaDto): Promise<Caja> {
     // Validaciones de negocio
     if (dto.tipo === CajaType.GRUPO) {

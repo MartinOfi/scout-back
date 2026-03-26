@@ -62,6 +62,23 @@ export class CajasController {
     return this.cajasService.getConsolidadoSaldos();
   }
 
+  @Get('personal/:personaId/saldo')
+  @ApiOperation({
+    summary: 'Obtener saldo de cuenta personal por ID de persona',
+  })
+  @ApiParam({ name: 'personaId', type: String, format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Saldo de la cuenta personal (0 si no existe)',
+    schema: { type: 'object', properties: { saldo: { type: 'number' } } },
+  })
+  async getSaldoCuentaPersonal(
+    @Param('personaId', ParseUUIDPipe) personaId: string,
+  ): Promise<{ saldo: number }> {
+    const saldo = await this.cajasService.getSaldoCuentaPersonal(personaId);
+    return { saldo };
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener una caja por ID con saldo actual' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
