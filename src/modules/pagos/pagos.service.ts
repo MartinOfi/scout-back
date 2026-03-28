@@ -82,24 +82,51 @@ export class PagosService {
     // 2. Crear INGRESO en caja grupo
     const cajaGrupo = await this.cajasService.findCajaGrupo();
 
+    // Determinar método de pago para el ingreso
+    const esPagoMixto = montoFisico > 0 && montoConSaldoPersonal > 0;
+    const medioPagoIngreso = esPagoMixto
+      ? MedioPago.MIXTO
+      : montoFisico > 0
+        ? medioPago
+        : MedioPago.SALDO_PERSONAL;
+
+    // Construir descripción con desglose si es pago mixto
+    let descripcionFinal = descripcion ?? '';
+    if (esPagoMixto) {
+      const metodoFisicoLabel =
+        medioPago === MedioPago.TRANSFERENCIA ? 'transferencia' : 'efectivo';
+      const desglose = `(${metodoFisicoLabel}: $${montoFisico}, saldo personal: $${montoConSaldoPersonal})`;
+      descripcionFinal = descripcionFinal
+        ? `${descripcionFinal} ${desglose}`
+        : desglose;
+    }
+
     const movimientoIngreso = manager.create(Movimiento, {
       cajaId: cajaGrupo.id,
       tipo: TipoMovimiento.INGRESO,
       monto: montoTotal,
       concepto,
-      medioPago: montoFisico > 0 ? medioPago : MedioPago.SALDO_PERSONAL,
+      medioPago: medioPagoIngreso,
       responsableId: personaId,
       estadoPago: EstadoPago.PAGADO,
       inscripcionId,
       cuotaId,
       campamentoId,
-      descripcion,
+      descripcion: descripcionFinal || undefined,
       fecha: new Date(),
+      // Link to egreso if exists
+      movimientoRelacionadoId: movimientoEgresoPersonal?.id ?? null,
     });
 
     await manager.save(movimientoIngreso);
 
-    // 3. Retornar resultado
+    // 3. Update egreso with ingreso ID (bidirectional link)
+    if (movimientoEgresoPersonal) {
+      movimientoEgresoPersonal.movimientoRelacionadoId = movimientoIngreso.id;
+      await manager.save(movimientoEgresoPersonal);
+    }
+
+    // 4. Retornar resultado
     return {
       movimientoIngreso: {
         id: movimientoIngreso.id,

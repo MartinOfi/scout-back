@@ -111,6 +111,59 @@ describe('PagosService', () => {
       expect(result.movimientoIngreso.medioPago).toBe(MedioPago.SALDO_PERSONAL);
     });
 
+    it('debería usar medioPago MIXTO cuando combina efectivo y saldo personal', async () => {
+      const result = await service.ejecutarPagoConManager(mockManager, {
+        personaId: 'persona-id',
+        montoTotal: 5000,
+        montoConSaldoPersonal: 2000,
+        medioPago: MedioPago.EFECTIVO,
+        concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
+      });
+
+      expect(result.movimientoIngreso.medioPago).toBe(MedioPago.MIXTO);
+      expect(result.desglose.montoFisico).toBe(3000);
+      expect(result.desglose.montoSaldoPersonal).toBe(2000);
+    });
+
+    it('debería incluir desglose en descripción cuando es pago mixto', async () => {
+      await service.ejecutarPagoConManager(mockManager, {
+        personaId: 'persona-id',
+        montoTotal: 5000,
+        montoConSaldoPersonal: 2000,
+        medioPago: MedioPago.EFECTIVO,
+        concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+        descripcion: 'Pago campamento verano',
+      });
+
+      // Verificar que el movimiento de ingreso tiene la descripción con desglose
+      const createCalls = mockManager.create.mock.calls;
+      // El segundo create es el de ingreso (el primero es egreso personal)
+      const ingresoCall = createCalls.find(
+        (call) => call[1].tipo === 'ingreso',
+      );
+      expect(ingresoCall).toBeDefined();
+      expect(ingresoCall![1].descripcion).toContain('efectivo: $3000');
+      expect(ingresoCall![1].descripcion).toContain('saldo personal: $2000');
+    });
+
+    it('debería usar medioPago MIXTO con transferencia y saldo personal', async () => {
+      await service.ejecutarPagoConManager(mockManager, {
+        personaId: 'persona-id',
+        montoTotal: 10000,
+        montoConSaldoPersonal: 4000,
+        medioPago: MedioPago.TRANSFERENCIA,
+        concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
+        descripcion: 'Pago inscripción',
+      });
+
+      const ingresoCall = mockManager.create.mock.calls.find(
+        (call) => call[1].tipo === 'ingreso',
+      );
+      expect(ingresoCall![1].medioPago).toBe(MedioPago.MIXTO);
+      expect(ingresoCall![1].descripcion).toContain('transferencia: $6000');
+      expect(ingresoCall![1].descripcion).toContain('saldo personal: $4000');
+    });
+
     it('debería fallar si persona no tiene caja personal', async () => {
       cajasService.findCajaPersonal.mockResolvedValue(null);
 

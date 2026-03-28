@@ -124,11 +124,13 @@ export enum ConceptoMovimiento {
  * Payment methods (Medio de Pago)
  * From PRD §3.3 (F8): "efectivo, transferencia"
  * IMPORTANT: Only 2 methods - NO credit cards, NO debit cards
+ * MIXTO: Used when a payment combines physical money (efectivo/transferencia) with personal account balance
  */
 export enum MedioPago {
   EFECTIVO = 'efectivo',
   TRANSFERENCIA = 'transferencia',
   SALDO_PERSONAL = 'saldo_personal',
+  MIXTO = 'mixto',
 }
 
 /**
