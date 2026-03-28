@@ -1,14 +1,21 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CampamentosService } from './campamentos.service';
 import { Campamento } from './entities/campamento.entity';
 import { PersonasService } from '../personas/personas.service';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
+import { PagosService } from '../pagos/pagos.service';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
-import { MedioPago, EstadoPago, CajaType } from '../../common/enums';
+import {
+  MedioPago,
+  EstadoPago,
+  CajaType,
+  TipoMovimiento,
+  ConceptoMovimiento,
+} from '../../common/enums';
 import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
 
@@ -18,6 +25,7 @@ describe('CampamentosService', () => {
   let personasService: jest.Mocked<PersonasService>;
   let cajasService: jest.Mocked<CajasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
+  let pagosService: jest.Mocked<PagosService>;
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
 
   const mockPersona: Partial<Persona> = {
@@ -68,6 +76,29 @@ describe('CampamentosService', () => {
       canDeleteCampamento: jest.fn().mockResolvedValue({ canDelete: true }),
     };
 
+    const mockPagosService = {
+      ejecutarPagoConManager: jest.fn().mockResolvedValue({
+        movimientoIngreso: {
+          id: 'mov-ingreso-uuid',
+          monto: 10000,
+          concepto: 'CAMPAMENTO_PAGO',
+        },
+        desglose: {
+          montoTotal: 10000,
+          montoPagadoFisico: 10000,
+          montoDescontadoSaldoPersonal: 0,
+        },
+      }),
+    };
+
+    const mockManager = {
+      softDelete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+
+    const mockDataSource = {
+      transaction: jest.fn().mockImplementation((cb) => cb(mockManager)),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CampamentosService,
@@ -88,6 +119,14 @@ describe('CampamentosService', () => {
           useValue: mockMovimientosService,
         },
         {
+          provide: PagosService,
+          useValue: mockPagosService,
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
+        },
+        {
           provide: DeletionValidatorService,
           useValue: mockDeletionValidator,
         },
@@ -99,6 +138,7 @@ describe('CampamentosService', () => {
     personasService = module.get(PersonasService);
     cajasService = module.get(CajasService);
     movimientosService = module.get(MovimientosService);
+    pagosService = module.get(PagosService);
     deletionValidator = module.get(DeletionValidatorService);
   });
 
@@ -275,27 +315,75 @@ describe('CampamentosService', () => {
   });
 
   describe('registrarPago', () => {
-    it('should register payment and create movement', async () => {
+    it('should register payment using PagosService', async () => {
       campamentoRepository.findOne.mockResolvedValue(
         mockCampamento as Campamento,
       );
 
-      await service.registrarPago(
+      const result = await service.registrarPago(
         'campamento-uuid',
         'persona-uuid',
-        10000,
-        MedioPago.EFECTIVO,
+        {
+          montoPagado: 10000,
+          medioPago: MedioPago.EFECTIVO,
+        },
       );
 
       expect(personasService.findOne).toHaveBeenCalledWith('persona-uuid');
-      expect(cajasService.findCajaGrupo).toHaveBeenCalled();
-      expect(movimientosService.create).toHaveBeenCalledWith(
+      expect(pagosService.ejecutarPagoConManager).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({
-          cajaId: 'caja-grupo-uuid',
-          monto: 10000,
+          personaId: 'persona-uuid',
+          montoTotal: 10000,
+          montoConSaldoPersonal: 0,
           campamentoId: 'campamento-uuid',
         }),
       );
+      expect(result.movimientoIngreso).toBeDefined();
+    });
+
+    it('should support mixed payment with personal account balance', async () => {
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+
+      await service.registrarPago('campamento-uuid', 'persona-uuid', {
+        montoPagado: 5000,
+        montoConSaldoPersonal: 3000,
+        medioPago: MedioPago.EFECTIVO,
+      });
+
+      expect(pagosService.ejecutarPagoConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          montoTotal: 8000,
+          montoConSaldoPersonal: 3000,
+        }),
+      );
+    });
+
+    it('should throw BadRequestException when total is zero', async () => {
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+
+      await expect(
+        service.registrarPago('campamento-uuid', 'persona-uuid', {
+          montoPagado: 0,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException when montoPagado > 0 without medioPago', async () => {
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+
+      await expect(
+        service.registrarPago('campamento-uuid', 'persona-uuid', {
+          montoPagado: 5000,
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
@@ -360,6 +448,104 @@ describe('CampamentosService', () => {
         relations: ['participantes'],
         order: { fechaInicio: 'DESC' },
       });
+    });
+  });
+
+  describe('eliminarPagoCampamento', () => {
+    const mockMovimientoIngreso = {
+      id: 'mov-ingreso-uuid',
+      tipo: TipoMovimiento.INGRESO,
+      concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+      monto: 10000,
+      medioPago: MedioPago.EFECTIVO,
+      responsableId: 'persona-uuid',
+      movimientoRelacionadoId: null,
+    };
+
+    const mockMovimientoIngresoConRelacion = {
+      id: 'mov-ingreso-saldo-uuid',
+      tipo: TipoMovimiento.INGRESO,
+      concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+      monto: 10000,
+      medioPago: MedioPago.SALDO_PERSONAL,
+      responsableId: 'persona-uuid',
+      movimientoRelacionadoId: 'mov-egreso-uuid', // Linked to egreso
+    };
+
+    const mockMovimientoEgreso = {
+      id: 'mov-egreso-uuid',
+      tipo: TipoMovimiento.EGRESO,
+      concepto: ConceptoMovimiento.USO_SALDO_PERSONAL,
+      monto: 10000,
+      medioPago: MedioPago.SALDO_PERSONAL,
+      responsableId: 'persona-uuid',
+      movimientoRelacionadoId: 'mov-ingreso-saldo-uuid',
+    };
+
+    it('should delete payment when paid with cash only (no related movement)', async () => {
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockMovimientoIngreso,
+      ]);
+
+      const result = await service.eliminarPagoCampamento(
+        'campamento-uuid',
+        'mov-ingreso-uuid',
+      );
+
+      expect(result.movimientosEliminados).toEqual(['mov-ingreso-uuid']);
+      expect(result.montoRevertido).toBe(10000);
+    });
+
+    it('should delete both ingreso and related egreso when linked', async () => {
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockMovimientoIngresoConRelacion,
+        mockMovimientoEgreso,
+      ]);
+
+      const result = await service.eliminarPagoCampamento(
+        'campamento-uuid',
+        'mov-ingreso-saldo-uuid',
+      );
+
+      expect(result.movimientosEliminados).toContain('mov-ingreso-saldo-uuid');
+      expect(result.movimientosEliminados).toContain('mov-egreso-uuid');
+      expect(result.movimientosEliminados).toHaveLength(2);
+    });
+
+    it('should throw NotFoundException when movimiento not found', async () => {
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      await expect(
+        service.eliminarPagoCampamento('campamento-uuid', 'non-existent-uuid'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when movimiento is not a payment', async () => {
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+      // Return a GASTO instead of PAGO
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'mov-gasto-uuid',
+          tipo: TipoMovimiento.EGRESO,
+          concepto: ConceptoMovimiento.CAMPAMENTO_GASTO,
+          monto: 5000,
+        },
+      ]);
+
+      await expect(
+        service.eliminarPagoCampamento('campamento-uuid', 'mov-gasto-uuid'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

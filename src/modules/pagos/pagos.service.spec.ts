@@ -189,5 +189,58 @@ describe('PagosService', () => {
         }),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('debería crear relación bidireccional entre EGRESO e INGRESO en pagos mixtos', async () => {
+      // Mock para generar IDs únicos en cada create
+      let createCallCount = 0;
+      mockManager.create.mockImplementation((_, data) => {
+        createCallCount++;
+        return {
+          id: `mov-id-${createCallCount}`,
+          ...data,
+        };
+      });
+
+      // Track las llamadas a save para verificar la actualización del egreso
+      const savedEntities: unknown[] = [];
+      mockManager.save.mockImplementation((entity) => {
+        savedEntities.push({ ...entity });
+        return Promise.resolve(entity);
+      });
+
+      await service.ejecutarPagoConManager(mockManager, {
+        personaId: 'persona-id',
+        montoTotal: 5000,
+        montoConSaldoPersonal: 2000,
+        medioPago: MedioPago.EFECTIVO,
+        concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+      });
+
+      // Debería haber 3 saves: egreso inicial, ingreso, egreso actualizado con relación
+      expect(mockManager.save).toHaveBeenCalledTimes(3);
+
+      // El primer save es el egreso (sin relación aún)
+      const egresoInicial = savedEntities[0] as {
+        id: string;
+        movimientoRelacionadoId?: string;
+      };
+      expect(egresoInicial.id).toBe('mov-id-1');
+
+      // El segundo save es el ingreso (con relación al egreso)
+      const ingreso = savedEntities[1] as {
+        id: string;
+        movimientoRelacionadoId?: string;
+      };
+      expect(ingreso.id).toBe('mov-id-2');
+      expect(ingreso.movimientoRelacionadoId).toBe('mov-id-1');
+
+      // El tercer save es el egreso actualizado (con relación al ingreso)
+      const egresoActualizado = savedEntities[2] as {
+        id: string;
+        movimientoRelacionadoId?: string;
+      };
+      expect(egresoActualizado.id).toBe('mov-id-1');
+      expect(egresoActualizado.movimientoRelacionadoId).toBe('mov-id-2');
+    });
   });
 });

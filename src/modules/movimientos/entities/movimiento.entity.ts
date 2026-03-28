@@ -140,6 +140,19 @@ export class Movimiento extends BaseEntity {
   cuotaId!: string | null;
 
   // ==========================================================================
+  // Related movement (for linked operations)
+  // ==========================================================================
+
+  /**
+   * Related movement ID (for linked operations like mixed payments)
+   * When a payment uses personal balance, the EGRESO from personal account
+   * and the INGRESO to group account are linked via this field.
+   * Both movements point to each other for bidirectional relationship.
+   */
+  @Column({ name: 'movimiento_relacionado_id', type: 'uuid', nullable: true })
+  movimientoRelacionadoId!: string | null;
+
+  // ==========================================================================
   // Audit field
   // ==========================================================================
 

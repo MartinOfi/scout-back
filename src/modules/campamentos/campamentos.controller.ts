@@ -19,7 +19,10 @@ import { CampamentosService } from './campamentos.service';
 import { CreateCampamentoDto } from './dtos/create-campamento.dto';
 import { UpdateCampamentoDto } from './dtos/update-campamento.dto';
 import { AddParticipanteDto } from './dtos/add-participante.dto';
+import { PagarCampamentoDto } from './dtos/pagar-campamento.dto';
 import { MedioPago, EstadoPago } from '../../common/enums';
+import { CampamentoDetalleDto } from './dtos/campamento-detalle.dto';
+import { ResultadoPagoDto } from '../pagos/dtos/resultado-pago.dto';
 
 @ApiTags('Campamentos')
 @Controller('campamentos')
@@ -85,6 +88,25 @@ export class CampamentosController {
     return this.campamentosService.getPagosPorParticipante(id);
   }
 
+  @Get(':id/detalle')
+  @ApiOperation({
+    summary: 'Obtener vista completa del campamento',
+    description:
+      'Retorna participantes con estado de pago, todos los movimientos y KPIs financieros',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Detalle completo del campamento',
+    type: CampamentoDetalleDto,
+  })
+  @ApiResponse({ status: 404, description: 'Campamento no encontrado' })
+  async getDetalle(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<CampamentoDetalleDto> {
+    return this.campamentosService.getDetalle(id);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Crear un campamento' })
   @ApiResponse({ status: 201, description: 'Campamento creado' })
@@ -128,33 +150,90 @@ export class CampamentosController {
     return this.campamentosService.removeParticipante(id, personaId);
   }
 
-  @Post(':id/pagos')
-  @ApiOperation({ summary: 'Registrar pago de participante' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiBody({
+  @Post(':id/pagos/:personaId')
+  @ApiOperation({
+    summary: 'Registrar pago de participante',
+    description:
+      'Registra un pago de campamento con soporte para pago mixto (efectivo/transferencia + saldo personal)',
+  })
+  @ApiParam({
+    name: 'id',
+    type: String,
+    format: 'uuid',
+    description: 'ID del campamento',
+  })
+  @ApiParam({
+    name: 'personaId',
+    type: String,
+    format: 'uuid',
+    description: 'ID del participante',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pago registrado exitosamente',
+    type: ResultadoPagoDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Datos inválidos o saldo insuficiente',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Campamento o persona no encontrado',
+  })
+  async registrarPago(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('personaId', ParseUUIDPipe) personaId: string,
+    @Body() dto: PagarCampamentoDto,
+  ): Promise<ResultadoPagoDto> {
+    return this.campamentosService.registrarPago(id, personaId, dto);
+  }
+
+  @Delete(':id/pagos/:movimientoId')
+  @ApiOperation({
+    summary: 'Eliminar pago de campamento',
+    description:
+      'Elimina un pago de campamento. Si el pago usó saldo personal, también revierte el movimiento de egreso asociado.',
+  })
+  @ApiParam({
+    name: 'id',
+    type: String,
+    format: 'uuid',
+    description: 'ID del campamento',
+  })
+  @ApiParam({
+    name: 'movimientoId',
+    type: String,
+    format: 'uuid',
+    description: 'ID del movimiento de pago (INGRESO) a eliminar',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pago eliminado exitosamente',
     schema: {
       type: 'object',
-      required: ['personaId', 'monto', 'medioPago'],
       properties: {
-        personaId: { type: 'string', format: 'uuid' },
-        monto: { type: 'number', example: 15000 },
-        medioPago: { type: 'string', enum: ['efectivo', 'transferencia'] },
+        movimientosEliminados: {
+          type: 'array',
+          items: { type: 'string', format: 'uuid' },
+          description: 'IDs de los movimientos eliminados',
+        },
+        montoRevertido: {
+          type: 'number',
+          description: 'Monto total revertido',
+        },
       },
     },
   })
-  @ApiResponse({ status: 200, description: 'Pago registrado' })
-  async registrarPago(
+  @ApiResponse({
+    status: 404,
+    description: 'Campamento o movimiento no encontrado',
+  })
+  async eliminarPago(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body('personaId', ParseUUIDPipe) personaId: string,
-    @Body('monto') monto: number,
-    @Body('medioPago') medioPago: MedioPago,
-  ) {
-    return this.campamentosService.registrarPago(
-      id,
-      personaId,
-      monto,
-      medioPago,
-    );
+    @Param('movimientoId', ParseUUIDPipe) movimientoId: string,
+  ): Promise<{ movimientosEliminados: string[]; montoRevertido: number }> {
+    return this.campamentosService.eliminarPagoCampamento(id, movimientoId);
   }
 
   @Post(':id/gastos')
