@@ -225,3 +225,13 @@ export enum TipoDeuda {
   DINERO = 'dinero', // Only money owed (saldoPendiente > 0)
   AMBOS = 'ambos', // Both money AND documentation debt
 }
+
+/**
+ * Filter for campamento movements in detail view
+ * Used to filter which movements are returned in the response
+ */
+export enum FiltroMovimientosCampamento {
+  TODOS = 'todos', // All movements (INGRESO + EGRESO including USO_SALDO_PERSONAL)
+  INGRESOS = 'ingresos', // Only INGRESO movements (payments received)
+  GASTOS = 'gastos', // Only real expenses (CAMPAMENTO_GASTO, excludes USO_SALDO_PERSONAL)
+}

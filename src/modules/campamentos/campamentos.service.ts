@@ -23,6 +23,7 @@ import {
   MedioPago,
   EstadoPago,
   EstadoPagoCampamento,
+  FiltroMovimientosCampamento,
 } from '../../common/enums';
 import {
   CampamentoDetalleDto,
@@ -209,8 +210,14 @@ export class CampamentosService {
       .filter((m) => m.tipo === TipoMovimiento.INGRESO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
+    // Solo sumar gastos reales del campamento (compras, lugar, traslado, etc.)
+    // Excluir USO_SALDO_PERSONAL que son egresos de cuentas personales por pagos
     const totalGastado = movimientos
-      .filter((m) => m.tipo === TipoMovimiento.EGRESO)
+      .filter(
+        (m) =>
+          m.tipo === TipoMovimiento.EGRESO &&
+          m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
+      )
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
     return {
@@ -300,19 +307,23 @@ export class CampamentosService {
   /**
    * Get complete campamento detail including participants, payments, and KPIs
    * Consolidates getResumenFinanciero and getPagosPorParticipante in a single call
+   * @param filtroMovimientos Filter for movements: todos, ingresos, gastos (default: todos)
    */
-  async getDetalle(campamentoId: string): Promise<CampamentoDetalleDto> {
+  async getDetalle(
+    campamentoId: string,
+    filtroMovimientos?: FiltroMovimientosCampamento,
+  ): Promise<CampamentoDetalleDto> {
     // 1. Load campamento with participants
     const campamento = await this.findOne(campamentoId);
 
     // 2. Load all movements for this campamento
-    const movimientos = await this.movimientosService.findByRelatedEntity(
+    const todosMovimientos = await this.movimientosService.findByRelatedEntity(
       'campamento',
       campamentoId,
     );
 
     // 3. Separate payments (INGRESO) from expenses (EGRESO)
-    const pagos = movimientos.filter(
+    const pagos = todosMovimientos.filter(
       (m) =>
         m.tipo === TipoMovimiento.INGRESO &&
         m.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO,
@@ -329,15 +340,19 @@ export class CampamentosService {
       costoPorPersona,
     );
 
-    // 6. Calculate KPIs
+    // 6. Calculate KPIs (always use all movements for accurate KPIs)
     const kpis = this.calculateKpis(
       participantesDto,
-      movimientos,
+      todosMovimientos,
       costoPorPersona,
     );
 
-    // 7. Build movimientos DTO
-    const movimientosDto = this.buildMovimientosDto(movimientos);
+    // 7. Filter and build movimientos DTO based on filter
+    const movimientosFiltrados = this.filterMovimientos(
+      todosMovimientos,
+      filtroMovimientos,
+    );
+    const movimientosDto = this.buildMovimientosDto(movimientosFiltrados);
 
     // 8. Assemble response
     return {
@@ -354,6 +369,31 @@ export class CampamentosService {
       movimientos: movimientosDto,
       kpis,
     };
+  }
+
+  /**
+   * Filter movements based on the specified filter
+   */
+  private filterMovimientos(
+    movimientos: Movimiento[],
+    filtro?: FiltroMovimientosCampamento,
+  ): Movimiento[] {
+    switch (filtro) {
+      case FiltroMovimientosCampamento.INGRESOS:
+        return movimientos.filter((m) => m.tipo === TipoMovimiento.INGRESO);
+
+      case FiltroMovimientosCampamento.GASTOS:
+        // Solo gastos reales del campamento (excluye USO_SALDO_PERSONAL)
+        return movimientos.filter(
+          (m) =>
+            m.tipo === TipoMovimiento.EGRESO &&
+            m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
+        );
+
+      case FiltroMovimientosCampamento.TODOS:
+      default:
+        return movimientos;
+    }
   }
 
   /**
@@ -468,8 +508,14 @@ export class CampamentosService {
       .filter((m) => m.tipo === TipoMovimiento.INGRESO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
+    // Solo sumar gastos reales del campamento (compras, lugar, traslado, etc.)
+    // Excluir USO_SALDO_PERSONAL que son egresos de cuentas personales por pagos
     const totalGastado = movimientos
-      .filter((m) => m.tipo === TipoMovimiento.EGRESO)
+      .filter(
+        (m) =>
+          m.tipo === TipoMovimiento.EGRESO &&
+          m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
+      )
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
     const participantesPagadosCompleto = participantes.filter(

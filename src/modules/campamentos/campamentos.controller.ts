@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
 import {
@@ -14,13 +15,18 @@ import {
   ApiResponse,
   ApiParam,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { CampamentosService } from './campamentos.service';
 import { CreateCampamentoDto } from './dtos/create-campamento.dto';
 import { UpdateCampamentoDto } from './dtos/update-campamento.dto';
 import { AddParticipanteDto } from './dtos/add-participante.dto';
 import { PagarCampamentoDto } from './dtos/pagar-campamento.dto';
-import { MedioPago, EstadoPago } from '../../common/enums';
+import {
+  MedioPago,
+  EstadoPago,
+  FiltroMovimientosCampamento,
+} from '../../common/enums';
 import { CampamentoDetalleDto } from './dtos/campamento-detalle.dto';
 import { ResultadoPagoDto } from '../pagos/dtos/resultado-pago.dto';
 
@@ -92,9 +98,16 @@ export class CampamentosController {
   @ApiOperation({
     summary: 'Obtener vista completa del campamento',
     description:
-      'Retorna participantes con estado de pago, todos los movimientos y KPIs financieros',
+      'Retorna participantes con estado de pago, movimientos filtrados y KPIs financieros',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiQuery({
+    name: 'filtroMovimientos',
+    enum: FiltroMovimientosCampamento,
+    required: false,
+    description:
+      'Filtro de movimientos: todos (default), ingresos (pagos recibidos), gastos (compras reales, sin uso de saldo personal)',
+  })
   @ApiResponse({
     status: 200,
     description: 'Detalle completo del campamento',
@@ -103,8 +116,9 @@ export class CampamentosController {
   @ApiResponse({ status: 404, description: 'Campamento no encontrado' })
   async getDetalle(
     @Param('id', ParseUUIDPipe) id: string,
+    @Query('filtroMovimientos') filtro?: FiltroMovimientosCampamento,
   ): Promise<CampamentoDetalleDto> {
-    return this.campamentosService.getDetalle(id);
+    return this.campamentosService.getDetalle(id, filtro);
   }
 
   @Post()
