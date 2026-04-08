@@ -179,8 +179,9 @@ export class EventosController {
   async cerrarEvento(
     @Param('id', ParseUUIDPipe) id: string,
     @Body('medioPago') medioPago: MedioPago,
+    @CurrentUser('id') userId: string,
   ) {
-    return this.eventosService.cerrarEventoVenta(id, medioPago);
+    return this.eventosService.cerrarEventoVenta(id, medioPago, userId);
   }
 
   // ==================== INGRESOS/GASTOS ====================

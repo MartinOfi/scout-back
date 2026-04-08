@@ -233,6 +233,7 @@ export class EventosService {
   async cerrarEventoVenta(
     eventoId: string,
     medioPago: MedioPago,
+    registradoPorId?: string,
   ): Promise<void> {
     const evento = await this.findOne(eventoId);
 
@@ -264,34 +265,40 @@ export class EventosService {
 
     if (evento.destinoGanancia === DestinoGanancia.CAJA_GRUPO) {
       // Todo va a la caja del grupo
-      await this.movimientosService.create({
-        cajaId: cajaGrupo.id,
-        tipo: TipoMovimiento.INGRESO,
-        monto: gananciaTotal,
-        concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
-        descripcion: `Ganancia evento "${evento.nombre}"`,
-        responsableId: Array.from(gananciaPorVendedor.keys())[0] || '',
-        medioPago,
-        estadoPago: EstadoPago.PAGADO,
-        eventoId,
-      });
+      await this.movimientosService.create(
+        {
+          cajaId: cajaGrupo.id,
+          tipo: TipoMovimiento.INGRESO,
+          monto: gananciaTotal,
+          concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+          descripcion: `Ganancia evento "${evento.nombre}"`,
+          responsableId: Array.from(gananciaPorVendedor.keys())[0] || '',
+          medioPago,
+          estadoPago: EstadoPago.PAGADO,
+          eventoId,
+        },
+        registradoPorId,
+      );
     } else {
       // Distribuir a cuentas personales
       for (const [vendedorId, ganancia] of gananciaPorVendedor) {
         const cajaPersonal =
           await this.cajasService.getOrCreateCajaPersonal(vendedorId);
 
-        await this.movimientosService.create({
-          cajaId: cajaPersonal.id,
-          tipo: TipoMovimiento.INGRESO,
-          monto: ganancia,
-          concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
-          descripcion: `Ganancia evento "${evento.nombre}"`,
-          responsableId: vendedorId,
-          medioPago,
-          estadoPago: EstadoPago.PAGADO,
-          eventoId,
-        });
+        await this.movimientosService.create(
+          {
+            cajaId: cajaPersonal.id,
+            tipo: TipoMovimiento.INGRESO,
+            monto: ganancia,
+            concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+            descripcion: `Ganancia evento "${evento.nombre}"`,
+            responsableId: vendedorId,
+            medioPago,
+            estadoPago: EstadoPago.PAGADO,
+            eventoId,
+          },
+          registradoPorId,
+        );
       }
     }
   }
