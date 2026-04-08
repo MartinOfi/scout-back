@@ -143,7 +143,7 @@ export class CampamentoKpisDto {
     description:
       'Egresos CAMPAMENTO_GASTO con estadoPago=PAGADO. Impacta directamente en la caja del grupo.',
   })
-  totalGastadoEfectivo!: number;
+  totalGastado!: number;
 
   @ApiProperty({
     type: Number,
@@ -157,7 +157,7 @@ export class CampamentoKpisDto {
     type: Number,
     example: 135000,
     description:
-      'totalRecaudado - totalGastadoEfectivo. Saldo real disponible en la caja del grupo.',
+      'totalRecaudado - totalGastado. Saldo real disponible en la caja del grupo.',
   })
   balance!: number;
 

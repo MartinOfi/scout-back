@@ -454,7 +454,7 @@ describe('CampamentosService', () => {
       expect(result.participantes).toBe(2);
       expect(result.totalEsperado).toBe(30000); // 2 * 15000
       expect(result.totalRecaudado).toBe(0);
-      expect(result.totalGastadoEfectivo).toBe(0);
+      expect(result.totalGastado).toBe(0);
       expect(result.totalPendienteReembolso).toBe(0);
       expect(result.saldo).toBe(0);
     });
@@ -616,23 +616,23 @@ describe('CampamentosService', () => {
       );
 
       // KPIs must be identical regardless of filter
-      expect(resultGastos.kpis.totalGastadoEfectivo).toBe(
-        resultTodos.kpis.totalGastadoEfectivo,
+      expect(resultGastos.kpis.totalGastado).toBe(
+        resultTodos.kpis.totalGastado,
       );
       expect(resultGastos.kpis.totalRecaudado).toBe(
         resultTodos.kpis.totalRecaudado,
       );
     });
 
-    it('should calculate totalGastadoEfectivo with only CAMPAMENTO_GASTO PAGADO (not USO_SALDO_PERSONAL)', async () => {
+    it('should calculate totalGastado with only CAMPAMENTO_GASTO PAGADO (not USO_SALDO_PERSONAL)', async () => {
       const result = await service.getDetalle('campamento-uuid');
 
-      // totalGastadoEfectivo = only mockMovimientoGasto (3000, PAGADO), NOT mockMovimientoUseSaldo (5000)
-      expect(result.kpis.totalGastadoEfectivo).toBe(3000);
+      // totalGastado = only mockMovimientoGasto (3000, PAGADO), NOT mockMovimientoUseSaldo (5000)
+      expect(result.kpis.totalGastado).toBe(3000);
       expect(result.kpis.totalPendienteReembolso).toBe(0);
     });
 
-    it('should discriminate CAMPAMENTO_GASTO by estadoPago into totalGastadoEfectivo vs totalPendienteReembolso', async () => {
+    it('should discriminate CAMPAMENTO_GASTO by estadoPago into totalGastado vs totalPendienteReembolso', async () => {
       const mockMovimientoGastoPendiente = {
         id: 'mov-gasto-pendiente-uuid',
         tipo: TipoMovimiento.EGRESO,
@@ -655,7 +655,7 @@ describe('CampamentosService', () => {
 
       const result = await service.getDetalle('campamento-uuid');
 
-      expect(result.kpis.totalGastadoEfectivo).toBe(3000);
+      expect(result.kpis.totalGastado).toBe(3000);
       expect(result.kpis.totalPendienteReembolso).toBe(2000);
       // balance only deducts effective expenses
       expect(result.kpis.balance).toBe(10000 - 3000);

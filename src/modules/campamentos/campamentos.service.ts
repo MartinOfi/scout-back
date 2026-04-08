@@ -202,7 +202,7 @@ export class CampamentosService {
   async getResumenFinanciero(campamentoId: string): Promise<{
     totalEsperado: number;
     totalRecaudado: number;
-    totalGastadoEfectivo: number;
+    totalGastado: number;
     totalPendienteReembolso: number;
     saldo: number;
     participantes: number;
@@ -223,7 +223,7 @@ export class CampamentosService {
         m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
     );
 
-    const totalGastadoEfectivo = gastosCampamento
+    const totalGastado = gastosCampamento
       .filter((m) => m.estadoPago === EstadoPago.PAGADO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
@@ -235,9 +235,9 @@ export class CampamentosService {
       totalEsperado:
         campamento.participantes.length * Number(campamento.costoPorPersona),
       totalRecaudado,
-      totalGastadoEfectivo,
+      totalGastado,
       totalPendienteReembolso,
-      saldo: totalRecaudado - totalGastadoEfectivo,
+      saldo: totalRecaudado - totalGastado,
       participantes: campamento.participantes.length,
     };
   }
@@ -532,7 +532,7 @@ export class CampamentosService {
         m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
     );
 
-    const totalGastadoEfectivo = gastosCampamento
+    const totalGastado = gastosCampamento
       .filter((m) => m.estadoPago === EstadoPago.PAGADO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
@@ -555,9 +555,9 @@ export class CampamentosService {
     return {
       totalARecaudar,
       totalRecaudado,
-      totalGastadoEfectivo,
+      totalGastado,
       totalPendienteReembolso,
-      balance: totalRecaudado - totalGastadoEfectivo,
+      balance: totalRecaudado - totalGastado,
       deudaTotal: totalARecaudar - totalRecaudado,
       cantidadParticipantes,
       participantesPagadosCompleto,
