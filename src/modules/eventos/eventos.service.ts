@@ -70,8 +70,8 @@ export class EventosService {
 
   async update(id: string, dto: UpdateEventoDto): Promise<Evento> {
     const evento = await this.findOne(id);
-    Object.assign(evento, dto);
-    return this.eventoRepository.save(evento);
+    const updated = this.eventoRepository.merge(evento, dto);
+    return this.eventoRepository.save(updated);
   }
 
   /**
@@ -109,7 +109,9 @@ export class EventosService {
 
   // ==================== PRODUCTOS ====================
 
-  async createProducto(dto: CreateProductoDto): Promise<Producto> {
+  async createProducto(
+    dto: CreateProductoDto & { eventoId: string },
+  ): Promise<Producto> {
     await this.findOne(dto.eventoId); // Validar que el evento existe
 
     const producto = this.productoRepository.create(dto);

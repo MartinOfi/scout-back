@@ -21,6 +21,7 @@ import {
 } from '../../common/enums';
 import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
+import { Movimiento } from '../movimientos/entities/movimiento.entity';
 
 describe('EventosService', () => {
   let service: EventosService;
@@ -258,8 +259,12 @@ describe('EventosService', () => {
         });
         ventaProductoRepository.find.mockResolvedValue(ventas);
         productoRepository.find.mockResolvedValue(productos);
-        ventaProductoRepository.softRemove.mockResolvedValue(ventas as any);
-        productoRepository.softRemove.mockResolvedValue(productos as any);
+        ventaProductoRepository.softRemove.mockResolvedValue(
+          ventas as unknown as VentaProducto,
+        );
+        productoRepository.softRemove.mockResolvedValue(
+          productos as unknown as Producto,
+        );
         eventoRepository.softRemove.mockResolvedValue(mockEvento as Evento);
 
         await service.remove('evento-uuid');
@@ -289,11 +294,11 @@ describe('EventosService', () => {
 
         ventaProductoRepository.softRemove.mockImplementation(async () => {
           callOrder.push('ventas');
-          return [mockVenta as VentaProducto] as any;
+          return mockVenta as VentaProducto;
         });
         productoRepository.softRemove.mockImplementation(async () => {
           callOrder.push('productos');
-          return [mockProducto as Producto] as any;
+          return mockProducto as Producto;
         });
         eventoRepository.softRemove.mockImplementation(async () => {
           callOrder.push('evento');
@@ -366,7 +371,9 @@ describe('EventosService', () => {
           canDelete: true,
         });
         ventaProductoRepository.find.mockResolvedValue(ventas);
-        ventaProductoRepository.softRemove.mockResolvedValue(ventas as any);
+        ventaProductoRepository.softRemove.mockResolvedValue(
+          ventas as unknown as VentaProducto,
+        );
         productoRepository.softRemove.mockResolvedValue(
           mockProducto as Producto,
         );
@@ -546,7 +553,7 @@ describe('EventosService', () => {
           eventoId: 'evento-uuid',
           vendedorId: 'persona-uuid',
         },
-      ] as any);
+      ] as unknown as VentaProducto);
 
       const result = await service.registrarVentasLote('evento-uuid', dto);
 
@@ -618,7 +625,9 @@ describe('EventosService', () => {
       ventaProductoRepository.create.mockImplementation(
         (data) => data as VentaProducto,
       );
-      ventaProductoRepository.save.mockResolvedValue([] as any);
+      ventaProductoRepository.save.mockResolvedValue(
+        [] as unknown as VentaProducto,
+      );
 
       await service.registrarVentasLote('evento-uuid', dto);
 
@@ -715,18 +724,18 @@ describe('EventosService', () => {
       fecha: new Date('2026-01-12'),
     };
 
-    it('should discriminate egresos by estadoPago into totalGastadoEfectivo and totalPendienteReembolso', async () => {
+    it('should discriminate egresos by estadoPago into totalGastado and totalPendienteReembolso', async () => {
       eventoRepository.findOne.mockResolvedValue(mockEventoGrupo as Evento);
       movimientosService.findByRelatedEntity.mockResolvedValue([
         mockIngreso,
         mockGastoPagado,
         mockGastoPendiente,
-      ] as any);
+      ] as unknown as Movimiento[]);
 
       const result = await service.getKpisEvento('evento-grupo-uuid');
 
       expect(result.totalIngresos).toBe(15000);
-      expect(result.totalGastadoEfectivo).toBe(4000);
+      expect(result.totalGastado).toBe(4000);
       expect(result.totalPendienteReembolso).toBe(2500);
       expect(result.balance).toBe(15000 - 4000); // 11000
     });
@@ -736,12 +745,12 @@ describe('EventosService', () => {
       movimientosService.findByRelatedEntity.mockResolvedValue([
         mockIngreso, // 15000 ingreso
         mockGastoPendiente, // 2500 pendiente (should NOT affect balance)
-      ] as any);
+      ] as unknown as Movimiento[]);
 
       const result = await service.getKpisEvento('evento-grupo-uuid');
 
       expect(result.balance).toBe(15000); // Pending does not reduce balance
-      expect(result.totalGastadoEfectivo).toBe(0);
+      expect(result.totalGastado).toBe(0);
       expect(result.totalPendienteReembolso).toBe(2500);
     });
 
@@ -752,7 +761,7 @@ describe('EventosService', () => {
       const result = await service.getKpisEvento('evento-grupo-uuid');
 
       expect(result.totalIngresos).toBe(0);
-      expect(result.totalGastadoEfectivo).toBe(0);
+      expect(result.totalGastado).toBe(0);
       expect(result.totalPendienteReembolso).toBe(0);
       expect(result.balance).toBe(0);
     });
@@ -776,7 +785,7 @@ describe('EventosService', () => {
           1000,
           'Donación',
           'persona-uuid',
-          'efectivo' as any,
+          MedioPago.EFECTIVO,
         ),
       ).rejects.toThrow(BadRequestException);
       await expect(
@@ -785,7 +794,7 @@ describe('EventosService', () => {
           1000,
           'Donación',
           'persona-uuid',
-          'efectivo' as any,
+          MedioPago.EFECTIVO,
         ),
       ).rejects.toThrow(/solo para eventos de grupo/);
     });

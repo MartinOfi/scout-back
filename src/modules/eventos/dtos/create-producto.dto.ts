@@ -1,21 +1,24 @@
 import {
   IsString,
   IsNumber,
+  IsOptional,
   IsUUID,
   IsPositive,
   MinLength,
   MaxLength,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 
 export class CreateProductoDto {
-  @ApiProperty({
-    description: 'ID del evento al que pertenece el producto',
+  @ApiPropertyOptional({
+    description:
+      'ID del evento al que pertenece el producto (se toma de la URL cuando se usa POST /eventos/:id/productos)',
     example: '550e8400-e29b-41d4-a716-446655440000',
     format: 'uuid',
   })
   @IsUUID()
-  eventoId!: string;
+  @IsOptional()
+  eventoId?: string;
 
   @ApiProperty({
     description: 'Nombre del producto',
