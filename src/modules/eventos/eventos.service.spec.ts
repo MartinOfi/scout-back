@@ -28,7 +28,6 @@ describe('EventosService', () => {
   let productoRepository: jest.Mocked<Repository<Producto>>;
   let ventaProductoRepository: jest.Mocked<Repository<VentaProducto>>;
   let personasService: jest.Mocked<PersonasService>;
-  let cajasService: jest.Mocked<CajasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
 
@@ -41,7 +40,7 @@ describe('EventosService', () => {
     id: 'evento-uuid',
     nombre: 'Venta de Empanadas',
     tipo: TipoEvento.VENTA,
-    destinoGanancia: DestinoGanancia.CUENTA_PERSONAL,
+    destinoGanancia: DestinoGanancia.CUENTAS_PERSONALES,
     fecha: new Date('2024-06-15'),
     productos: [],
     createdAt: new Date(),
@@ -170,7 +169,6 @@ describe('EventosService', () => {
     productoRepository = module.get(getRepositoryToken(Producto));
     ventaProductoRepository = module.get(getRepositoryToken(VentaProducto));
     personasService = module.get(PersonasService);
-    cajasService = module.get(CajasService);
     movimientosService = module.get(MovimientosService);
     deletionValidator = module.get(DeletionValidatorService);
   });
@@ -260,8 +258,8 @@ describe('EventosService', () => {
         });
         ventaProductoRepository.find.mockResolvedValue(ventas);
         productoRepository.find.mockResolvedValue(productos);
-        ventaProductoRepository.softRemove.mockResolvedValue(ventas);
-        productoRepository.softRemove.mockResolvedValue(productos);
+        ventaProductoRepository.softRemove.mockResolvedValue(ventas as any);
+        productoRepository.softRemove.mockResolvedValue(productos as any);
         eventoRepository.softRemove.mockResolvedValue(mockEvento as Evento);
 
         await service.remove('evento-uuid');
@@ -291,11 +289,11 @@ describe('EventosService', () => {
 
         ventaProductoRepository.softRemove.mockImplementation(async () => {
           callOrder.push('ventas');
-          return [mockVenta as VentaProducto];
+          return [mockVenta as VentaProducto] as any;
         });
         productoRepository.softRemove.mockImplementation(async () => {
           callOrder.push('productos');
-          return [mockProducto as Producto];
+          return [mockProducto as Producto] as any;
         });
         eventoRepository.softRemove.mockImplementation(async () => {
           callOrder.push('evento');
@@ -368,7 +366,7 @@ describe('EventosService', () => {
           canDelete: true,
         });
         ventaProductoRepository.find.mockResolvedValue(ventas);
-        ventaProductoRepository.softRemove.mockResolvedValue(ventas);
+        ventaProductoRepository.softRemove.mockResolvedValue(ventas as any);
         productoRepository.softRemove.mockResolvedValue(
           mockProducto as Producto,
         );
@@ -391,14 +389,14 @@ describe('EventosService', () => {
       const dto = {
         nombre: 'Nuevo Evento',
         tipo: TipoEvento.VENTA,
-        destinoGanancia: DestinoGanancia.CUENTA_PERSONAL,
+        destinoGanancia: DestinoGanancia.CUENTAS_PERSONALES,
         fecha: new Date('2024-08-01'),
       };
 
       const created = { ...dto, id: 'new-uuid', productos: [] };
 
-      eventoRepository.create.mockReturnValue(created as Evento);
-      eventoRepository.save.mockResolvedValue(created as Evento);
+      eventoRepository.create.mockReturnValue(created as unknown as Evento);
+      eventoRepository.save.mockResolvedValue(created as unknown as Evento);
 
       const result = await service.create(dto);
 
@@ -548,7 +546,7 @@ describe('EventosService', () => {
           eventoId: 'evento-uuid',
           vendedorId: 'persona-uuid',
         },
-      ] as VentaProducto[]);
+      ] as any);
 
       const result = await service.registrarVentasLote('evento-uuid', dto);
 
@@ -620,7 +618,7 @@ describe('EventosService', () => {
       ventaProductoRepository.create.mockImplementation(
         (data) => data as VentaProducto,
       );
-      ventaProductoRepository.save.mockResolvedValue([] as VentaProducto[]);
+      ventaProductoRepository.save.mockResolvedValue([] as any);
 
       await service.registrarVentasLote('evento-uuid', dto);
 

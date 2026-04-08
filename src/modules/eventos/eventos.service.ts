@@ -374,7 +374,7 @@ export class EventosService {
 
   async getKpisEvento(eventoId: string): Promise<{
     totalIngresos: number;
-    totalGastadoEfectivo: number;
+    totalGastado: number;
     totalPendienteReembolso: number;
     balance: number;
   }> {
@@ -393,7 +393,7 @@ export class EventosService {
       (m) => m.tipo === TipoMovimiento.EGRESO,
     );
 
-    const totalGastadoEfectivo = gastosEvento
+    const totalGastado = gastosEvento
       .filter((m) => m.estadoPago === EstadoPago.PAGADO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
@@ -403,9 +403,9 @@ export class EventosService {
 
     return {
       totalIngresos,
-      totalGastadoEfectivo,
+      totalGastado,
       totalPendienteReembolso,
-      balance: totalIngresos - totalGastadoEfectivo,
+      balance: totalIngresos - totalGastado,
     };
   }
 
