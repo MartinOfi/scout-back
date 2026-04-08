@@ -676,6 +676,65 @@ describe('EventosService', () => {
     });
   });
 
+  describe('findProductosConVentas', () => {
+    it('should return productos with cantidadVendida summed across all ventas', async () => {
+      const mockVenta2: Partial<VentaProducto> = {
+        ...mockVenta,
+        id: 'venta-uuid-2',
+        cantidad: 5,
+      };
+
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+      ventaProductoRepository.find.mockResolvedValue([
+        mockVenta as VentaProducto,
+        mockVenta2 as VentaProducto,
+      ]);
+
+      const result = await service.findProductosConVentas('evento-uuid');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].cantidadVendida).toBe(15); // 10 + 5
+    });
+
+    it('should return cantidadVendida = 0 when no ventas exist', async () => {
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+      ventaProductoRepository.find.mockResolvedValue([]);
+
+      const result = await service.findProductosConVentas('evento-uuid');
+
+      expect(result[0].cantidadVendida).toBe(0);
+    });
+
+    it('should not count ventas from other productos', async () => {
+      const otroProducto: Partial<Producto> = {
+        ...mockProducto,
+        id: 'otro-producto-uuid',
+        nombre: 'Empanada de Verdura',
+      };
+      const ventaOtroProducto: Partial<VentaProducto> = {
+        ...mockVenta,
+        productoId: 'otro-producto-uuid',
+        cantidad: 99,
+      };
+
+      productoRepository.find.mockResolvedValue([
+        mockProducto as Producto,
+        otroProducto as Producto,
+      ]);
+      ventaProductoRepository.find.mockResolvedValue([
+        mockVenta as VentaProducto,
+        ventaOtroProducto as VentaProducto,
+      ]);
+
+      const result = await service.findProductosConVentas('evento-uuid');
+      const empanaCarne = result.find((p) => p.id === 'producto-uuid')!;
+      const empanaVerdura = result.find((p) => p.id === 'otro-producto-uuid')!;
+
+      expect(empanaCarne.cantidadVendida).toBe(10);
+      expect(empanaVerdura.cantidadVendida).toBe(99);
+    });
+  });
+
   describe('findVentasByEvento', () => {
     it('should return ventas for an evento with relations', async () => {
       ventaProductoRepository.find.mockResolvedValue([
@@ -772,6 +831,149 @@ describe('EventosService', () => {
       await expect(service.getKpisEvento('non-existent-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('getResumenVentas', () => {
+    const mockProducto2: Partial<Producto> = {
+      id: 'producto-2-uuid',
+      eventoId: 'evento-uuid',
+      nombre: 'Empanada de Verdura',
+      precioCosto: 400,
+      precioVenta: 800,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      deletedAt: null,
+    };
+
+    const mockVendedor2Id = 'persona-2-uuid';
+
+    const makeVenta = (
+      overrides: Partial<VentaProducto> & { vendedor: Partial<Persona> },
+    ): VentaProducto =>
+      ({
+        ...mockVenta,
+        ...overrides,
+      }) as VentaProducto;
+
+    it('should include desglose per product for each vendedor', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([
+        mockProducto as Producto,
+        mockProducto2 as Producto,
+      ]);
+      // vendedor 1 sold 10 of producto1, 5 of producto2
+      ventaProductoRepository.find.mockResolvedValue([
+        makeVenta({
+          productoId: 'producto-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 10,
+          vendedor: { id: 'persona-uuid', nombre: 'Juan Scout' } as Persona,
+          producto: mockProducto as Producto,
+        }),
+        makeVenta({
+          id: 'venta-2-uuid',
+          productoId: 'producto-2-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 5,
+          vendedor: { id: 'persona-uuid', nombre: 'Juan Scout' } as Persona,
+          producto: mockProducto2 as Producto,
+        }),
+      ]);
+
+      const result = await service.getResumenVentas('evento-uuid');
+
+      const vendedor = result.ventasPorVendedor[0];
+      expect(vendedor.desglose).toHaveLength(2);
+
+      const desgloseProducto1 = vendedor.desglose.find(
+        (d) => d.productoId === 'producto-uuid',
+      )!;
+      expect(desgloseProducto1.cantidad).toBe(10);
+      expect(desgloseProducto1.ganancia).toBe(5000); // (1000-500)*10
+
+      const desgloseProducto2 = vendedor.desglose.find(
+        (d) => d.productoId === 'producto-2-uuid',
+      )!;
+      expect(desgloseProducto2.cantidad).toBe(5);
+      expect(desgloseProducto2.ganancia).toBe(2000); // (800-400)*5
+    });
+
+    it('should aggregate desglose across multiple ventas of the same product', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+      ventaProductoRepository.find.mockResolvedValue([
+        makeVenta({
+          productoId: 'producto-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 4,
+          vendedor: { id: 'persona-uuid', nombre: 'Juan Scout' } as Persona,
+          producto: mockProducto as Producto,
+        }),
+        makeVenta({
+          id: 'venta-2-uuid',
+          productoId: 'producto-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 6,
+          vendedor: { id: 'persona-uuid', nombre: 'Juan Scout' } as Persona,
+          producto: mockProducto as Producto,
+        }),
+      ]);
+
+      const result = await service.getResumenVentas('evento-uuid');
+
+      const vendedor = result.ventasPorVendedor[0];
+      expect(vendedor.desglose).toHaveLength(1);
+      expect(vendedor.desglose[0].cantidad).toBe(10);
+      expect(vendedor.desglose[0].ganancia).toBe(5000); // (1000-500)*10
+    });
+
+    it('should keep desgloses separate per vendedor', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+      ventaProductoRepository.find.mockResolvedValue([
+        makeVenta({
+          productoId: 'producto-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 3,
+          vendedor: { id: 'persona-uuid', nombre: 'Juan Scout' } as Persona,
+          producto: mockProducto as Producto,
+        }),
+        makeVenta({
+          id: 'venta-v2-uuid',
+          productoId: 'producto-uuid',
+          vendedorId: mockVendedor2Id,
+          cantidad: 7,
+          vendedor: {
+            id: mockVendedor2Id,
+            nombre: 'María Scout',
+          } as Persona,
+          producto: mockProducto as Producto,
+        }),
+      ]);
+
+      const result = await service.getResumenVentas('evento-uuid');
+
+      const v1 = result.ventasPorVendedor.find(
+        (v) => v.vendedorId === 'persona-uuid',
+      )!;
+      const v2 = result.ventasPorVendedor.find(
+        (v) => v.vendedorId === mockVendedor2Id,
+      )!;
+
+      expect(v1.desglose[0].cantidad).toBe(3);
+      expect(v2.desglose[0].cantidad).toBe(7);
+    });
+
+    it('should return empty desglose when no ventas exist', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+      ventaProductoRepository.find.mockResolvedValue([]);
+
+      const result = await service.getResumenVentas('evento-uuid');
+
+      expect(result.ventasPorVendedor).toHaveLength(0);
+      expect(result.gananciaTotal).toBe(0);
     });
   });
 

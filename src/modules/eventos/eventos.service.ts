@@ -125,6 +125,22 @@ export class EventosService {
     });
   }
 
+  async findProductosConVentas(
+    eventoId: string,
+  ): Promise<Array<Producto & { cantidadVendida: number }>> {
+    const [productos, ventas] = await Promise.all([
+      this.findProductosByEvento(eventoId),
+      this.ventaProductoRepository.find({ where: { eventoId } }),
+    ]);
+
+    return productos.map((p) => ({
+      ...p,
+      cantidadVendida: ventas
+        .filter((v) => v.productoId === p.id)
+        .reduce((sum, v) => sum + v.cantidad, 0),
+    }));
+  }
+
   /**
    * Soft delete de producto - solo si el evento no tiene movimientos
    *
@@ -424,6 +440,12 @@ export class EventosService {
       vendedorNombre: string;
       cantidadTotal: number;
       gananciaTotal: number;
+      desglose: Array<{
+        productoId: string;
+        nombreProducto: string;
+        cantidad: number;
+        ganancia: number;
+      }>;
     }>;
     gananciaTotal: number;
   }> {
@@ -455,7 +477,15 @@ export class EventosService {
     // Resumen por vendedor
     const ventasPorVendedor = new Map<
       string,
-      { nombre: string; cantidad: number; ganancia: number }
+      {
+        nombre: string;
+        cantidad: number;
+        ganancia: number;
+        desglose: Map<
+          string,
+          { nombre: string; cantidad: number; ganancia: number }
+        >;
+      }
     >();
 
     for (const venta of ventas) {
@@ -466,16 +496,31 @@ export class EventosService {
         Number(producto.precioVenta) - Number(producto.precioCosto);
       const gananciaVenta = gananciaUnitaria * venta.cantidad;
 
-      const actual = ventasPorVendedor.get(venta.vendedorId) || {
+      const actual = ventasPorVendedor.get(venta.vendedorId) ?? {
         nombre: venta.vendedor.nombre,
+        cantidad: 0,
+        ganancia: 0,
+        desglose: new Map<
+          string,
+          { nombre: string; cantidad: number; ganancia: number }
+        >(),
+      };
+
+      const actualDesglose = actual.desglose.get(venta.productoId) ?? {
+        nombre: producto.nombre,
         cantidad: 0,
         ganancia: 0,
       };
 
       ventasPorVendedor.set(venta.vendedorId, {
-        nombre: actual.nombre,
+        ...actual,
         cantidad: actual.cantidad + venta.cantidad,
         ganancia: actual.ganancia + gananciaVenta,
+        desglose: new Map(actual.desglose).set(venta.productoId, {
+          nombre: actualDesglose.nombre,
+          cantidad: actualDesglose.cantidad + venta.cantidad,
+          ganancia: actualDesglose.ganancia + gananciaVenta,
+        }),
       });
     }
 
@@ -485,6 +530,14 @@ export class EventosService {
         vendedorNombre: data.nombre,
         cantidadTotal: data.cantidad,
         gananciaTotal: data.ganancia,
+        desglose: Array.from(data.desglose.entries()).map(
+          ([productoId, d]) => ({
+            productoId,
+            nombreProducto: d.nombre,
+            cantidad: d.cantidad,
+            ganancia: d.ganancia,
+          }),
+        ),
       }),
     );
 
