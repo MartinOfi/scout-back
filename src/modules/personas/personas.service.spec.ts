@@ -1,7 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
+
+jest.mock('bcrypt');
 import { PersonasService } from './personas.service';
 import {
   Persona,
@@ -401,7 +408,7 @@ describe('PersonasService', () => {
   });
 
   describe('createEducador', () => {
-    it('should create an educador with correct defaults and personal caja', async () => {
+    it('should create an educador without password (passwordHash: null)', async () => {
       const dto = {
         nombre: 'Nuevo Educador',
         email: 'educador@scout.com',
@@ -411,6 +418,55 @@ describe('PersonasService', () => {
 
       const created = {
         ...dto,
+        id: 'new-uuid',
+        tipo: PersonaType.EDUCADOR,
+        estado: EstadoPersona.ACTIVO,
+        passwordHash: null,
+      };
+
+      educadorRepository.create.mockReturnValue(created as Educador);
+      educadorRepository.save.mockResolvedValue(created as Educador);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as Caja,
+      );
+
+      const result = await service.createEducador(dto);
+
+      expect(educadorRepository.create).toHaveBeenCalledWith({
+        nombre: dto.nombre,
+        email: dto.email,
+        rama: dto.rama,
+        fechaNacimiento: dto.fechaNacimiento,
+        passwordHash: null,
+        tipo: PersonaType.EDUCADOR,
+        estado: EstadoPersona.ACTIVO,
+      });
+      expect(cajasService.getOrCreateCajaPersonal).toHaveBeenCalledWith(
+        'new-uuid',
+        'Nuevo Educador',
+      );
+      expect(result.tipo).toBe(PersonaType.EDUCADOR);
+      expect(result.estado).toBe(EstadoPersona.ACTIVO);
+    });
+
+    it('should hash password when provided', async () => {
+      const dto = {
+        nombre: 'Nuevo Educador',
+        email: 'educador@scout.com',
+        rama: Rama.CAMINANTES,
+        fechaNacimiento: new Date('1985-06-20'),
+        password: 'contraseña123',
+      };
+
+      const fakeHash = '$2b$10$fakehashedpassword';
+      (bcrypt.hash as jest.Mock).mockResolvedValue(fakeHash);
+
+      const created = {
+        nombre: dto.nombre,
+        email: dto.email,
+        rama: dto.rama,
+        fechaNacimiento: dto.fechaNacimiento,
+        passwordHash: fakeHash,
         id: 'new-uuid',
         tipo: PersonaType.EDUCADOR,
         estado: EstadoPersona.ACTIVO,
@@ -424,17 +480,33 @@ describe('PersonasService', () => {
 
       const result = await service.createEducador(dto);
 
-      expect(educadorRepository.create).toHaveBeenCalledWith({
-        ...dto,
-        tipo: PersonaType.EDUCADOR,
-        estado: EstadoPersona.ACTIVO,
-      });
-      expect(cajasService.getOrCreateCajaPersonal).toHaveBeenCalledWith(
-        'new-uuid',
-        'Nuevo Educador',
+      expect(bcrypt.hash).toHaveBeenCalledWith('contraseña123', 10);
+      expect(educadorRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ passwordHash: fakeHash }),
       );
       expect(result.tipo).toBe(PersonaType.EDUCADOR);
-      expect(result.estado).toBe(EstadoPersona.ACTIVO);
+    });
+
+    it('should throw ConflictException when email is already registered', async () => {
+      const dto = {
+        nombre: 'Nuevo Educador',
+        email: 'duplicado@scout.com',
+        rama: Rama.CAMINANTES,
+        fechaNacimiento: new Date('1985-06-20'),
+      };
+
+      educadorRepository.create.mockReturnValue({} as Educador);
+      const dbError = Object.assign(new Error('unique constraint'), {
+        code: '23505',
+      });
+      educadorRepository.save.mockRejectedValue(dbError);
+
+      await expect(service.createEducador(dto)).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.createEducador(dto)).rejects.toThrow(
+        'El email ya está registrado',
+      );
     });
   });
 

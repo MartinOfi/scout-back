@@ -4,7 +4,9 @@ import {
   Inject,
   forwardRef,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -127,13 +129,30 @@ export class PersonasService {
   }
 
   async createEducador(dto: CreateEducadorDto): Promise<Educador> {
+    const { password, ...rest } = dto;
+
+    const passwordHash = password ? await bcrypt.hash(password, 10) : null;
+
     const educador = this.educadorRepository.create({
-      ...dto,
+      ...rest,
+      passwordHash,
       tipo: PersonaType.EDUCADOR,
       estado: EstadoPersona.ACTIVO,
     });
 
-    const saved = await this.educadorRepository.save(educador);
+    let saved: Educador;
+    try {
+      saved = await this.educadorRepository.save(educador);
+    } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        (error as { code: string }).code === '23505'
+      ) {
+        throw new ConflictException('El email ya está registrado');
+      }
+      throw error;
+    }
 
     // Crear caja personal automáticamente
     await this.cajasService.getOrCreateCajaPersonal(saved.id, saved.nombre);

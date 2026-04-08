@@ -289,8 +289,10 @@ export class MovimientosService {
   }
 
   /**
-   * Calcula el saldo de una caja sumando todos sus movimientos
-   * Ingresos suman, egresos restan
+   * Calcula el saldo de una caja sumando todos sus movimientos.
+   * Ingresos suman, egresos PAGADOS restan.
+   * Egresos con PENDIENTE_REEMBOLSO no afectan el saldo: la plata
+   * sigue en la caja hasta que se emita el reembolso real.
    */
   async calcularSaldo(cajaId: string): Promise<number> {
     const result: { saldo: string | null } | undefined =
@@ -299,13 +301,16 @@ export class MovimientosService {
         .select(
           `SUM(CASE
           WHEN m.tipo = :ingreso THEN m.monto
-          ELSE -m.monto
+          WHEN m.tipo = :egreso AND m.estadoPago != :pendienteReembolso THEN -m.monto
+          ELSE 0
         END)`,
           'saldo',
         )
         .where('m.caja_id = :cajaId', { cajaId })
         .andWhere('m.deletedAt IS NULL')
         .setParameter('ingreso', TipoMovimiento.INGRESO)
+        .setParameter('egreso', TipoMovimiento.EGRESO)
+        .setParameter('pendienteReembolso', EstadoPago.PENDIENTE_REEMBOLSO)
         .getRawOne();
 
     return Number(result?.saldo ?? 0);

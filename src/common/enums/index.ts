@@ -233,5 +233,6 @@ export enum TipoDeuda {
 export enum FiltroMovimientosCampamento {
   TODOS = 'todos', // All movements (INGRESO + EGRESO including USO_SALDO_PERSONAL)
   INGRESOS = 'ingresos', // Only INGRESO movements (payments received)
+  EGRESOS = 'egresos', // All EGRESO movements (including USO_SALDO_PERSONAL)
   GASTOS = 'gastos', // Only real expenses (CAMPAMENTO_GASTO, excludes USO_SALDO_PERSONAL)
 }

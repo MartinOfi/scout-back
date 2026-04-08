@@ -15,6 +15,8 @@ import {
   CajaType,
   TipoMovimiento,
   ConceptoMovimiento,
+  EstadoPagoCampamento,
+  FiltroMovimientosCampamento,
 } from '../../common/enums';
 import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
@@ -430,7 +432,8 @@ describe('CampamentosService', () => {
       expect(result.participantes).toBe(2);
       expect(result.totalEsperado).toBe(30000); // 2 * 15000
       expect(result.totalRecaudado).toBe(0);
-      expect(result.totalGastado).toBe(0);
+      expect(result.totalGastadoEfectivo).toBe(0);
+      expect(result.totalPendienteReembolso).toBe(0);
       expect(result.saldo).toBe(0);
     });
   });
@@ -448,6 +451,215 @@ describe('CampamentosService', () => {
         relations: ['participantes'],
         order: { fechaInicio: 'DESC' },
       });
+    });
+  });
+
+  describe('getDetalle', () => {
+    const mockMovimientoPago = {
+      id: 'mov-pago-uuid',
+      tipo: TipoMovimiento.INGRESO,
+      concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+      monto: 10000,
+      medioPago: MedioPago.EFECTIVO,
+      estadoPago: EstadoPago.PAGADO,
+      responsableId: 'persona-uuid',
+      responsable: { nombre: 'Juan Scout' },
+      fecha: new Date('2026-01-10'),
+      descripcion: 'Pago campamento',
+    };
+
+    const mockMovimientoUseSaldo = {
+      id: 'mov-saldo-uuid',
+      tipo: TipoMovimiento.EGRESO,
+      concepto: ConceptoMovimiento.USO_SALDO_PERSONAL,
+      monto: 5000,
+      medioPago: MedioPago.SALDO_PERSONAL,
+      estadoPago: EstadoPago.PAGADO,
+      responsableId: 'persona-uuid',
+      responsable: { nombre: 'Juan Scout' },
+      fecha: new Date('2026-01-10'),
+      descripcion: 'Uso saldo personal',
+    };
+
+    const mockMovimientoGasto = {
+      id: 'mov-gasto-uuid',
+      tipo: TipoMovimiento.EGRESO,
+      concepto: ConceptoMovimiento.CAMPAMENTO_GASTO,
+      monto: 3000,
+      medioPago: MedioPago.EFECTIVO,
+      estadoPago: EstadoPago.PAGADO,
+      responsableId: 'persona-uuid',
+      responsable: { nombre: 'Juan Scout' },
+      fecha: new Date('2026-01-15'),
+      descripcion: 'Compra galletitas',
+    };
+
+    const campamentoConParticipante = {
+      ...mockCampamento,
+      costoPorPersona: 15000,
+      cuotasBase: 3,
+      descripcion: null,
+      participantes: [mockPersona as Persona],
+    };
+
+    beforeEach(() => {
+      campamentoRepository.findOne.mockResolvedValue(
+        campamentoConParticipante as Campamento,
+      );
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockMovimientoPago,
+        mockMovimientoUseSaldo,
+        mockMovimientoGasto,
+      ] as any);
+    });
+
+    it('should return all movements when no filter specified', async () => {
+      const result = await service.getDetalle('campamento-uuid');
+
+      expect(result.movimientos).toHaveLength(3);
+    });
+
+    it('should return all movements when filtro is TODOS', async () => {
+      const result = await service.getDetalle(
+        'campamento-uuid',
+        FiltroMovimientosCampamento.TODOS,
+      );
+
+      expect(result.movimientos).toHaveLength(3);
+    });
+
+    it('should return only INGRESO movements when filtro is INGRESOS', async () => {
+      const result = await service.getDetalle(
+        'campamento-uuid',
+        FiltroMovimientosCampamento.INGRESOS,
+      );
+
+      expect(result.movimientos).toHaveLength(1);
+      expect(result.movimientos[0].id).toBe('mov-pago-uuid');
+      expect(result.movimientos[0].tipo).toBe(TipoMovimiento.INGRESO);
+    });
+
+    it('should return only CAMPAMENTO_GASTO movements when filtro is GASTOS', async () => {
+      const result = await service.getDetalle(
+        'campamento-uuid',
+        FiltroMovimientosCampamento.GASTOS,
+      );
+
+      expect(result.movimientos).toHaveLength(1);
+      expect(result.movimientos[0].id).toBe('mov-gasto-uuid');
+      expect(result.movimientos[0].concepto).toBe(
+        ConceptoMovimiento.CAMPAMENTO_GASTO,
+      );
+    });
+
+    it('should exclude USO_SALDO_PERSONAL from GASTOS filter', async () => {
+      const result = await service.getDetalle(
+        'campamento-uuid',
+        FiltroMovimientosCampamento.GASTOS,
+      );
+
+      const conceptos = result.movimientos.map((m) => m.concepto);
+      expect(conceptos).not.toContain(ConceptoMovimiento.USO_SALDO_PERSONAL);
+    });
+
+    it('should return all EGRESO movements when filtro is EGRESOS', async () => {
+      const result = await service.getDetalle(
+        'campamento-uuid',
+        FiltroMovimientosCampamento.EGRESOS,
+      );
+
+      // 2 egresos: CAMPAMENTO_GASTO + USO_SALDO_PERSONAL
+      expect(result.movimientos).toHaveLength(2);
+      result.movimientos.forEach((m) =>
+        expect(m.tipo).toBe(TipoMovimiento.EGRESO),
+      );
+    });
+
+    it('should include USO_SALDO_PERSONAL in EGRESOS filter', async () => {
+      const result = await service.getDetalle(
+        'campamento-uuid',
+        FiltroMovimientosCampamento.EGRESOS,
+      );
+
+      const conceptos = result.movimientos.map((m) => m.concepto);
+      expect(conceptos).toContain(ConceptoMovimiento.USO_SALDO_PERSONAL);
+      expect(conceptos).toContain(ConceptoMovimiento.CAMPAMENTO_GASTO);
+    });
+
+    it('should always calculate KPIs with all movements regardless of filter', async () => {
+      const resultTodos = await service.getDetalle('campamento-uuid');
+      const resultGastos = await service.getDetalle(
+        'campamento-uuid',
+        FiltroMovimientosCampamento.GASTOS,
+      );
+
+      // KPIs must be identical regardless of filter
+      expect(resultGastos.kpis.totalGastadoEfectivo).toBe(
+        resultTodos.kpis.totalGastadoEfectivo,
+      );
+      expect(resultGastos.kpis.totalRecaudado).toBe(
+        resultTodos.kpis.totalRecaudado,
+      );
+    });
+
+    it('should calculate totalGastadoEfectivo with only CAMPAMENTO_GASTO PAGADO (not USO_SALDO_PERSONAL)', async () => {
+      const result = await service.getDetalle('campamento-uuid');
+
+      // totalGastadoEfectivo = only mockMovimientoGasto (3000, PAGADO), NOT mockMovimientoUseSaldo (5000)
+      expect(result.kpis.totalGastadoEfectivo).toBe(3000);
+      expect(result.kpis.totalPendienteReembolso).toBe(0);
+    });
+
+    it('should discriminate CAMPAMENTO_GASTO by estadoPago into totalGastadoEfectivo vs totalPendienteReembolso', async () => {
+      const mockMovimientoGastoPendiente = {
+        id: 'mov-gasto-pendiente-uuid',
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.CAMPAMENTO_GASTO,
+        monto: 2000,
+        medioPago: MedioPago.EFECTIVO,
+        estadoPago: EstadoPago.PENDIENTE_REEMBOLSO,
+        responsableId: 'persona-uuid',
+        responsable: { nombre: 'Juan Scout' },
+        fecha: new Date('2026-01-16'),
+        descripcion: 'Gasto adelantado por persona',
+      };
+
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockMovimientoPago,
+        mockMovimientoUseSaldo,
+        mockMovimientoGasto, // 3000, PAGADO
+        mockMovimientoGastoPendiente, // 2000, PENDIENTE_REEMBOLSO
+      ] as any);
+
+      const result = await service.getDetalle('campamento-uuid');
+
+      expect(result.kpis.totalGastadoEfectivo).toBe(3000);
+      expect(result.kpis.totalPendienteReembolso).toBe(2000);
+      // balance only deducts effective expenses
+      expect(result.kpis.balance).toBe(10000 - 3000);
+    });
+
+    it('should calculate totalRecaudado from INGRESO movements', async () => {
+      const result = await service.getDetalle('campamento-uuid');
+
+      expect(result.kpis.totalRecaudado).toBe(10000);
+    });
+
+    it('should include concepto in movement DTOs', async () => {
+      const result = await service.getDetalle('campamento-uuid');
+
+      const pagoDto = result.movimientos.find((m) => m.id === 'mov-pago-uuid');
+      expect(pagoDto?.concepto).toBe(ConceptoMovimiento.CAMPAMENTO_PAGO);
+    });
+
+    it('should compute participant payment status correctly', async () => {
+      const result = await service.getDetalle('campamento-uuid');
+
+      expect(result.participantes).toHaveLength(1);
+      const participante = result.participantes[0];
+      expect(participante.totalPagado).toBe(10000);
+      expect(participante.saldoPendiente).toBe(5000); // 15000 - 10000
+      expect(participante.estadoPago).toBe(EstadoPagoCampamento.PARCIAL);
     });
   });
 

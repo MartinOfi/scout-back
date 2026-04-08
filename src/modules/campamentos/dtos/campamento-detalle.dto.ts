@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   TipoMovimiento,
+  ConceptoMovimiento,
   MedioPago,
   EstadoPago,
   EstadoPagoCampamento,
@@ -96,6 +97,9 @@ export class MovimientoCampamentoDto {
   @ApiProperty({ enum: TipoMovimiento })
   tipo!: TipoMovimiento;
 
+  @ApiProperty({ enum: ConceptoMovimiento })
+  concepto!: ConceptoMovimiento;
+
   @ApiProperty({ type: Number, example: 8000 })
   monto!: number;
 
@@ -135,15 +139,25 @@ export class CampamentoKpisDto {
 
   @ApiProperty({
     type: Number,
-    example: 50000,
-    description: 'Suma de todos los movimientos CAMPAMENTO_GASTO (EGRESO)',
+    example: 45000,
+    description:
+      'Egresos CAMPAMENTO_GASTO con estadoPago=PAGADO. Impacta directamente en la caja del grupo.',
   })
-  totalGastado!: number;
+  totalGastadoEfectivo!: number;
 
   @ApiProperty({
     type: Number,
-    example: 130000,
-    description: 'totalRecaudado - totalGastado',
+    example: 5000,
+    description:
+      'Egresos CAMPAMENTO_GASTO con estadoPago=PENDIENTE_REEMBOLSO. Comprometidos pero no salieron de caja aún.',
+  })
+  totalPendienteReembolso!: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 135000,
+    description:
+      'totalRecaudado - totalGastadoEfectivo. Saldo real disponible en la caja del grupo.',
   })
   balance!: number;
 

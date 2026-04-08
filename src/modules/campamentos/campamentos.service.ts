@@ -196,7 +196,8 @@ export class CampamentosService {
   async getResumenFinanciero(campamentoId: string): Promise<{
     totalEsperado: number;
     totalRecaudado: number;
-    totalGastado: number;
+    totalGastadoEfectivo: number;
+    totalPendienteReembolso: number;
     saldo: number;
     participantes: number;
   }> {
@@ -210,22 +211,27 @@ export class CampamentosService {
       .filter((m) => m.tipo === TipoMovimiento.INGRESO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
-    // Solo sumar gastos reales del campamento (compras, lugar, traslado, etc.)
-    // Excluir USO_SALDO_PERSONAL que son egresos de cuentas personales por pagos
-    const totalGastado = movimientos
-      .filter(
-        (m) =>
-          m.tipo === TipoMovimiento.EGRESO &&
-          m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
-      )
+    const gastosCampamento = movimientos.filter(
+      (m) =>
+        m.tipo === TipoMovimiento.EGRESO &&
+        m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
+    );
+
+    const totalGastadoEfectivo = gastosCampamento
+      .filter((m) => m.estadoPago === EstadoPago.PAGADO)
+      .reduce((sum, m) => sum + Number(m.monto), 0);
+
+    const totalPendienteReembolso = gastosCampamento
+      .filter((m) => m.estadoPago === EstadoPago.PENDIENTE_REEMBOLSO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
     return {
       totalEsperado:
         campamento.participantes.length * Number(campamento.costoPorPersona),
       totalRecaudado,
-      totalGastado,
-      saldo: totalRecaudado - totalGastado,
+      totalGastadoEfectivo,
+      totalPendienteReembolso,
+      saldo: totalRecaudado - totalGastadoEfectivo,
       participantes: campamento.participantes.length,
     };
   }
@@ -382,6 +388,10 @@ export class CampamentosService {
       case FiltroMovimientosCampamento.INGRESOS:
         return movimientos.filter((m) => m.tipo === TipoMovimiento.INGRESO);
 
+      case FiltroMovimientosCampamento.EGRESOS:
+        // Todos los egresos (incluyendo USO_SALDO_PERSONAL)
+        return movimientos.filter((m) => m.tipo === TipoMovimiento.EGRESO);
+
       case FiltroMovimientosCampamento.GASTOS:
         // Solo gastos reales del campamento (excluye USO_SALDO_PERSONAL)
         return movimientos.filter(
@@ -494,7 +504,9 @@ export class CampamentosService {
   }
 
   /**
-   * Calculate all KPIs for the campamento
+   * Calculate all KPIs for the campamento.
+   * Discriminates between effective expenses (impacted caja) and
+   * pending reimbursements (committed but money still in caja).
    */
   private calculateKpis(
     participantes: ParticipantePagoDto[],
@@ -508,14 +520,18 @@ export class CampamentosService {
       .filter((m) => m.tipo === TipoMovimiento.INGRESO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
-    // Solo sumar gastos reales del campamento (compras, lugar, traslado, etc.)
-    // Excluir USO_SALDO_PERSONAL que son egresos de cuentas personales por pagos
-    const totalGastado = movimientos
-      .filter(
-        (m) =>
-          m.tipo === TipoMovimiento.EGRESO &&
-          m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
-      )
+    const gastosCampamento = movimientos.filter(
+      (m) =>
+        m.tipo === TipoMovimiento.EGRESO &&
+        m.concepto === ConceptoMovimiento.CAMPAMENTO_GASTO,
+    );
+
+    const totalGastadoEfectivo = gastosCampamento
+      .filter((m) => m.estadoPago === EstadoPago.PAGADO)
+      .reduce((sum, m) => sum + Number(m.monto), 0);
+
+    const totalPendienteReembolso = gastosCampamento
+      .filter((m) => m.estadoPago === EstadoPago.PENDIENTE_REEMBOLSO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
     const participantesPagadosCompleto = participantes.filter(
@@ -533,8 +549,9 @@ export class CampamentosService {
     return {
       totalARecaudar,
       totalRecaudado,
-      totalGastado,
-      balance: totalRecaudado - totalGastado,
+      totalGastadoEfectivo,
+      totalPendienteReembolso,
+      balance: totalRecaudado - totalGastadoEfectivo,
       deudaTotal: totalARecaudar - totalRecaudado,
       cantidadParticipantes,
       participantesPagadosCompleto,
@@ -553,6 +570,7 @@ export class CampamentosService {
       id: m.id,
       fecha: m.fecha,
       tipo: m.tipo,
+      concepto: m.concepto,
       monto: Number(m.monto),
       descripcion: m.descripcion,
       medioPago: m.medioPago,
