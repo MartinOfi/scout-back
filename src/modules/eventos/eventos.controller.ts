@@ -123,6 +123,19 @@ export class EventosController {
     return this.eventosService.registrarVenta({ ...dto, eventoId: id });
   }
 
+  @Get(':id/kpis')
+  @ApiOperation({
+    summary: 'Obtener KPIs financieros del evento',
+    description:
+      'Retorna totales discriminados: ingresos, gastos efectivos (PAGADO) y gastos pendientes de reembolso (PENDIENTE_REEMBOLSO)',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'KPIs del evento' })
+  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  async getKpis(@Param('id', ParseUUIDPipe) id: string) {
+    return this.eventosService.getKpisEvento(id);
+  }
+
   @Get(':id/resumen-ventas')
   @ApiOperation({ summary: 'Obtener resumen de ventas del evento' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })

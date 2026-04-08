@@ -325,6 +325,43 @@ export class EventosService {
     });
   }
 
+  async getKpisEvento(eventoId: string): Promise<{
+    totalIngresos: number;
+    totalGastadoEfectivo: number;
+    totalPendienteReembolso: number;
+    balance: number;
+  }> {
+    await this.findOne(eventoId);
+
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'evento',
+      eventoId,
+    );
+
+    const totalIngresos = movimientos
+      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
+      .reduce((sum, m) => sum + Number(m.monto), 0);
+
+    const gastosEvento = movimientos.filter(
+      (m) => m.tipo === TipoMovimiento.EGRESO,
+    );
+
+    const totalGastadoEfectivo = gastosEvento
+      .filter((m) => m.estadoPago === EstadoPago.PAGADO)
+      .reduce((sum, m) => sum + Number(m.monto), 0);
+
+    const totalPendienteReembolso = gastosEvento
+      .filter((m) => m.estadoPago === EstadoPago.PENDIENTE_REEMBOLSO)
+      .reduce((sum, m) => sum + Number(m.monto), 0);
+
+    return {
+      totalIngresos,
+      totalGastadoEfectivo,
+      totalPendienteReembolso,
+      balance: totalIngresos - totalGastadoEfectivo,
+    };
+  }
+
   async getResumenVentas(eventoId: string): Promise<{
     productos: Array<{
       nombre: string;

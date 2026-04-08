@@ -14,6 +14,7 @@ import {
   EstadoInscripcion,
   MedioPago,
   ConceptoMovimiento,
+  TipoDeuda,
 } from '../../common/enums';
 
 describe('InscripcionesService', () => {
@@ -85,6 +86,7 @@ describe('InscripcionesService', () => {
           provide: MovimientosService,
           useValue: {
             findByRelatedEntity: jest.fn().mockResolvedValue([]),
+            findByInscripcionIds: jest.fn().mockResolvedValue(new Map()),
             create: jest.fn(),
           },
         },
@@ -133,7 +135,7 @@ describe('InscripcionesService', () => {
     it('should return all inscriptions with calculated fields', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+      movimientosService.findByInscripcionIds.mockResolvedValue(new Map());
 
       const result = await service.findAll();
 
@@ -152,7 +154,7 @@ describe('InscripcionesService', () => {
     it('should filter by ano when provided', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+      movimientosService.findByInscripcionIds.mockResolvedValue(new Map());
 
       const result = await service.findAll({ ano: 2026 });
 
@@ -167,7 +169,7 @@ describe('InscripcionesService', () => {
     it('should filter by tipo when provided', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+      movimientosService.findByInscripcionIds.mockResolvedValue(new Map());
 
       const result = await service.findAll({ tipo: TipoInscripcion.GRUPO });
 
@@ -195,14 +197,15 @@ describe('InscripcionesService', () => {
         inscripcionPagada,
       ] as Inscripcion[]);
 
-      // Mock diferentes pagos para cada inscripción
-      movimientosService.findByRelatedEntity
-        .mockResolvedValueOnce([]) // con-deuda: no payments
-        .mockResolvedValueOnce([
-          { tipo: TipoMovimiento.INGRESO, monto: 10000 },
-        ] as any); // pagada: fully paid
+      // Mock diferentes pagos para cada inscripción via batch
+      movimientosService.findByInscripcionIds.mockResolvedValue(
+        new Map([
+          ['con-deuda', []], // no payments
+          ['pagada', [{ tipo: TipoMovimiento.INGRESO, monto: 10000 }] as any], // fully paid
+        ]),
+      );
 
-      const result = await service.findAll({ deudores: true });
+      const result = await service.findAll({ tipoDeuda: TipoDeuda.DINERO });
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('con-deuda');
@@ -238,11 +241,16 @@ describe('InscripcionesService', () => {
       ] as Inscripcion[]);
 
       // Ambas completamente pagadas
-      movimientosService.findByRelatedEntity.mockResolvedValue([
-        { tipo: TipoMovimiento.INGRESO, monto: 10000 },
-      ] as any);
+      movimientosService.findByInscripcionIds.mockResolvedValue(
+        new Map([
+          ['sin-docs', [{ tipo: TipoMovimiento.INGRESO, monto: 10000 }] as any],
+          ['completa', [{ tipo: TipoMovimiento.INGRESO, monto: 10000 }] as any],
+        ]),
+      );
 
-      const result = await service.findAll({ deudores: true });
+      const result = await service.findAll({
+        tipoDeuda: TipoDeuda.DOCUMENTACION,
+      });
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('sin-docs');
@@ -263,11 +271,18 @@ describe('InscripcionesService', () => {
       ] as Inscripcion[]);
 
       // Completamente pagada
-      movimientosService.findByRelatedEntity.mockResolvedValue([
-        { tipo: TipoMovimiento.INGRESO, monto: 10000 },
-      ] as any);
+      movimientosService.findByInscripcionIds.mockResolvedValue(
+        new Map([
+          [
+            'grupo-pagada',
+            [{ tipo: TipoMovimiento.INGRESO, monto: 10000 }] as any,
+          ],
+        ]),
+      );
 
-      const result = await service.findAll({ deudores: true });
+      const result = await service.findAll({
+        tipoDeuda: TipoDeuda.DOCUMENTACION,
+      });
 
       // No debe aparecer porque está pagada y los docs no aplican a GRUPO
       expect(result).toHaveLength(0);
@@ -280,9 +295,11 @@ describe('InscripcionesService', () => {
         montoTotal: 10000,
       };
       repository.find.mockResolvedValue([inscripcionPagada] as Inscripcion[]);
-      movimientosService.findByRelatedEntity.mockResolvedValue([
-        { tipo: TipoMovimiento.INGRESO, monto: 10000 },
-      ] as any);
+      movimientosService.findByInscripcionIds.mockResolvedValue(
+        new Map([
+          ['pagada', [{ tipo: TipoMovimiento.INGRESO, monto: 10000 }] as any],
+        ]),
+      );
 
       const result = await service.findAll({ deudores: false });
 
@@ -294,7 +311,7 @@ describe('InscripcionesService', () => {
     it('should return inscriptions for a specific persona with calculated fields', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+      movimientosService.findByInscripcionIds.mockResolvedValue(new Map());
 
       const result = await service.findByPersona('persona-uuid');
 
@@ -312,7 +329,7 @@ describe('InscripcionesService', () => {
     it('should return inscriptions for a specific year with calculated fields', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+      movimientosService.findByInscripcionIds.mockResolvedValue(new Map());
 
       const result = await service.findByAno(2026);
 
@@ -328,7 +345,7 @@ describe('InscripcionesService', () => {
     it('should filter by tipo when provided', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
       repository.find.mockResolvedValue(inscripciones);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+      movimientosService.findByInscripcionIds.mockResolvedValue(new Map());
 
       const result = await service.findByAno(2026, TipoInscripcion.GRUPO);
 

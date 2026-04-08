@@ -173,6 +173,7 @@ export class CampamentosService {
     medioPago: MedioPago,
     estadoPago: EstadoPago,
     personaAReembolsarId?: string,
+    fecha?: Date,
   ): Promise<void> {
     const campamento = await this.findOne(campamentoId);
     await this.personasService.findOne(responsableId);
@@ -190,6 +191,7 @@ export class CampamentosService {
       estadoPago,
       personaAReembolsarId,
       campamentoId,
+      fecha,
     });
   }
 

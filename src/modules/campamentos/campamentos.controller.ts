@@ -270,6 +270,12 @@ export class CampamentosController {
         medioPago: { type: 'string', enum: ['efectivo', 'transferencia'] },
         estadoPago: { type: 'string', enum: ['pagado', 'pendiente_reembolso'] },
         personaAReembolsarId: { type: 'string', format: 'uuid' },
+        fecha: {
+          type: 'string',
+          format: 'date-time',
+          example: '2024-07-15T00:00:00.000Z',
+          description: 'Fecha del gasto (por defecto: fecha actual)',
+        },
       },
     },
   })
@@ -282,6 +288,7 @@ export class CampamentosController {
     @Body('medioPago') medioPago: MedioPago,
     @Body('estadoPago') estadoPago: EstadoPago,
     @Body('personaAReembolsarId') personaAReembolsarId?: string,
+    @Body('fecha') fecha?: string,
   ) {
     return this.campamentosService.registrarGasto(
       id,
@@ -291,6 +298,7 @@ export class CampamentosController {
       medioPago,
       estadoPago,
       personaAReembolsarId,
+      fecha ? new Date(fecha) : undefined,
     );
   }
 

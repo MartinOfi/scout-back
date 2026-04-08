@@ -10,7 +10,15 @@ import { PersonasService } from '../personas/personas.service';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
-import { TipoEvento, DestinoGanancia, CajaType } from '../../common/enums';
+import {
+  TipoEvento,
+  DestinoGanancia,
+  CajaType,
+  TipoMovimiento,
+  ConceptoMovimiento,
+  EstadoPago,
+  MedioPago,
+} from '../../common/enums';
 import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
 
@@ -116,6 +124,7 @@ describe('EventosService', () => {
 
     const mockMovimientosService = {
       create: jest.fn(),
+      findByRelatedEntity: jest.fn(),
     };
 
     const mockDeletionValidator = {
@@ -544,6 +553,88 @@ describe('EventosService', () => {
         relations: ['producto', 'vendedor'],
         order: { createdAt: 'DESC' },
       });
+    });
+  });
+
+  describe('getKpisEvento', () => {
+    const mockIngreso = {
+      id: 'mov-ingreso-uuid',
+      tipo: TipoMovimiento.INGRESO,
+      concepto: ConceptoMovimiento.EVENTO_GRUPO_INGRESO,
+      monto: 15000,
+      medioPago: MedioPago.EFECTIVO,
+      estadoPago: EstadoPago.PAGADO,
+      fecha: new Date('2026-01-10'),
+    };
+
+    const mockGastoPagado = {
+      id: 'mov-gasto-pagado-uuid',
+      tipo: TipoMovimiento.EGRESO,
+      concepto: ConceptoMovimiento.EVENTO_GRUPO_GASTO,
+      monto: 4000,
+      medioPago: MedioPago.EFECTIVO,
+      estadoPago: EstadoPago.PAGADO,
+      fecha: new Date('2026-01-11'),
+    };
+
+    const mockGastoPendiente = {
+      id: 'mov-gasto-pendiente-uuid',
+      tipo: TipoMovimiento.EGRESO,
+      concepto: ConceptoMovimiento.EVENTO_GRUPO_GASTO,
+      monto: 2500,
+      medioPago: MedioPago.EFECTIVO,
+      estadoPago: EstadoPago.PENDIENTE_REEMBOLSO,
+      fecha: new Date('2026-01-12'),
+    };
+
+    it('should discriminate egresos by estadoPago into totalGastadoEfectivo and totalPendienteReembolso', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEventoGrupo as Evento);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockIngreso,
+        mockGastoPagado,
+        mockGastoPendiente,
+      ] as any);
+
+      const result = await service.getKpisEvento('evento-grupo-uuid');
+
+      expect(result.totalIngresos).toBe(15000);
+      expect(result.totalGastadoEfectivo).toBe(4000);
+      expect(result.totalPendienteReembolso).toBe(2500);
+      expect(result.balance).toBe(15000 - 4000); // 11000
+    });
+
+    it('should not count PENDIENTE_REEMBOLSO egresos in balance', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEventoGrupo as Evento);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockIngreso, // 15000 ingreso
+        mockGastoPendiente, // 2500 pendiente (should NOT affect balance)
+      ] as any);
+
+      const result = await service.getKpisEvento('evento-grupo-uuid');
+
+      expect(result.balance).toBe(15000); // Pending does not reduce balance
+      expect(result.totalGastadoEfectivo).toBe(0);
+      expect(result.totalPendienteReembolso).toBe(2500);
+    });
+
+    it('should return zeros when evento has no movements', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEventoGrupo as Evento);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      const result = await service.getKpisEvento('evento-grupo-uuid');
+
+      expect(result.totalIngresos).toBe(0);
+      expect(result.totalGastadoEfectivo).toBe(0);
+      expect(result.totalPendienteReembolso).toBe(0);
+      expect(result.balance).toBe(0);
+    });
+
+    it('should throw NotFoundException when evento does not exist', async () => {
+      eventoRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.getKpisEvento('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
