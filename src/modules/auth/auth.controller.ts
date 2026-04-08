@@ -20,6 +20,7 @@ import { LoginDto } from './dtos/login.dto';
 import { RegisterDto } from './dtos/register.dto';
 import { RefreshTokenDto } from './dtos/refresh-token.dto';
 import { ChangePasswordDto } from './dtos/change-password.dto';
+import { ChangeEmailDto } from './dtos/change-email.dto';
 import { AuthResponseDto, AuthUserDto } from './dtos/auth-response.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -128,6 +129,25 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ): Promise<void> {
     await this.authService.changePassword(user.id, dto);
+  }
+
+  @Patch('email')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cambiar email',
+    description:
+      'Cambia el email del usuario autenticado. Requiere la contraseña actual.',
+  })
+  @ApiResponse({ status: 204, description: 'Email cambiado exitosamente' })
+  @ApiResponse({ status: 400, description: 'Email igual al actual' })
+  @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
+  @ApiResponse({ status: 409, description: 'Email ya está en uso' })
+  async changeEmail(
+    @CurrentUser() user: Persona,
+    @Body() dto: ChangeEmailDto,
+  ): Promise<void> {
+    await this.authService.changeEmail(user.id, dto);
   }
 
   @Get('me')

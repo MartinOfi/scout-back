@@ -166,6 +166,22 @@ export class MovimientosService {
     });
   }
 
+  async findMovimientosByEvento(
+    eventoId: string,
+    filters: { tipo?: TipoMovimiento; concepto?: ConceptoMovimiento } = {},
+  ): Promise<Movimiento[]> {
+    const where: FindOptionsWhere<Movimiento> = { eventoId };
+
+    if (filters.tipo) where.tipo = filters.tipo;
+    if (filters.concepto) where.concepto = filters.concepto;
+
+    return this.movimientoRepository.find({
+      where,
+      relations: ['caja', 'responsable', 'personaAReembolsar'],
+      order: { fecha: 'DESC' },
+    });
+  }
+
   /**
    * Batch load movements for multiple inscripciones in a single query
    * Eliminates N+1 query problem when loading multiple inscripciones

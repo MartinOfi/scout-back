@@ -1,5 +1,6 @@
-import { IsNumber, IsUUID, IsPositive } from 'class-validator';
+import { IsNumber, IsUUID, IsPositive, IsEnum } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { MedioPago } from '../../../common/enums';
 
 export class CreateVentaProductoDto {
   @ApiProperty({
@@ -34,4 +35,12 @@ export class CreateVentaProductoDto {
   @IsNumber()
   @IsPositive()
   cantidad!: number;
+
+  @ApiProperty({
+    description: 'Medio de pago de la venta',
+    enum: MedioPago,
+    example: MedioPago.EFECTIVO,
+  })
+  @IsEnum(MedioPago)
+  medioPago!: MedioPago;
 }

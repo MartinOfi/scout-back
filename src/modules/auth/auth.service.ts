@@ -14,6 +14,7 @@ import { TokenService } from './services/token.service';
 import { LoginDto } from './dtos/login.dto';
 import { RegisterDto } from './dtos/register.dto';
 import { ChangePasswordDto } from './dtos/change-password.dto';
+import { ChangeEmailDto } from './dtos/change-email.dto';
 import { AuthResponseDto, AuthUserDto } from './dtos/auth-response.dto';
 import { EstadoPersona } from '../../common/enums';
 
@@ -225,6 +226,53 @@ export class AuthService {
       { personaId: userId, revoked: false },
       { revoked: true, revokedAt: new Date() },
     );
+  }
+
+  /**
+   * Change email for authenticated user
+   * Requires current password verification for security
+   */
+  async changeEmail(userId: string, dto: ChangeEmailDto): Promise<void> {
+    // 1. Get persona with password hash
+    const persona = await this.personaRepository
+      .createQueryBuilder('persona')
+      .addSelect('persona.passwordHash')
+      .where('persona.id = :id', { id: userId })
+      .andWhere('persona.deletedAt IS NULL')
+      .getOne();
+
+    if (!persona || !persona.passwordHash) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    // 2. Verify current password
+    const isPasswordValid = await this.passwordService.compare(
+      dto.currentPassword,
+      persona.passwordHash,
+    );
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Contraseña actual incorrecta');
+    }
+
+    // 3. Check new email is different
+    if (persona.email === dto.newEmail) {
+      throw new BadRequestException(
+        'El nuevo email debe ser diferente al actual',
+      );
+    }
+
+    // 4. Check email uniqueness
+    const existingEmail = await this.personaRepository.findOne({
+      where: { email: dto.newEmail, deletedAt: IsNull() },
+    });
+
+    if (existingEmail) {
+      throw new ConflictException('El email ya está en uso');
+    }
+
+    // 5. Update email
+    await this.personaRepository.update(userId, { email: dto.newEmail });
   }
 
   /**

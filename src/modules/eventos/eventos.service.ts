@@ -176,7 +176,7 @@ export class EventosService {
   // ==================== VENTAS ====================
 
   async registrarVenta(dto: CreateVentaProductoDto): Promise<VentaProducto> {
-    await this.findOne(dto.eventoId); // Validate event exists
+    const evento = await this.findOne(dto.eventoId);
     const producto = await this.productoRepository.findOne({
       where: { id: dto.productoId },
     });
@@ -194,14 +194,57 @@ export class EventosService {
     await this.personasService.findOne(dto.vendedorId);
 
     const venta = this.ventaProductoRepository.create(dto);
-    return this.ventaProductoRepository.save(venta);
+    const savedVenta = await this.ventaProductoRepository.save(venta);
+
+    // Registrar movimiento de ingreso inmediatamente al registrar la venta
+    if (evento.tipo === TipoEvento.VENTA) {
+      const ganancia =
+        (Number(producto.precioVenta) - Number(producto.precioCosto)) *
+        dto.cantidad;
+
+      const descripcion = `Venta "${producto.nombre}" - Evento "${evento.nombre}"`;
+
+      if (evento.destinoGanancia === DestinoGanancia.CAJA_GRUPO) {
+        const cajaGrupo = await this.cajasService.findCajaGrupo();
+        await this.movimientosService.create({
+          cajaId: cajaGrupo.id,
+          tipo: TipoMovimiento.INGRESO,
+          monto: ganancia,
+          concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+          descripcion,
+          responsableId: dto.vendedorId,
+          medioPago: dto.medioPago,
+          estadoPago: EstadoPago.PAGADO,
+          eventoId: dto.eventoId,
+        });
+      } else if (
+        evento.destinoGanancia === DestinoGanancia.CUENTAS_PERSONALES
+      ) {
+        const cajaPersonal = await this.cajasService.getOrCreateCajaPersonal(
+          dto.vendedorId,
+        );
+        await this.movimientosService.create({
+          cajaId: cajaPersonal.id,
+          tipo: TipoMovimiento.INGRESO,
+          monto: ganancia,
+          concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+          descripcion,
+          responsableId: dto.vendedorId,
+          medioPago: dto.medioPago,
+          estadoPago: EstadoPago.PAGADO,
+          eventoId: dto.eventoId,
+        });
+      }
+    }
+
+    return savedVenta;
   }
 
   async registrarVentasLote(
     eventoId: string,
     dto: RegisterVentasLoteDto,
   ): Promise<VentaProducto[]> {
-    await this.findOne(eventoId);
+    const evento = await this.findOne(eventoId);
     await this.personasService.findOne(dto.vendedorId);
 
     const productosEvento = await this.findProductosByEvento(eventoId);
@@ -225,7 +268,57 @@ export class EventosService {
       }),
     );
 
-    return this.ventaProductoRepository.save(ventasToCreate);
+    const savedVentas = await this.ventaProductoRepository.save(ventasToCreate);
+
+    // Registrar movimiento de ingreso total por el lote
+    if (evento.tipo === TipoEvento.VENTA) {
+      const gananciaTotal = dto.items.reduce((sum, item) => {
+        const producto = productosMap.get(item.productoId)!;
+        const gananciaUnitaria =
+          Number(producto.precioVenta) - Number(producto.precioCosto);
+        return sum + gananciaUnitaria * item.cantidad;
+      }, 0);
+
+      const nombresProductos = dto.items
+        .map((item) => productosMap.get(item.productoId)!.nombre)
+        .join(', ');
+
+      const descripcion = `Ventas (${nombresProductos}) - Evento "${evento.nombre}"`;
+
+      if (evento.destinoGanancia === DestinoGanancia.CAJA_GRUPO) {
+        const cajaGrupo = await this.cajasService.findCajaGrupo();
+        await this.movimientosService.create({
+          cajaId: cajaGrupo.id,
+          tipo: TipoMovimiento.INGRESO,
+          monto: gananciaTotal,
+          concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+          descripcion,
+          responsableId: dto.vendedorId,
+          medioPago: dto.medioPago,
+          estadoPago: EstadoPago.PAGADO,
+          eventoId,
+        });
+      } else if (
+        evento.destinoGanancia === DestinoGanancia.CUENTAS_PERSONALES
+      ) {
+        const cajaPersonal = await this.cajasService.getOrCreateCajaPersonal(
+          dto.vendedorId,
+        );
+        await this.movimientosService.create({
+          cajaId: cajaPersonal.id,
+          tipo: TipoMovimiento.INGRESO,
+          monto: gananciaTotal,
+          concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+          descripcion,
+          responsableId: dto.vendedorId,
+          medioPago: dto.medioPago,
+          estadoPago: EstadoPago.PAGADO,
+          eventoId,
+        });
+      }
+    }
+
+    return savedVentas;
   }
 
   async findVentasByEvento(eventoId: string): Promise<VentaProducto[]> {
@@ -246,79 +339,35 @@ export class EventosService {
     });
   }
 
-  // ==================== CIERRE Y DISTRIBUCIÓN ====================
+  // ==================== MOVIMIENTOS ====================
 
-  async cerrarEventoVenta(
+  async findMovimientosByEvento(
     eventoId: string,
-    medioPago: MedioPago,
-    registradoPorId?: string,
-  ): Promise<void> {
-    const evento = await this.findOne(eventoId);
+    filters: { tipo?: TipoMovimiento; concepto?: ConceptoMovimiento } = {},
+  ) {
+    await this.findOne(eventoId); // Validar que el evento existe
+    return this.movimientosService.findMovimientosByEvento(eventoId, filters);
+  }
 
-    if (evento.tipo !== TipoEvento.VENTA) {
-      throw new BadRequestException('Solo se pueden cerrar eventos de venta');
+  // ==================== DETALLE CON RESUMEN FINANCIERO ====================
+
+  async getEventoDetalle(id: string): Promise<
+    Evento & {
+      resumenFinanciero: {
+        totalRecaudado: number;
+        gananciaVentas: number;
+        totalGastado: number;
+        totalPendienteReembolso: number;
+        balance: number;
+      };
     }
+  > {
+    const [evento, kpis] = await Promise.all([
+      this.findOne(id),
+      this.getKpisEvento(id),
+    ]);
 
-    const ventas = await this.findVentasByEvento(eventoId);
-    const productos = await this.findProductosByEvento(eventoId);
-
-    // Calcular ganancia total y por vendedor
-    const gananciaPorVendedor = new Map<string, number>();
-    let gananciaTotal = 0;
-
-    for (const venta of ventas) {
-      const producto = productos.find((p) => p.id === venta.productoId);
-      if (!producto) continue;
-
-      const gananciaUnitaria =
-        Number(producto.precioVenta) - Number(producto.precioCosto);
-      const gananciaVenta = gananciaUnitaria * venta.cantidad;
-      gananciaTotal += gananciaVenta;
-
-      const actual = gananciaPorVendedor.get(venta.vendedorId) || 0;
-      gananciaPorVendedor.set(venta.vendedorId, actual + gananciaVenta);
-    }
-
-    const cajaGrupo = await this.cajasService.findCajaGrupo();
-
-    if (evento.destinoGanancia === DestinoGanancia.CAJA_GRUPO) {
-      // Todo va a la caja del grupo
-      await this.movimientosService.create(
-        {
-          cajaId: cajaGrupo.id,
-          tipo: TipoMovimiento.INGRESO,
-          monto: gananciaTotal,
-          concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
-          descripcion: `Ganancia evento "${evento.nombre}"`,
-          responsableId: Array.from(gananciaPorVendedor.keys())[0] || '',
-          medioPago,
-          estadoPago: EstadoPago.PAGADO,
-          eventoId,
-        },
-        registradoPorId,
-      );
-    } else {
-      // Distribuir a cuentas personales
-      for (const [vendedorId, ganancia] of gananciaPorVendedor) {
-        const cajaPersonal =
-          await this.cajasService.getOrCreateCajaPersonal(vendedorId);
-
-        await this.movimientosService.create(
-          {
-            cajaId: cajaPersonal.id,
-            tipo: TipoMovimiento.INGRESO,
-            monto: ganancia,
-            concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
-            descripcion: `Ganancia evento "${evento.nombre}"`,
-            responsableId: vendedorId,
-            medioPago,
-            estadoPago: EstadoPago.PAGADO,
-            eventoId,
-          },
-          registradoPorId,
-        );
-      }
-    }
+    return { ...evento, resumenFinanciero: kpis };
   }
 
   async registrarIngresoEventoGrupo(
@@ -391,19 +440,29 @@ export class EventosService {
   }
 
   async getKpisEvento(eventoId: string): Promise<{
-    totalIngresos: number;
+    totalRecaudado: number;
+    gananciaVentas: number;
     totalGastado: number;
     totalPendienteReembolso: number;
     balance: number;
   }> {
     await this.findOne(eventoId);
 
-    const movimientos = await this.movimientosService.findByRelatedEntity(
-      'evento',
-      eventoId,
-    );
+    const [movimientos, ventas, productos] = await Promise.all([
+      this.movimientosService.findByRelatedEntity('evento', eventoId),
+      this.ventaProductoRepository.find({ where: { eventoId } }),
+      this.productoRepository.find({ where: { eventoId } }),
+    ]);
 
-    const totalIngresos = movimientos
+    // Dinero real cobrado a los clientes: precioVenta × cantidad
+    const productosMap = new Map(productos.map((p) => [p.id, p]));
+    const totalRecaudado = ventas.reduce((sum, v) => {
+      const producto = productosMap.get(v.productoId);
+      return sum + (producto ? Number(producto.precioVenta) * v.cantidad : 0);
+    }, 0);
+
+    // Ganancia neta de ventas: (precioVenta - precioCosto) × cantidad
+    const gananciaVentas = movimientos
       .filter((m) => m.tipo === TipoMovimiento.INGRESO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
@@ -420,10 +479,11 @@ export class EventosService {
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
     return {
-      totalIngresos,
+      totalRecaudado,
+      gananciaVentas,
       totalGastado,
       totalPendienteReembolso,
-      balance: totalIngresos - totalGastado,
+      balance: gananciaVentas - totalGastado,
     };
   }
 

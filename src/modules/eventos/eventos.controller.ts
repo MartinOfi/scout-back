@@ -18,7 +18,6 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { EventosService } from './eventos.service';
-import { CerrarEventoVentaDto } from './dtos/cerrar-evento-venta.dto';
 import { CreateEventoDto } from './dtos/create-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
 import { CreateVentaProductoDto } from './dtos/create-venta-producto.dto';
@@ -42,12 +41,16 @@ export class EventosController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener un evento por ID' })
+  @ApiOperation({
+    summary: 'Obtener un evento por ID con resumen financiero',
+    description:
+      'Retorna el evento con sus productos y el resumen financiero en tiempo real (ingresos, gastos, balance)',
+  })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({ status: 200, description: 'Evento encontrado' })
   @ApiResponse({ status: 404, description: 'Evento no encontrado' })
   async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventosService.findOne(id);
+    return this.eventosService.getEventoDetalle(id);
   }
 
   @Post()
@@ -175,18 +178,32 @@ export class EventosController {
     return this.eventosService.getResumenVentas(id, vendedor);
   }
 
-  // ==================== CIERRE ====================
+  // ==================== MOVIMIENTOS ====================
 
-  @Post(':id/cerrar')
-  @ApiOperation({ summary: 'Cerrar evento de venta y distribuir ganancias' })
+  @Get(':id/movimientos')
+  @ApiOperation({ summary: 'Listar movimientos financieros de un evento' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Evento cerrado' })
-  async cerrarEvento(
+  @ApiQuery({
+    name: 'tipo',
+    required: false,
+    description: 'Filtrar por tipo: ingreso | egreso',
+  })
+  @ApiQuery({
+    name: 'concepto',
+    required: false,
+    description: 'Filtrar por concepto de movimiento',
+  })
+  @ApiResponse({ status: 200, description: 'Lista de movimientos del evento' })
+  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  async findMovimientos(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: CerrarEventoVentaDto,
-    @CurrentUser('id') userId: string,
+    @Query('tipo') tipo?: string,
+    @Query('concepto') concepto?: string,
   ) {
-    return this.eventosService.cerrarEventoVenta(id, dto.medioPago, userId);
+    return this.eventosService.findMovimientosByEvento(id, {
+      tipo: tipo as any,
+      concepto: concepto as any,
+    });
   }
 
   // ==================== INGRESOS/GASTOS ====================

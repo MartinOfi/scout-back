@@ -5,9 +5,11 @@ import {
   ArrayMinSize,
   IsInt,
   IsPositive,
+  IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
+import { MedioPago } from '../../../common/enums';
 
 export class VentaItemDto {
   @ApiProperty({
@@ -36,6 +38,14 @@ export class RegisterVentasLoteDto {
   })
   @IsUUID()
   vendedorId!: string;
+
+  @ApiProperty({
+    description: 'Medio de pago de las ventas',
+    enum: MedioPago,
+    example: MedioPago.EFECTIVO,
+  })
+  @IsEnum(MedioPago)
+  medioPago!: MedioPago;
 
   @ApiProperty({
     description: 'Lista de productos vendidos con sus cantidades',
