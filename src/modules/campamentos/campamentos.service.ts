@@ -172,27 +172,31 @@ export class CampamentosService {
     responsableId: string,
     medioPago: MedioPago,
     estadoPago: EstadoPago,
-    personaAReembolsarId?: string,
+    registradoPorId?: string,
     fecha?: Date,
+    personaAReembolsarId?: string,
   ): Promise<void> {
     const campamento = await this.findOne(campamentoId);
     await this.personasService.findOne(responsableId);
 
     const cajaGrupo = await this.cajasService.findCajaGrupo();
 
-    await this.movimientosService.create({
-      cajaId: cajaGrupo.id,
-      tipo: TipoMovimiento.EGRESO,
-      monto,
-      concepto: ConceptoMovimiento.CAMPAMENTO_GASTO,
-      descripcion: `${descripcion} - Campamento "${campamento.nombre}"`,
-      responsableId,
-      medioPago,
-      estadoPago,
-      personaAReembolsarId,
-      campamentoId,
-      fecha,
-    });
+    await this.movimientosService.create(
+      {
+        cajaId: cajaGrupo.id,
+        tipo: TipoMovimiento.EGRESO,
+        monto,
+        concepto: ConceptoMovimiento.CAMPAMENTO_GASTO,
+        descripcion: `${descripcion} - Campamento "${campamento.nombre}"`,
+        responsableId,
+        medioPago,
+        estadoPago,
+        personaAReembolsarId,
+        campamentoId,
+        fecha,
+      },
+      registradoPorId,
+    );
   }
 
   async getResumenFinanciero(campamentoId: string): Promise<{

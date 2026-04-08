@@ -15,11 +15,13 @@ import {
   ApiParam,
   ApiBody,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { EventosService } from './eventos.service';
 import { CreateEventoDto } from './dtos/create-evento.dto';
 import { UpdateEventoDto } from './dtos/update-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
 import { CreateVentaProductoDto } from './dtos/create-venta-producto.dto';
+import { RegisterVentasLoteDto } from './dtos/register-ventas-lote.dto';
 import { MedioPago, EstadoPago } from '../../common/enums';
 
 @ApiTags('Eventos')
@@ -123,6 +125,21 @@ export class EventosController {
     return this.eventosService.registrarVenta({ ...dto, eventoId: id });
   }
 
+  @Post(':id/ventas/lote')
+  @ApiOperation({
+    summary: 'Registrar ventas de múltiples productos para un vendedor',
+    description:
+      'Permite registrar en una sola request la venta de varios productos por parte de un mismo vendedor',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({ status: 201, description: 'Ventas registradas' })
+  async registrarVentasLote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RegisterVentasLoteDto,
+  ) {
+    return this.eventosService.registrarVentasLote(id, dto);
+  }
+
   @Get(':id/kpis')
   @ApiOperation({
     summary: 'Obtener KPIs financieros del evento',
@@ -190,6 +207,7 @@ export class EventosController {
     @Body('descripcion') descripcion: string,
     @Body('responsableId', ParseUUIDPipe) responsableId: string,
     @Body('medioPago') medioPago: MedioPago,
+    @CurrentUser('id') userId: string,
   ) {
     return this.eventosService.registrarIngresoEventoGrupo(
       id,
@@ -197,6 +215,7 @@ export class EventosController {
       descripcion,
       responsableId,
       medioPago,
+      userId,
     );
   }
 
@@ -231,6 +250,7 @@ export class EventosController {
     @Body('responsableId', ParseUUIDPipe) responsableId: string,
     @Body('medioPago') medioPago: MedioPago,
     @Body('estadoPago') estadoPago: EstadoPago,
+    @CurrentUser('id') userId: string,
     @Body('personaAReembolsarId') personaAReembolsarId?: string,
   ) {
     return this.eventosService.registrarGastoEvento(
@@ -241,6 +261,7 @@ export class EventosController {
       medioPago,
       estadoPago,
       personaAReembolsarId,
+      userId,
     );
   }
 }

@@ -342,6 +342,7 @@ export class InscripcionesService {
 
   async registrarInscripcion(
     dto: CreateInscripcionDto,
+    registradoPorId?: string,
   ): Promise<InscripcionResponseDto> {
     await this.personasService.findOne(dto.personaId);
 
@@ -416,6 +417,7 @@ export class InscripcionesService {
           concepto,
           inscripcionId: savedInscripcion.id,
           descripcion: `Pago inscripción ${dto.tipo} ${dto.ano}`,
+          registradoPorId,
         });
       }
 
@@ -557,6 +559,7 @@ export class InscripcionesService {
   async pagar(
     id: string,
     dto: PagarInscripcionDto,
+    registradoPorId?: string,
   ): Promise<InscripcionResponseDto> {
     const inscripcion = await this.findOneEntity(id);
 
@@ -603,6 +606,7 @@ export class InscripcionesService {
         descripcion:
           dto.descripcion ??
           `Pago inscripción ${inscripcion.tipo} ${inscripcion.ano}`,
+        registradoPorId,
       });
 
       return this.toResponseDto(inscripcion);

@@ -12,6 +12,7 @@ import { CreateEventoDto } from './dtos/create-evento.dto';
 import { UpdateEventoDto } from './dtos/update-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
 import { CreateVentaProductoDto } from './dtos/create-venta-producto.dto';
+import { RegisterVentasLoteDto } from './dtos/register-ventas-lote.dto';
 import { PersonasService } from '../personas/personas.service';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
@@ -178,6 +179,37 @@ export class EventosService {
     return this.ventaProductoRepository.save(venta);
   }
 
+  async registrarVentasLote(
+    eventoId: string,
+    dto: RegisterVentasLoteDto,
+  ): Promise<VentaProducto[]> {
+    await this.findOne(eventoId);
+    await this.personasService.findOne(dto.vendedorId);
+
+    const productosEvento = await this.findProductosByEvento(eventoId);
+    const productosMap = new Map(productosEvento.map((p) => [p.id, p]));
+
+    for (const item of dto.items) {
+      const producto = productosMap.get(item.productoId);
+      if (!producto) {
+        throw new NotFoundException(
+          `Producto con ID ${item.productoId} no encontrado en este evento`,
+        );
+      }
+    }
+
+    const ventasToCreate = dto.items.map((item) =>
+      this.ventaProductoRepository.create({
+        eventoId,
+        productoId: item.productoId,
+        vendedorId: dto.vendedorId,
+        cantidad: item.cantidad,
+      }),
+    );
+
+    return this.ventaProductoRepository.save(ventasToCreate);
+  }
+
   async findVentasByEvento(eventoId: string): Promise<VentaProducto[]> {
     return this.ventaProductoRepository.find({
       where: { eventoId },
@@ -270,6 +302,7 @@ export class EventosService {
     descripcion: string,
     responsableId: string,
     medioPago: MedioPago,
+    registradoPorId?: string,
   ): Promise<void> {
     const evento = await this.findOne(eventoId);
 
@@ -281,17 +314,20 @@ export class EventosService {
 
     const cajaGrupo = await this.cajasService.findCajaGrupo();
 
-    await this.movimientosService.create({
-      cajaId: cajaGrupo.id,
-      tipo: TipoMovimiento.INGRESO,
-      monto,
-      concepto: ConceptoMovimiento.EVENTO_GRUPO_INGRESO,
-      descripcion: `${descripcion} - Evento "${evento.nombre}"`,
-      responsableId,
-      medioPago,
-      estadoPago: EstadoPago.PAGADO,
-      eventoId,
-    });
+    await this.movimientosService.create(
+      {
+        cajaId: cajaGrupo.id,
+        tipo: TipoMovimiento.INGRESO,
+        monto,
+        concepto: ConceptoMovimiento.EVENTO_GRUPO_INGRESO,
+        descripcion: `${descripcion} - Evento "${evento.nombre}"`,
+        responsableId,
+        medioPago,
+        estadoPago: EstadoPago.PAGADO,
+        eventoId,
+      },
+      registradoPorId,
+    );
   }
 
   async registrarGastoEvento(
@@ -302,6 +338,7 @@ export class EventosService {
     medioPago: MedioPago,
     estadoPago: EstadoPago,
     personaAReembolsarId?: string,
+    registradoPorId?: string,
   ): Promise<void> {
     const evento = await this.findOne(eventoId);
     const cajaGrupo = await this.cajasService.findCajaGrupo();
@@ -311,18 +348,21 @@ export class EventosService {
         ? ConceptoMovimiento.EVENTO_VENTA_GASTO
         : ConceptoMovimiento.EVENTO_GRUPO_GASTO;
 
-    await this.movimientosService.create({
-      cajaId: cajaGrupo.id,
-      tipo: TipoMovimiento.EGRESO,
-      monto,
-      concepto,
-      descripcion: `${descripcion} - Evento "${evento.nombre}"`,
-      responsableId,
-      medioPago,
-      estadoPago,
-      personaAReembolsarId,
-      eventoId,
-    });
+    await this.movimientosService.create(
+      {
+        cajaId: cajaGrupo.id,
+        tipo: TipoMovimiento.EGRESO,
+        monto,
+        concepto,
+        descripcion: `${descripcion} - Evento "${evento.nombre}"`,
+        responsableId,
+        medioPago,
+        estadoPago,
+        personaAReembolsarId,
+        eventoId,
+      },
+      registradoPorId,
+    );
   }
 
   async getKpisEvento(eventoId: string): Promise<{

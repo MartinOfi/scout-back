@@ -186,7 +186,10 @@ export class PersonasService {
    * - NO aparece en listas de nuevos eventos/inscripciones
    * - SÍ aparece en reportes de deudores si tiene deudas
    */
-  async darDeBaja(id: string): Promise<{ saldoTransferido: number }> {
+  async darDeBaja(
+    id: string,
+    registradoPorId?: string,
+  ): Promise<{ saldoTransferido: number }> {
     const persona = await this.findOne(id);
 
     // Solo protagonistas y educadores tienen cuenta personal
@@ -206,28 +209,34 @@ export class PersonasService {
           const cajaGrupo = await this.cajasService.findCajaGrupo();
 
           // Egreso de cuenta personal
-          await this.movimientosService.create({
-            cajaId: cajaPersonal.id,
-            tipo: TipoMovimiento.EGRESO,
-            monto: saldo,
-            concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
-            descripcion: `Transferencia por baja de ${persona.nombre}`,
-            responsableId: id,
-            medioPago: MedioPago.TRANSFERENCIA,
-            estadoPago: EstadoPago.PAGADO,
-          });
+          await this.movimientosService.create(
+            {
+              cajaId: cajaPersonal.id,
+              tipo: TipoMovimiento.EGRESO,
+              monto: saldo,
+              concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
+              descripcion: `Transferencia por baja de ${persona.nombre}`,
+              responsableId: id,
+              medioPago: MedioPago.TRANSFERENCIA,
+              estadoPago: EstadoPago.PAGADO,
+            },
+            registradoPorId,
+          );
 
           // Ingreso a caja del grupo
-          await this.movimientosService.create({
-            cajaId: cajaGrupo.id,
-            tipo: TipoMovimiento.INGRESO,
-            monto: saldo,
-            concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
-            descripcion: `Transferencia por baja de ${persona.nombre}`,
-            responsableId: id,
-            medioPago: MedioPago.TRANSFERENCIA,
-            estadoPago: EstadoPago.PAGADO,
-          });
+          await this.movimientosService.create(
+            {
+              cajaId: cajaGrupo.id,
+              tipo: TipoMovimiento.INGRESO,
+              monto: saldo,
+              concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
+              descripcion: `Transferencia por baja de ${persona.nombre}`,
+              responsableId: id,
+              medioPago: MedioPago.TRANSFERENCIA,
+              estadoPago: EstadoPago.PAGADO,
+            },
+            registradoPorId,
+          );
 
           // Marcar como inactivo
           persona.estado = EstadoPersona.INACTIVO;

@@ -511,6 +511,136 @@ describe('EventosService', () => {
     });
   });
 
+  describe('registrarVentasLote', () => {
+    const mockProducto2: Partial<Producto> = {
+      id: 'producto-2-uuid',
+      eventoId: 'evento-uuid',
+      nombre: 'Empanada de Verdura',
+      precioCosto: 400,
+      precioVenta: 800,
+    };
+
+    it('should register multiple ventas for a single vendedor in one call', async () => {
+      const dto = {
+        vendedorId: 'persona-uuid',
+        items: [
+          { productoId: 'producto-uuid', cantidad: 5 },
+          { productoId: 'producto-2-uuid', cantidad: 3 },
+        ],
+      };
+
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([
+        mockProducto as Producto,
+        mockProducto2 as Producto,
+      ]);
+      ventaProductoRepository.create.mockImplementation(
+        (data) => data as VentaProducto,
+      );
+      ventaProductoRepository.save.mockResolvedValue([
+        {
+          ...dto.items[0],
+          eventoId: 'evento-uuid',
+          vendedorId: 'persona-uuid',
+        },
+        {
+          ...dto.items[1],
+          eventoId: 'evento-uuid',
+          vendedorId: 'persona-uuid',
+        },
+      ] as VentaProducto[]);
+
+      const result = await service.registrarVentasLote('evento-uuid', dto);
+
+      expect(personasService.findOne).toHaveBeenCalledTimes(1);
+      expect(personasService.findOne).toHaveBeenCalledWith('persona-uuid');
+      expect(eventoRepository.findOne).toHaveBeenCalledTimes(1);
+      expect(ventaProductoRepository.create).toHaveBeenCalledTimes(2);
+      expect(ventaProductoRepository.save).toHaveBeenCalledTimes(1);
+      expect(result).toHaveLength(2);
+    });
+
+    it('should throw NotFoundException when evento does not exist', async () => {
+      eventoRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.registrarVentasLote('non-existent-id', {
+          vendedorId: 'persona-uuid',
+          items: [{ productoId: 'producto-uuid', cantidad: 1 }],
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException when a producto does not belong to the evento', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+
+      await expect(
+        service.registrarVentasLote('evento-uuid', {
+          vendedorId: 'persona-uuid',
+          items: [{ productoId: 'producto-de-otro-evento', cantidad: 2 }],
+        }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        service.registrarVentasLote('evento-uuid', {
+          vendedorId: 'persona-uuid',
+          items: [{ productoId: 'producto-de-otro-evento', cantidad: 2 }],
+        }),
+      ).rejects.toThrow(/no encontrado en este evento/);
+    });
+
+    it('should throw NotFoundException when vendedor does not exist', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      personasService.findOne.mockRejectedValue(
+        new NotFoundException('Persona no encontrada'),
+      );
+
+      await expect(
+        service.registrarVentasLote('evento-uuid', {
+          vendedorId: 'non-existent-vendedor',
+          items: [{ productoId: 'producto-uuid', cantidad: 1 }],
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should bulk save all ventas in a single repository call', async () => {
+      const dto = {
+        vendedorId: 'persona-uuid',
+        items: [
+          { productoId: 'producto-uuid', cantidad: 10 },
+          { productoId: 'producto-2-uuid', cantidad: 7 },
+        ],
+      };
+
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([
+        mockProducto as Producto,
+        mockProducto2 as Producto,
+      ]);
+      ventaProductoRepository.create.mockImplementation(
+        (data) => data as VentaProducto,
+      );
+      ventaProductoRepository.save.mockResolvedValue([] as VentaProducto[]);
+
+      await service.registrarVentasLote('evento-uuid', dto);
+
+      expect(ventaProductoRepository.save).toHaveBeenCalledWith([
+        {
+          eventoId: 'evento-uuid',
+          productoId: 'producto-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 10,
+        },
+        {
+          eventoId: 'evento-uuid',
+          productoId: 'producto-2-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 7,
+        },
+      ]);
+    });
+  });
+
   describe('findAll', () => {
     it('should return all eventos ordered by fecha DESC', async () => {
       eventoRepository.find.mockResolvedValue([mockEvento as Evento]);

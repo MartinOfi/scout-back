@@ -10,6 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { InscripcionesService } from './inscripciones.service';
 import {
   CreateInscripcionDto,
@@ -104,8 +105,9 @@ export class InscripcionesController {
   })
   async create(
     @Body() dto: CreateInscripcionDto,
+    @CurrentUser('id') userId: string,
   ): Promise<InscripcionResponseDto> {
-    return this.inscripcionesService.registrarInscripcion(dto);
+    return this.inscripcionesService.registrarInscripcion(dto, userId);
   }
 
   @Patch(':id')
@@ -148,8 +150,9 @@ export class InscripcionesController {
   async pagar(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: PagarInscripcionDto,
+    @CurrentUser('id') userId: string,
   ): Promise<InscripcionResponseDto> {
-    return this.inscripcionesService.pagar(id, dto);
+    return this.inscripcionesService.pagar(id, dto, userId);
   }
 
   @Delete(':id')

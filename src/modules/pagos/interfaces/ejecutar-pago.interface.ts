@@ -10,4 +10,5 @@ export interface EjecutarPagoParams {
   cuotaId?: string;
   campamentoId?: string;
   descripcion?: string;
+  registradoPorId?: string;
 }

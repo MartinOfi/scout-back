@@ -257,7 +257,10 @@ export class MovimientosService {
     return movimiento;
   }
 
-  async create(dto: CreateMovimientoDto): Promise<Movimiento> {
+  async create(
+    dto: CreateMovimientoDto,
+    registradoPorId?: string,
+  ): Promise<Movimiento> {
     // Validar que la caja existe
     await this.cajasService.findOne(dto.cajaId);
 
@@ -272,6 +275,7 @@ export class MovimientosService {
     const movimiento = this.movimientoRepository.create({
       ...dto,
       fecha: dto.fecha ?? new Date(),
+      ...(registradoPorId ? { registradoPorId } : {}),
     });
 
     return this.movimientoRepository.save(movimiento);
@@ -337,18 +341,22 @@ export class MovimientosService {
     estadoPago: EstadoPago,
     personaAReembolsarId?: string,
     requiereComprobante = true,
+    registradoPorId?: string,
   ): Promise<Movimiento> {
-    return this.create({
-      cajaId,
-      tipo: TipoMovimiento.EGRESO,
-      monto,
-      concepto: ConceptoMovimiento.GASTO_GENERAL,
-      descripcion,
-      responsableId,
-      medioPago,
-      estadoPago,
-      personaAReembolsarId,
-      requiereComprobante,
-    });
+    return this.create(
+      {
+        cajaId,
+        tipo: TipoMovimiento.EGRESO,
+        monto,
+        concepto: ConceptoMovimiento.GASTO_GENERAL,
+        descripcion,
+        responsableId,
+        medioPago,
+        estadoPago,
+        personaAReembolsarId,
+        requiereComprobante,
+      },
+      registradoPorId,
+    );
   }
 }

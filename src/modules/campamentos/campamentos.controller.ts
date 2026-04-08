@@ -9,6 +9,7 @@ import {
   Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -287,6 +288,7 @@ export class CampamentosController {
     @Body('responsableId', ParseUUIDPipe) responsableId: string,
     @Body('medioPago') medioPago: MedioPago,
     @Body('estadoPago') estadoPago: EstadoPago,
+    @CurrentUser('id') userId: string,
     @Body('personaAReembolsarId') personaAReembolsarId?: string,
     @Body('fecha') fecha?: string,
   ) {
@@ -297,8 +299,9 @@ export class CampamentosController {
       responsableId,
       medioPago,
       estadoPago,
-      personaAReembolsarId,
+      userId,
       fecha ? new Date(fecha) : undefined,
+      personaAReembolsarId,
     );
   }
 

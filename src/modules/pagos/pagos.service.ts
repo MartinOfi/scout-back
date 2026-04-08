@@ -40,6 +40,7 @@ export class PagosService {
       cuotaId,
       campamentoId,
       descripcion,
+      registradoPorId,
     } = params;
 
     const montoFisico = montoTotal - montoConSaldoPersonal;
@@ -74,6 +75,7 @@ export class PagosService {
         campamentoId,
         descripcion: descripcion ?? 'Uso de saldo personal para pago',
         fecha: new Date(),
+        registradoPorId: registradoPorId ?? null,
       });
 
       await manager.save(movimientoEgresoPersonal);
@@ -114,6 +116,7 @@ export class PagosService {
       campamentoId,
       descripcion: descripcionFinal || undefined,
       fecha: new Date(),
+      registradoPorId: registradoPorId ?? null,
       // Link to egreso if exists
       movimientoRelacionadoId: movimientoEgresoPersonal?.id ?? null,
     });

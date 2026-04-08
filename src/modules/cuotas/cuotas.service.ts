@@ -88,6 +88,7 @@ export class CuotasService {
     monto: number,
     medioPago: MedioPago,
     responsableId: string,
+    registradoPorId?: string,
   ): Promise<Cuota> {
     const cuota = await this.findOne(cuotaId);
 
@@ -106,17 +107,20 @@ export class CuotasService {
     // Crear movimiento de ingreso en caja grupo
     const cajaGrupo = await this.cajasService.findCajaGrupo();
 
-    await this.movimientosService.create({
-      cajaId: cajaGrupo.id,
-      tipo: TipoMovimiento.INGRESO,
-      monto,
-      concepto: ConceptoMovimiento.CUOTA_GRUPO,
-      descripcion: `Pago cuota "${cuota.nombre}" - ${cuota.persona.nombre}`,
-      responsableId,
-      medioPago,
-      estadoPago: EstadoPago.PAGADO,
-      cuotaId,
-    });
+    await this.movimientosService.create(
+      {
+        cajaId: cajaGrupo.id,
+        tipo: TipoMovimiento.INGRESO,
+        monto,
+        concepto: ConceptoMovimiento.CUOTA_GRUPO,
+        descripcion: `Pago cuota "${cuota.nombre}" - ${cuota.persona.nombre}`,
+        responsableId,
+        medioPago,
+        estadoPago: EstadoPago.PAGADO,
+        cuotaId,
+      },
+      registradoPorId,
+    );
 
     // Actualizar cuota
     cuota.montoPagado += monto;

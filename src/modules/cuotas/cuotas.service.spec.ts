@@ -232,9 +232,33 @@ describe('CuotasService', () => {
         'responsable-uuid',
       );
 
-      expect(movimientosService.create).toHaveBeenCalled();
+      expect(movimientosService.create).toHaveBeenCalledWith(
+        expect.any(Object),
+        undefined,
+      );
       expect(result.montoPagado).toBe(2000);
       expect(result.estado).toBe(EstadoCuota.PARCIAL);
+    });
+
+    it('should pass registradoPorId to movimientosService.create', async () => {
+      const cuotaPendiente = { ...mockCuota, montoPagado: 0 };
+      cuotaRepository.findOne.mockResolvedValue(cuotaPendiente as Cuota);
+      cuotaRepository.save.mockImplementation((cuota) =>
+        Promise.resolve(cuota as Cuota),
+      );
+
+      await service.registrarPago(
+        'cuota-uuid',
+        2000,
+        MedioPago.EFECTIVO,
+        'responsable-uuid',
+        'educador-uuid',
+      );
+
+      expect(movimientosService.create).toHaveBeenCalledWith(
+        expect.any(Object),
+        'educador-uuid',
+      );
     });
 
     it('should register payment and update cuota state to PAGADO when fully paid', async () => {

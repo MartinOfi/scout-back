@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -81,12 +82,14 @@ export class CuotasController {
     @Body('monto') monto: number,
     @Body('medioPago') medioPago: MedioPago,
     @Body('responsableId', ParseUUIDPipe) responsableId: string,
+    @CurrentUser('id') userId: string,
   ) {
     return this.cuotasService.registrarPago(
       id,
       monto,
       medioPago,
       responsableId,
+      userId,
     );
   }
 

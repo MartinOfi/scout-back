@@ -9,6 +9,7 @@ import {
   ParseUUIDPipe,
   Query,
 } from '@nestjs/common';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
   ApiTags,
   ApiOperation,
@@ -145,8 +146,11 @@ export class MovimientosController {
   @Post()
   @ApiOperation({ summary: 'Crear un movimiento' })
   @ApiResponse({ status: 201, description: 'Movimiento creado' })
-  async create(@Body() dto: CreateMovimientoDto) {
-    return this.movimientosService.create(dto);
+  async create(
+    @Body() dto: CreateMovimientoDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.movimientosService.create(dto, userId);
   }
 
   @Post('gasto-general')
@@ -184,8 +188,9 @@ export class MovimientosController {
     @Body('responsableId', ParseUUIDPipe) responsableId: string,
     @Body('medioPago') medioPago: MedioPago,
     @Body('estadoPago') estadoPago: EstadoPago,
-    @Body('personaAReembolsarId') personaAReembolsarId?: string,
-    @Body('requiereComprobante') requiereComprobante?: boolean,
+    @Body('personaAReembolsarId') personaAReembolsarId: string | undefined,
+    @Body('requiereComprobante') requiereComprobante: boolean | undefined,
+    @CurrentUser('id') userId: string,
   ) {
     return this.movimientosService.registrarGastoGeneral(
       cajaId,
@@ -196,6 +201,7 @@ export class MovimientosController {
       estadoPago,
       personaAReembolsarId,
       requiereComprobante ?? true,
+      userId,
     );
   }
 

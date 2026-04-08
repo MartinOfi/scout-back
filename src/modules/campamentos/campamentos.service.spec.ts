@@ -409,6 +409,28 @@ describe('CampamentosService', () => {
           monto: 5000,
           campamentoId: 'campamento-uuid',
         }),
+        undefined,
+      );
+    });
+
+    it('should pass registradoPorId to movimientosService.create', async () => {
+      campamentoRepository.findOne.mockResolvedValue(
+        mockCampamento as Campamento,
+      );
+
+      await service.registrarGasto(
+        'campamento-uuid',
+        5000,
+        'Comida',
+        'responsable-uuid',
+        MedioPago.TRANSFERENCIA,
+        EstadoPago.PAGADO,
+        'educador-uuid',
+      );
+
+      expect(movimientosService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ monto: 5000 }),
+        'educador-uuid',
       );
     });
   });

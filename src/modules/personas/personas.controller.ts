@@ -24,6 +24,7 @@ import { CreatePersonaExternaDto } from './dtos/create-persona-externa.dto';
 import { UpdatePersonaDto } from './dtos/update-persona.dto';
 import { PersonaDashboardDto } from './dtos/persona-dashboard.dto';
 import { PersonaType } from '../../common/enums';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('Personas')
 @Controller('personas')
@@ -136,8 +137,11 @@ export class PersonasController {
     },
   })
   @ApiResponse({ status: 404, description: 'Persona no encontrada' })
-  async darDeBaja(@Param('id', ParseUUIDPipe) id: string) {
-    return this.personasService.darDeBaja(id);
+  async darDeBaja(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.personasService.darDeBaja(id, userId);
   }
 
   @Delete(':id')
