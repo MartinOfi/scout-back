@@ -427,7 +427,10 @@ export class EventosService {
     };
   }
 
-  async getResumenVentas(eventoId: string): Promise<{
+  async getResumenVentas(
+    eventoId: string,
+    vendedorFilter?: string,
+  ): Promise<{
     productos: Array<{
       nombre: string;
       precioCosto: number;
@@ -541,9 +544,15 @@ export class EventosService {
       }),
     );
 
+    const vendedoresFiltrados = vendedorFilter
+      ? resumenVendedores.filter((v) =>
+          v.vendedorNombre.toLowerCase().includes(vendedorFilter.toLowerCase()),
+        )
+      : resumenVendedores;
+
     return {
       productos: resumenProductos,
-      ventasPorVendedor: resumenVendedores,
+      ventasPorVendedor: vendedoresFiltrados,
       gananciaTotal: resumenProductos.reduce((sum, p) => sum + p.ganancia, 0),
     };
   }

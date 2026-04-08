@@ -975,6 +975,59 @@ describe('EventosService', () => {
       expect(result.ventasPorVendedor).toHaveLength(0);
       expect(result.gananciaTotal).toBe(0);
     });
+
+    it('should filter ventasPorVendedor by nombre (case-insensitive partial match)', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+      ventaProductoRepository.find.mockResolvedValue([
+        makeVenta({
+          productoId: 'producto-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 3,
+          vendedor: { id: 'persona-uuid', nombre: 'Juan Scout' } as Persona,
+          producto: mockProducto as Producto,
+        }),
+        makeVenta({
+          id: 'venta-v2-uuid',
+          productoId: 'producto-uuid',
+          vendedorId: mockVendedor2Id,
+          cantidad: 7,
+          vendedor: { id: mockVendedor2Id, nombre: 'María Scout' } as Persona,
+          producto: mockProducto as Producto,
+        }),
+      ]);
+
+      const result = await service.getResumenVentas('evento-uuid', 'juan');
+
+      expect(result.ventasPorVendedor).toHaveLength(1);
+      expect(result.ventasPorVendedor[0].vendedorNombre).toBe('Juan Scout');
+    });
+
+    it('should return all vendedores when no filter is provided', async () => {
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+      ventaProductoRepository.find.mockResolvedValue([
+        makeVenta({
+          productoId: 'producto-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 3,
+          vendedor: { id: 'persona-uuid', nombre: 'Juan Scout' } as Persona,
+          producto: mockProducto as Producto,
+        }),
+        makeVenta({
+          id: 'venta-v2-uuid',
+          productoId: 'producto-uuid',
+          vendedorId: mockVendedor2Id,
+          cantidad: 7,
+          vendedor: { id: mockVendedor2Id, nombre: 'María Scout' } as Persona,
+          producto: mockProducto as Producto,
+        }),
+      ]);
+
+      const result = await service.getResumenVentas('evento-uuid');
+
+      expect(result.ventasPorVendedor).toHaveLength(2);
+    });
   });
 
   describe('registrarGastoEvento', () => {

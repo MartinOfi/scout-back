@@ -6,9 +6,16 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { EventosService } from './eventos.service';
 import { CerrarEventoVentaDto } from './dtos/cerrar-evento-venta.dto';
@@ -76,9 +83,12 @@ export class EventosController {
   @Get(':id/productos')
   @ApiOperation({ summary: 'Listar productos de un evento' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Lista de productos' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de productos con cantidad vendida acumulada',
+  })
   async findProductos(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventosService.findProductosByEvento(id);
+    return this.eventosService.findProductosConVentas(id);
   }
 
   @Post(':id/productos')
@@ -152,9 +162,17 @@ export class EventosController {
   @Get(':id/resumen-ventas')
   @ApiOperation({ summary: 'Obtener resumen de ventas del evento' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiQuery({
+    name: 'vendedor',
+    required: false,
+    description: 'Filtrar vendedores por nombre (búsqueda parcial)',
+  })
   @ApiResponse({ status: 200, description: 'Resumen de ventas' })
-  async getResumenVentas(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventosService.getResumenVentas(id);
+  async getResumenVentas(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('vendedor') vendedor?: string,
+  ) {
+    return this.eventosService.getResumenVentas(id, vendedor);
   }
 
   // ==================== CIERRE ====================
