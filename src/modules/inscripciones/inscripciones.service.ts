@@ -533,27 +533,36 @@ export class InscripcionesService {
     total: number;
     cantidad: number;
   }> {
-    const inscripciones = await this.inscripcionRepository.find();
+    const result = await this.inscripcionRepository
+      .createQueryBuilder('i')
+      .select(
+        `SUM(GREATEST(0, i.montoTotal - i.montoBonificado - COALESCE(pagos.total_pagado, 0)))`,
+        'total',
+      )
+      .addSelect(
+        `COUNT(CASE WHEN i.montoTotal - i.montoBonificado - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END)`,
+        'cantidad',
+      )
+      .leftJoin(
+        (qb) =>
+          qb
+            .select('m.inscripcion_id', 'inscripcion_id')
+            .addSelect('SUM(m.monto)', 'total_pagado')
+            .from('movimientos', 'm')
+            .where('m."deletedAt" IS NULL')
+            .andWhere('m.tipo = :ingreso', { ingreso: 'ingreso' })
+            .andWhere('m.inscripcion_id IS NOT NULL')
+            .groupBy('m.inscripcion_id'),
+        'pagos',
+        'pagos.inscripcion_id = i.id',
+      )
+      .where('i.deletedAt IS NULL')
+      .getRawOne<{ total: string | null; cantidad: string }>();
 
-    let total = 0;
-    let cantidad = 0;
-
-    for (const inscripcion of inscripciones) {
-      const montoPagado = await this.getMontoPagado(inscripcion.id);
-      const saldoPendiente = Math.max(
-        0,
-        Number(inscripcion.montoTotal) -
-          Number(inscripcion.montoBonificado) -
-          montoPagado,
-      );
-
-      if (saldoPendiente > 0) {
-        total += saldoPendiente;
-        cantidad++;
-      }
-    }
-
-    return { total, cantidad };
+    return {
+      total: Number(result?.total ?? 0),
+      cantidad: Number(result?.cantidad ?? 0),
+    };
   }
 
   async pagar(

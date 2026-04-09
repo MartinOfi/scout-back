@@ -58,6 +58,7 @@ describe('InscripcionesService', () => {
       create: jest.fn(),
       save: jest.fn(),
       softRemove: jest.fn(),
+      createQueryBuilder: jest.fn(),
     };
 
     const mockDataSource = {
@@ -965,6 +966,56 @@ describe('InscripcionesService', () => {
           medioPago: MedioPago.TRANSFERENCIA,
         }),
       );
+    });
+  });
+
+  describe('getTotalDeudaInscripciones', () => {
+    const buildQueryBuilderMock = (
+      rawResult: { total: string | null; cantidad: string } | null,
+    ) => {
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue(rawResult),
+      };
+      repository.createQueryBuilder.mockReturnValue(qb as any);
+      return qb;
+    };
+
+    it('should return total and cantidad from a single aggregation query', async () => {
+      buildQueryBuilderMock({ total: '15000.50', cantidad: '3' });
+
+      const result = await service.getTotalDeudaInscripciones();
+
+      expect(result).toEqual({ total: 15000.5, cantidad: 3 });
+      expect(repository.createQueryBuilder).toHaveBeenCalledWith('i');
+    });
+
+    it('should return { total: 0, cantidad: 0 } when there are no debts (null result)', async () => {
+      buildQueryBuilderMock(null);
+
+      const result = await service.getTotalDeudaInscripciones();
+
+      expect(result).toEqual({ total: 0, cantidad: 0 });
+    });
+
+    it('should return { total: 0, cantidad: 0 } when total is null', async () => {
+      buildQueryBuilderMock({ total: null, cantidad: '0' });
+
+      const result = await service.getTotalDeudaInscripciones();
+
+      expect(result).toEqual({ total: 0, cantidad: 0 });
+    });
+
+    it('should NOT call findByRelatedEntity or getMontoPagado (no N+1)', async () => {
+      buildQueryBuilderMock({ total: '5000', cantidad: '1' });
+
+      await service.getTotalDeudaInscripciones();
+
+      expect(movimientosService.findByRelatedEntity).not.toHaveBeenCalled();
+      expect(repository.find).not.toHaveBeenCalled();
     });
   });
 });
