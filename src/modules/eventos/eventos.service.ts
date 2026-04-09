@@ -133,11 +133,18 @@ export class EventosService {
       this.ventaProductoRepository.find({ where: { eventoId } }),
     ]);
 
+    // Pre-group ventas by productoId: O(N) instead of O(N*M)
+    const ventasPorProducto = new Map<string, number>();
+    for (const v of ventas) {
+      ventasPorProducto.set(
+        v.productoId,
+        (ventasPorProducto.get(v.productoId) ?? 0) + v.cantidad,
+      );
+    }
+
     return productos.map((p) => ({
       ...p,
-      cantidadVendida: ventas
-        .filter((v) => v.productoId === p.id)
-        .reduce((sum, v) => sum + v.cantidad, 0),
+      cantidadVendida: ventasPorProducto.get(p.id) ?? 0,
     }));
   }
 
@@ -519,15 +526,19 @@ export class EventosService {
       relations: ['producto', 'vendedor'],
     });
 
+    // Pre-group ventas by productoId: O(N) instead of O(N*M)
+    const ventasPorProductoMap = new Map<string, number>();
+    for (const v of ventas) {
+      ventasPorProductoMap.set(
+        v.productoId,
+        (ventasPorProductoMap.get(v.productoId) ?? 0) + v.cantidad,
+      );
+    }
+
     // Resumen por producto
     const resumenProductos = productos.map((p) => {
-      const ventasProducto = ventas.filter((v) => v.productoId === p.id);
-      const cantidadVendida = ventasProducto.reduce(
-        (sum, v) => sum + v.cantidad,
-        0,
-      );
+      const cantidadVendida = ventasPorProductoMap.get(p.id) ?? 0;
       const gananciaUnitaria = Number(p.precioVenta) - Number(p.precioCosto);
-
       return {
         nombre: p.nombre,
         precioCosto: Number(p.precioCosto),
@@ -536,6 +547,9 @@ export class EventosService {
         ganancia: gananciaUnitaria * cantidadVendida,
       };
     });
+
+    // Pre-build productos lookup: O(1) per access instead of O(N)
+    const productosMap = new Map(productos.map((p) => [p.id, p]));
 
     // Resumen por vendedor
     const ventasPorVendedor = new Map<
@@ -552,7 +566,7 @@ export class EventosService {
     >();
 
     for (const venta of ventas) {
-      const producto = productos.find((p) => p.id === venta.productoId);
+      const producto = productosMap.get(venta.productoId); // O(1)
       if (!producto) continue;
 
       const gananciaUnitaria =
@@ -575,16 +589,14 @@ export class EventosService {
         ganancia: 0,
       };
 
-      ventasPorVendedor.set(venta.vendedorId, {
-        ...actual,
-        cantidad: actual.cantidad + venta.cantidad,
-        ganancia: actual.ganancia + gananciaVenta,
-        desglose: new Map(actual.desglose).set(venta.productoId, {
-          nombre: actualDesglose.nombre,
-          cantidad: actualDesglose.cantidad + venta.cantidad,
-          ganancia: actualDesglose.ganancia + gananciaVenta,
-        }),
+      actual.desglose.set(venta.productoId, {
+        nombre: actualDesglose.nombre,
+        cantidad: actualDesglose.cantidad + venta.cantidad,
+        ganancia: actualDesglose.ganancia + gananciaVenta,
       });
+      actual.cantidad += venta.cantidad;
+      actual.ganancia += gananciaVenta;
+      ventasPorVendedor.set(venta.vendedorId, actual);
     }
 
     const resumenVendedores = Array.from(ventasPorVendedor.entries()).map(
