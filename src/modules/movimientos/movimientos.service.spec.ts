@@ -108,7 +108,9 @@ describe('MovimientosService', () => {
     it('should validate responsable exists', async () => {
       await service.create(baseDto, 'user-uuid');
 
-      expect(personasService.findOne).toHaveBeenCalledWith(baseDto.responsableId);
+      expect(personasService.findOne).toHaveBeenCalledWith(
+        baseDto.responsableId,
+      );
     });
 
     it('should save and return the created movimiento', async () => {
@@ -116,6 +118,43 @@ describe('MovimientosService', () => {
 
       expect(movimientoRepository.save).toHaveBeenCalled();
       expect(result).toEqual(mockMovimiento);
+    });
+  });
+
+  describe('calcularSaldosBatch', () => {
+    it('should return a map of cajaId -> saldo for multiple cajas', async () => {
+      const cajaIds = ['caja-1', 'caja-2', 'caja-3'];
+      const rawResults = [
+        { caja_id: 'caja-1', saldo: '1500' },
+        { caja_id: 'caja-2', saldo: '-200' },
+      ];
+
+      const mockQb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue(rawResults),
+      };
+      movimientoRepository.createQueryBuilder.mockReturnValue(mockQb as any);
+
+      const result = await service.calcularSaldosBatch(cajaIds);
+
+      expect(result).toBeInstanceOf(Map);
+      expect(result.get('caja-1')).toBe(1500);
+      expect(result.get('caja-2')).toBe(-200);
+      expect(result.get('caja-3')).toBe(0);
+      expect(movimientoRepository.createQueryBuilder).toHaveBeenCalledWith('m');
+    });
+
+    it('should return empty map for empty input', async () => {
+      const result = await service.calcularSaldosBatch([]);
+
+      expect(result).toBeInstanceOf(Map);
+      expect(result.size).toBe(0);
+      expect(movimientoRepository.createQueryBuilder).not.toHaveBeenCalled();
     });
   });
 

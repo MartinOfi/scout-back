@@ -337,6 +337,46 @@ export class MovimientosService {
   }
 
   /**
+   * Calcula el saldo de múltiples cajas en una sola consulta.
+   * Cajas sin movimientos retornan saldo 0.
+   */
+  async calcularSaldosBatch(cajaIds: string[]): Promise<Map<string, number>> {
+    if (cajaIds.length === 0) {
+      return new Map();
+    }
+
+    const results: { caja_id: string; saldo: string | null }[] =
+      await this.movimientoRepository
+        .createQueryBuilder('m')
+        .select('m.caja_id', 'caja_id')
+        .addSelect(
+          `SUM(CASE
+          WHEN m.tipo = :ingreso THEN m.monto
+          WHEN m.tipo = :egreso AND m.estadoPago != :pendienteReembolso THEN -m.monto
+          ELSE 0
+        END)`,
+          'saldo',
+        )
+        .where('m.caja_id IN (:...cajaIds)', { cajaIds })
+        .andWhere('m.deletedAt IS NULL')
+        .groupBy('m.caja_id')
+        .setParameter('ingreso', TipoMovimiento.INGRESO)
+        .setParameter('egreso', TipoMovimiento.EGRESO)
+        .setParameter('pendienteReembolso', EstadoPago.PENDIENTE_REEMBOLSO)
+        .getRawMany();
+
+    const saldoMap = new Map<string, number>();
+    for (const id of cajaIds) {
+      saldoMap.set(id, 0);
+    }
+    for (const row of results) {
+      saldoMap.set(row.caja_id, Number(row.saldo ?? 0));
+    }
+
+    return saldoMap;
+  }
+
+  /**
    * Calcula el saldo de una persona en su cuenta personal
    * basado en movimientos de su caja personal
    */
