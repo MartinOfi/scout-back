@@ -38,6 +38,14 @@ export class MovimientosService {
     });
   }
 
+  async findRecientes(cantidad = 10): Promise<Movimiento[]> {
+    return this.movimientoRepository.find({
+      relations: ['caja', 'responsable', 'personaAReembolsar'],
+      order: { fecha: 'DESC', createdAt: 'DESC' },
+      take: cantidad,
+    });
+  }
+
   async findWithFilters(
     filters: FilterMovimientosDto,
   ): Promise<PaginatedResponseDto<Movimiento>> {

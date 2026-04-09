@@ -60,6 +60,21 @@ export class MovimientosController {
     return this.movimientosService.findWithFilters(filters);
   }
 
+  @Get('recientes')
+  @ApiOperation({
+    summary: 'Obtener los últimos movimientos registrados',
+    description:
+      'Retorna los últimos 10 movimientos ordenados por fecha descendente.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Últimos movimientos registrados',
+    type: [Movimiento],
+  })
+  async findRecientes(): Promise<Movimiento[]> {
+    return this.movimientosService.findRecientes();
+  }
+
   @Get('reembolsos-pendientes')
   @ApiOperation({
     summary: 'Obtener reembolsos pendientes agrupados por persona',
