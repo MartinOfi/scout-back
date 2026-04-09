@@ -65,6 +65,13 @@ describe('CajasService', () => {
 
     const mockMovimientosService = {
       calcularSaldo: jest.fn().mockResolvedValue(0),
+      calcularSaldosBatch: jest.fn().mockResolvedValue(
+        new Map([
+          ['caja-grupo-uuid', 5000],
+          ['caja-rama-uuid', 1000],
+          ['caja-personal-uuid', 200],
+        ]),
+      ),
       findReembolsosPendientes: jest.fn().mockResolvedValue([]),
     };
 
@@ -399,6 +406,39 @@ describe('CajasService', () => {
         order: { tipo: 'ASC', nombre: 'ASC' },
       });
     });
+
+    it('should use calcularSaldosBatch instead of individual calcularSaldo calls', async () => {
+      const cajas = [mockCajaGrupo, mockCajaRama, mockCajaPersonal];
+      cajaRepository.find.mockResolvedValue(cajas as Caja[]);
+      movimientosService.calcularSaldosBatch.mockResolvedValue(
+        new Map([
+          ['caja-grupo-uuid', 5000],
+          ['caja-rama-uuid', 1000],
+          ['caja-personal-uuid', 200],
+        ]),
+      );
+
+      const result = await service.findAll();
+
+      expect(movimientosService.calcularSaldosBatch).toHaveBeenCalledWith([
+        'caja-grupo-uuid',
+        'caja-rama-uuid',
+        'caja-personal-uuid',
+      ]);
+      expect(movimientosService.calcularSaldo).not.toHaveBeenCalled();
+      expect(result[0].saldoActual).toBe(5000);
+      expect(result[1].saldoActual).toBe(1000);
+      expect(result[2].saldoActual).toBe(200);
+    });
+
+    it('should return empty array when no cajas exist', async () => {
+      cajaRepository.find.mockResolvedValue([]);
+
+      const result = await service.findAll();
+
+      expect(result).toHaveLength(0);
+      expect(movimientosService.calcularSaldosBatch).not.toHaveBeenCalled();
+    });
   });
 
   describe('getConsolidadoSaldos', () => {
@@ -427,11 +467,14 @@ describe('CajasService', () => {
         .mockResolvedValueOnce([mockCajaRamaManada, mockCajaRamaUnidad]) // cajasRama
         .mockResolvedValueOnce([mockCajaPersonal as Caja]); // cajasPersonales
 
-      movimientosService.calcularSaldo
-        .mockResolvedValueOnce(10000) // saldo grupo
-        .mockResolvedValueOnce(2000) // saldo rama manada
-        .mockResolvedValueOnce(3000) // saldo rama unidad
-        .mockResolvedValueOnce(500); // saldo personal
+      movimientosService.calcularSaldosBatch.mockResolvedValue(
+        new Map([
+          ['caja-grupo-uuid', 10000],
+          ['caja-rama-manada-uuid', 2000],
+          ['caja-rama-unidad-uuid', 3000],
+          ['caja-personal-uuid', 500],
+        ]),
+      );
 
       movimientosService.findReembolsosPendientes.mockResolvedValue([
         { propietarioId: 'p1', totalPendiente: 1000 },
@@ -530,7 +573,9 @@ describe('CajasService', () => {
         .mockResolvedValueOnce([cajaRamaSinNombre])
         .mockResolvedValueOnce([]);
 
-      movimientosService.calcularSaldo.mockResolvedValue(1000);
+      movimientosService.calcularSaldosBatch.mockResolvedValue(
+        new Map([['caja-rama-uuid', 1000]]),
+      );
       movimientosService.findReembolsosPendientes.mockResolvedValue([]);
       inscripcionesService.getTotalDeudaInscripciones.mockResolvedValue({
         total: 0,

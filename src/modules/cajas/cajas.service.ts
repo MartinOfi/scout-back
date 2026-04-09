@@ -77,13 +77,11 @@ export class CajasService {
    * Maps an array of Caja entities to CajaResponseDto with calculated saldo
    */
   private async mapCajasWithSaldo(cajas: Caja[]): Promise<CajaResponseDto[]> {
-    const saldosPromises = cajas.map((caja) =>
-      this.movimientosService.calcularSaldo(caja.id),
-    );
-    const saldos = await Promise.all(saldosPromises);
-
-    return cajas.map((caja, index) =>
-      this.mapCajaToResponse(caja, saldos[index]),
+    if (cajas.length === 0) return [];
+    const cajaIds = cajas.map((caja) => caja.id);
+    const saldoMap = await this.movimientosService.calcularSaldosBatch(cajaIds);
+    return cajas.map((caja) =>
+      this.mapCajaToResponse(caja, saldoMap.get(caja.id) ?? 0),
     );
   }
 
@@ -227,40 +225,41 @@ export class CajasService {
       }),
     ]);
 
-    // Calcular saldos en paralelo
-    const saldoGrupoPromise = cajaGrupo
-      ? this.movimientosService.calcularSaldo(cajaGrupo.id)
-      : Promise.resolve(0);
+    // Collect all caja IDs for a single batch saldo query
+    const allCajaIds = [
+      ...(cajaGrupo ? [cajaGrupo.id] : []),
+      ...cajasRama.map((c) => c.id),
+      ...cajasPersonales.map((c) => c.id),
+    ];
 
-    const saldosRamaPromises = cajasRama.map(async (caja) => ({
-      tipo: caja.tipo,
-      id: caja.id,
-      nombre: caja.nombre || this.getNombreRama(caja.tipo),
-      saldo: await this.movimientosService.calcularSaldo(caja.id),
-    }));
-
-    const saldosPersonalesPromises = cajasPersonales.map((caja) =>
-      this.movimientosService.calcularSaldo(caja.id),
-    );
-
-    // Obtener reembolsos pendientes y deudas
     const [
-      saldoGrupo,
-      saldosRama,
-      saldosPersonales,
+      saldoMap,
       reembolsosPendientes,
       deudaInscripciones,
       deudaCuotas,
       deudaCampamentos,
     ] = await Promise.all([
-      saldoGrupoPromise,
-      Promise.all(saldosRamaPromises),
-      Promise.all(saldosPersonalesPromises),
+      allCajaIds.length > 0
+        ? this.movimientosService.calcularSaldosBatch(allCajaIds)
+        : Promise.resolve(new Map<string, number>()),
       this.movimientosService.findReembolsosPendientes(),
       this.inscripcionesService.getTotalDeudaInscripciones(),
       this.cuotasService.getTotalDeudaCuotas(),
       this.campamentosService.getTotalDeudaCampamentos(),
     ]);
+
+    const saldoGrupo = cajaGrupo ? (saldoMap.get(cajaGrupo.id) ?? 0) : 0;
+
+    const saldosRama = cajasRama.map((caja) => ({
+      tipo: caja.tipo,
+      id: caja.id,
+      nombre: caja.nombre || this.getNombreRama(caja.tipo),
+      saldo: saldoMap.get(caja.id) ?? 0,
+    }));
+
+    const saldosPersonales = cajasPersonales.map(
+      (caja) => saldoMap.get(caja.id) ?? 0,
+    );
 
     // Calcular totales
     const totalRamas = saldosRama.reduce((sum, r) => sum + r.saldo, 0);
