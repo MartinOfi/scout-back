@@ -661,26 +661,41 @@ export class CampamentosService {
     total: number;
     cantidad: number;
   }> {
-    const campamentos = await this.campamentoRepository.find({
-      relations: ['participantes'],
-    });
+    const result = await this.campamentoRepository
+      .createQueryBuilder('c')
+      .select(
+        `SUM(GREATEST(0, c."costoPorPersona" - COALESCE(pagos.total_pagado, 0)))`,
+        'total',
+      )
+      .addSelect(
+        `COUNT(CASE WHEN c."costoPorPersona" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END)`,
+        'cantidad',
+      )
+      .innerJoin('c.participantes', 'p')
+      .leftJoin(
+        (qb) =>
+          qb
+            .select('m.responsable_id', 'responsable_id')
+            .addSelect('m.campamento_id', 'campamento_id')
+            .addSelect('SUM(m.monto)', 'total_pagado')
+            .from('movimientos', 'm')
+            .where('m."deletedAt" IS NULL')
+            .andWhere('m.tipo = :ingreso', { ingreso: 'ingreso' })
+            .andWhere('m.concepto = :concepto', {
+              concepto: 'campamento_pago',
+            })
+            .andWhere('m.campamento_id IS NOT NULL')
+            .groupBy('m.responsable_id')
+            .addGroupBy('m.campamento_id'),
+        'pagos',
+        'pagos.responsable_id = p.id AND pagos.campamento_id = c.id',
+      )
+      .where('c.deletedAt IS NULL')
+      .getRawOne<{ total: string | null; cantidad: string }>();
 
-    let total = 0;
-    let cantidad = 0;
-
-    for (const campamento of campamentos) {
-      const pagosPorParticipante = await this.getPagosPorParticipante(
-        campamento.id,
-      );
-
-      for (const participante of pagosPorParticipante) {
-        if (participante.saldoPendiente > 0) {
-          total += participante.saldoPendiente;
-          cantidad++;
-        }
-      }
-    }
-
-    return { total, cantidad };
+    return {
+      total: Number(result?.total ?? 0),
+      cantidad: Number(result?.cantidad ?? 0),
+    };
   }
 }

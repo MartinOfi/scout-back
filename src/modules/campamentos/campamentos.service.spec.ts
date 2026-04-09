@@ -59,6 +59,7 @@ describe('CampamentosService', () => {
       create: jest.fn(),
       save: jest.fn(),
       softRemove: jest.fn(),
+      createQueryBuilder: jest.fn(),
     };
 
     const mockPersonasService = {
@@ -780,6 +781,57 @@ describe('CampamentosService', () => {
       await expect(
         service.eliminarPagoCampamento('campamento-uuid', 'mov-gasto-uuid'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getTotalDeudaCampamentos', () => {
+    const buildQueryBuilderMock = (
+      rawResult: { total: string | null; cantidad: string } | null,
+    ) => {
+      const qb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue(rawResult),
+      };
+      campamentoRepository.createQueryBuilder.mockReturnValue(qb as any);
+      return qb;
+    };
+
+    it('should return total and cantidad from a single aggregation query', async () => {
+      buildQueryBuilderMock({ total: '2000.00', cantidad: '3' });
+
+      const result = await service.getTotalDeudaCampamentos();
+
+      expect(result).toEqual({ total: 2000, cantidad: 3 });
+      expect(campamentoRepository.createQueryBuilder).toHaveBeenCalledWith('c');
+    });
+
+    it('should return { total: 0, cantidad: 0 } when result is null', async () => {
+      buildQueryBuilderMock(null);
+
+      const result = await service.getTotalDeudaCampamentos();
+
+      expect(result).toEqual({ total: 0, cantidad: 0 });
+    });
+
+    it('should return { total: 0, cantidad: 0 } when total is null', async () => {
+      buildQueryBuilderMock({ total: null, cantidad: '0' });
+
+      const result = await service.getTotalDeudaCampamentos();
+
+      expect(result).toEqual({ total: 0, cantidad: 0 });
+    });
+
+    it('should NOT call getPagosPorParticipante or findByRelatedEntity (no N+1)', async () => {
+      buildQueryBuilderMock({ total: '5000', cantidad: '1' });
+
+      await service.getTotalDeudaCampamentos();
+
+      expect(movimientosService.findByRelatedEntity).not.toHaveBeenCalled();
+      expect(campamentoRepository.find).not.toHaveBeenCalled();
     });
   });
 });
