@@ -268,6 +268,31 @@ export class MovimientosService {
     }));
   }
 
+  /**
+   * Lightweight version for consolidado: returns only totals, no entities.
+   * Single aggregation query instead of loading all movements + relations.
+   */
+  async getReembolsosPendientesResumen(): Promise<{
+    total: number;
+    cantidad: number;
+  }> {
+    const result = await this.movimientoRepository
+      .createQueryBuilder('m')
+      .select('COALESCE(SUM(m.monto), 0)', 'total')
+      .addSelect('COUNT(DISTINCT m.persona_a_reembolsar_id)', 'cantidad')
+      .where('m.estadoPago = :estado', {
+        estado: EstadoPago.PENDIENTE_REEMBOLSO,
+      })
+      .andWhere('m.deletedAt IS NULL')
+      .andWhere('m.persona_a_reembolsar_id IS NOT NULL')
+      .getRawOne<{ total: string; cantidad: string }>();
+
+    return {
+      total: Number(result?.total ?? 0),
+      cantidad: Number(result?.cantidad ?? 0),
+    };
+  }
+
   async findOne(id: string): Promise<Movimiento> {
     const movimiento = await this.movimientoRepository.findOne({
       where: { id },

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CajasService } from './cajas.service';
 import { Caja } from './entities/caja.entity';
@@ -18,6 +18,7 @@ describe('CajasService', () => {
   let movimientosService: jest.Mocked<MovimientosService>;
   let inscripcionesService: jest.Mocked<InscripcionesService>;
   let cuotasService: jest.Mocked<CuotasService>;
+  let dataSource: jest.Mocked<DataSource>;
   let campamentosService: jest.Mocked<CampamentosService>;
 
   const mockCajaGrupo: Partial<Caja> = {
@@ -73,6 +74,9 @@ describe('CajasService', () => {
         ]),
       ),
       findReembolsosPendientes: jest.fn().mockResolvedValue([]),
+      getReembolsosPendientesResumen: jest
+        .fn()
+        .mockResolvedValue({ total: 0, cantidad: 0 }),
     };
 
     const mockInscripcionesService = {
@@ -93,12 +97,20 @@ describe('CajasService', () => {
         .mockResolvedValue({ total: 0, cantidad: 0 }),
     };
 
+    const mockDataSource = {
+      query: jest.fn().mockResolvedValue([]),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CajasService,
         {
           provide: getRepositoryToken(Caja),
           useValue: mockCajaRepository,
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
         },
         {
           provide: DeletionValidatorService,
@@ -125,6 +137,7 @@ describe('CajasService', () => {
 
     service = module.get<CajasService>(CajasService);
     cajaRepository = module.get(getRepositoryToken(Caja));
+    dataSource = module.get(DataSource);
     deletionValidator = module.get(DeletionValidatorService);
     movimientosService = module.get(MovimientosService);
     inscripcionesService = module.get(InscripcionesService);
@@ -461,39 +474,41 @@ describe('CajasService', () => {
     });
 
     it('should return consolidado with all saldos and deudas', async () => {
-      // Setup mock data
-      cajaRepository.findOne.mockResolvedValue(mockCajaGrupo as Caja);
-      cajaRepository.find
-        .mockResolvedValueOnce([mockCajaRamaManada, mockCajaRamaUnidad]) // cajasRama
-        .mockResolvedValueOnce([mockCajaPersonal as Caja]); // cajasPersonales
-
-      movimientosService.calcularSaldosBatch.mockResolvedValue(
-        new Map([
-          ['caja-grupo-uuid', 10000],
-          ['caja-rama-manada-uuid', 2000],
-          ['caja-rama-unidad-uuid', 3000],
-          ['caja-personal-uuid', 500],
-        ]),
-      );
-
-      movimientosService.findReembolsosPendientes.mockResolvedValue([
-        { propietarioId: 'p1', totalPendiente: 1000 },
+      // CTE query returns all data in one shot
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [
+            {
+              id: 'caja-grupo-uuid',
+              tipo: CajaType.GRUPO,
+              nombre: 'Caja del Grupo',
+              saldo: 10000,
+            },
+            {
+              id: 'caja-rama-manada-uuid',
+              tipo: CajaType.RAMA_MANADA,
+              nombre: 'Fondo Manada',
+              saldo: 2000,
+            },
+            {
+              id: 'caja-rama-unidad-uuid',
+              tipo: CajaType.RAMA_UNIDAD,
+              nombre: 'Fondo Unidad',
+              saldo: 3000,
+            },
+            {
+              id: 'caja-personal-uuid',
+              tipo: CajaType.PERSONAL,
+              nombre: 'Cuenta Personal',
+              saldo: 500,
+            },
+          ],
+          reembolsos: { total: 1000, cantidad: 1 },
+          deuda_inscripciones: { total: 5000, cantidad: 10 },
+          deuda_cuotas: { total: 8000, cantidad: 20 },
+          deuda_campamentos: { total: 3000, cantidad: 5 },
+        },
       ]);
-
-      inscripcionesService.getTotalDeudaInscripciones.mockResolvedValue({
-        total: 5000,
-        cantidad: 10,
-      });
-
-      cuotasService.getTotalDeudaCuotas.mockResolvedValue({
-        total: 8000,
-        cantidad: 20,
-      });
-
-      campamentosService.getTotalDeudaCampamentos.mockResolvedValue({
-        total: 3000,
-        cantidad: 5,
-      });
 
       const result = await service.getConsolidadoSaldos();
 
@@ -526,27 +541,21 @@ describe('CajasService', () => {
       expect(result.resumen.totalGeneral).toBe(totalGeneral);
       expect(result.resumen.totalDisponible).toBe(totalGeneral - 1000); // - reembolsos
       expect(result.resumen.totalPorCobrar).toBe(16000);
+
+      // Verify single query was used
+      expect(dataSource.query).toHaveBeenCalledTimes(1);
     });
 
     it('should handle empty cajas gracefully', async () => {
-      cajaRepository.findOne.mockResolvedValue(null); // no caja grupo
-      cajaRepository.find
-        .mockResolvedValueOnce([]) // no cajasRama
-        .mockResolvedValueOnce([]); // no cajasPersonales
-
-      movimientosService.findReembolsosPendientes.mockResolvedValue([]);
-      inscripcionesService.getTotalDeudaInscripciones.mockResolvedValue({
-        total: 0,
-        cantidad: 0,
-      });
-      cuotasService.getTotalDeudaCuotas.mockResolvedValue({
-        total: 0,
-        cantidad: 0,
-      });
-      campamentosService.getTotalDeudaCampamentos.mockResolvedValue({
-        total: 0,
-        cantidad: 0,
-      });
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: null,
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+        },
+      ]);
 
       const result = await service.getConsolidadoSaldos();
 
@@ -562,33 +571,22 @@ describe('CajasService', () => {
     });
 
     it('should use rama type as nombre when caja has no nombre', async () => {
-      const cajaRamaSinNombre = {
-        id: 'caja-rama-uuid',
-        tipo: CajaType.RAMA_MANADA,
-        nombre: null,
-      } as Caja;
-
-      cajaRepository.findOne.mockResolvedValue(null);
-      cajaRepository.find
-        .mockResolvedValueOnce([cajaRamaSinNombre])
-        .mockResolvedValueOnce([]);
-
-      movimientosService.calcularSaldosBatch.mockResolvedValue(
-        new Map([['caja-rama-uuid', 1000]]),
-      );
-      movimientosService.findReembolsosPendientes.mockResolvedValue([]);
-      inscripcionesService.getTotalDeudaInscripciones.mockResolvedValue({
-        total: 0,
-        cantidad: 0,
-      });
-      cuotasService.getTotalDeudaCuotas.mockResolvedValue({
-        total: 0,
-        cantidad: 0,
-      });
-      campamentosService.getTotalDeudaCampamentos.mockResolvedValue({
-        total: 0,
-        cantidad: 0,
-      });
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [
+            {
+              id: 'caja-rama-uuid',
+              tipo: CajaType.RAMA_MANADA,
+              nombre: null,
+              saldo: 1000,
+            },
+          ],
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+        },
+      ]);
 
       const result = await service.getConsolidadoSaldos();
 
