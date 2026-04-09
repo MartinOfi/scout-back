@@ -12,9 +12,6 @@ import { CreateCajaDto, ConsolidadoSaldosDto, CajaResponseDto } from './dtos';
 import { CajaType } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
-import { InscripcionesService } from '../inscripciones/inscripciones.service';
-import { CuotasService } from '../cuotas/cuotas.service';
-import { CampamentosService } from '../campamentos/campamentos.service';
 
 @Injectable()
 export class CajasService {
@@ -25,12 +22,6 @@ export class CajasService {
     private readonly deletionValidator: DeletionValidatorService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
-    @Inject(forwardRef(() => InscripcionesService))
-    private readonly inscripcionesService: InscripcionesService,
-    @Inject(forwardRef(() => CuotasService))
-    private readonly cuotasService: CuotasService,
-    @Inject(forwardRef(() => CampamentosService))
-    private readonly campamentosService: CampamentosService,
   ) {}
 
   async findAll(): Promise<CajaResponseDto[]> {
