@@ -50,6 +50,18 @@ export class Evento extends BaseEntity {
   productos!: Producto[];
 
   /**
+   * Whether the event has been closed/finalized.
+   *
+   * A closed event is immutable: no new ventas, no edits, no deletes
+   * of ventas / movimientos linked to it. The flag is enforced by
+   * EventosService and VentasEventoService via assertEventoModificable.
+   *
+   * Default false; set to true via the (future) "cerrar evento" endpoint.
+   */
+  @Column({ name: 'esta_cerrado', type: 'boolean', default: false })
+  estaCerrado!: boolean;
+
+  /**
    * Incomes, expenses, and sales are tracked via Movimiento entities
    * with eventoId = this.id
    */

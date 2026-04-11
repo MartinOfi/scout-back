@@ -236,3 +236,23 @@ export enum FiltroMovimientosCampamento {
   EGRESOS = 'egresos', // All EGRESO movements (including USO_SALDO_PERSONAL)
   GASTOS = 'gastos', // Only real expenses (CAMPAMENTO_GASTO, excludes USO_SALDO_PERSONAL)
 }
+
+// ============================================================================
+// CONCEPTO GROUPS
+// ============================================================================
+
+/**
+ * Conceptos de movimiento que el sistema genera AUTOMÁTICAMENTE como
+ * consecuencia de registrar/borrar una venta de evento.
+ *
+ * Usar desde:
+ *  - DeletionValidator para distinguir movimientos cascadeables de externos.
+ *  - VentasEventoService para identificar movimientos a borrar en cascada.
+ *  - Migraciones de backfill para parear ventas con su movimiento.
+ *
+ * Si en el futuro un nuevo concepto nace de una venta, agregarlo acá una vez.
+ */
+export const VENTA_DERIVED_CONCEPTOS: readonly ConceptoMovimiento[] = [
+  ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+  ConceptoMovimiento.EVENTO_VENTA_GASTO,
+] as const;

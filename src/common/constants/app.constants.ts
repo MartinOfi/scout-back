@@ -34,6 +34,14 @@ export const PAGINATION = {
 } as const;
 
 /**
+ * Application timezone for date-only computations.
+ * Used in SQL `AT TIME ZONE` casts so calendar-day grouping aligns with
+ * the user's local day instead of UTC (avoids "ventas at 22:00 local
+ * jumping to the next day" surprises).
+ */
+export const APP_TIMEZONE = 'America/Argentina/Buenos_Aires';
+
+/**
  * Validation constraints
  */
 export const VALIDATION = {

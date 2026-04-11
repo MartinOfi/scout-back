@@ -5,7 +5,13 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, FindOptionsWhere, In } from 'typeorm';
+import {
+  Repository,
+  Between,
+  FindOptionsWhere,
+  In,
+  EntityManager,
+} from 'typeorm';
 import { Movimiento } from './entities/movimiento.entity';
 import { CreateMovimientoDto } from './dtos/create-movimiento.dto';
 import { UpdateMovimientoDto } from './dtos/update-movimiento.dto';
@@ -310,24 +316,31 @@ export class MovimientosService {
     dto: CreateMovimientoDto,
     registradoPorId?: string,
   ): Promise<Movimiento> {
-    // Validar que la caja existe
-    await this.cajasService.findOne(dto.cajaId);
+    await this.validateCreateDtoReferences(dto);
+    const entity = this.buildMovimientoEntity(dto, registradoPorId);
+    return this.movimientoRepository.save(entity);
+  }
 
-    // Validar que el responsable existe
-    await this.personasService.findOne(dto.responsableId);
-
-    // Validar personaAReembolsar si existe
-    if (dto.personaAReembolsarId) {
-      await this.personasService.findOne(dto.personaAReembolsarId);
-    }
-
-    const movimiento = this.movimientoRepository.create({
-      ...dto,
-      fecha: dto.fecha ?? new Date(),
-      ...(registradoPorId ? { registradoPorId } : {}),
-    });
-
-    return this.movimientoRepository.save(movimiento);
+  /**
+   * Same as `create()` but executed against an externally-provided
+   * EntityManager so that the caller can include this write inside
+   * an open transaction (e.g. registrarVenta needs to insert the
+   * movimiento and the venta atomically).
+   *
+   * The reference validations are kept identical so the contract
+   * does not depend on which path the caller chose.
+   */
+  async createWithManager(
+    manager: EntityManager,
+    dto: CreateMovimientoDto,
+    registradoPorId?: string,
+  ): Promise<Movimiento> {
+    await this.validateCreateDtoReferences(dto);
+    const entity = manager.create(
+      Movimiento,
+      this.buildMovimientoPayload(dto, registradoPorId),
+    );
+    return manager.save(entity);
   }
 
   async update(id: string, dto: UpdateMovimientoDto): Promise<Movimiento> {
@@ -339,6 +352,57 @@ export class MovimientosService {
   async remove(id: string): Promise<void> {
     const movimiento = await this.findOne(id);
     await this.movimientoRepository.softRemove(movimiento);
+  }
+
+  /**
+   * Soft delete a movimiento using a caller-provided EntityManager so
+   * the operation participates in an outer transaction.
+   *
+   * Idempotent: if the row is already soft-deleted (`deletedAt IS NOT NULL`)
+   * the underlying UPDATE affects 0 rows and the call returns silently.
+   * This makes concurrent delete attempts safe without explicit locking.
+   */
+  async softRemoveWithManager(
+    manager: EntityManager,
+    id: string,
+  ): Promise<void> {
+    const movimiento = await manager.findOne(Movimiento, { where: { id } });
+    if (!movimiento) {
+      return;
+    }
+    await manager.softRemove(movimiento);
+  }
+
+  // ----- create helpers (private) -----
+
+  private async validateCreateDtoReferences(
+    dto: CreateMovimientoDto,
+  ): Promise<void> {
+    await this.cajasService.findOne(dto.cajaId);
+    await this.personasService.findOne(dto.responsableId);
+    if (dto.personaAReembolsarId) {
+      await this.personasService.findOne(dto.personaAReembolsarId);
+    }
+  }
+
+  private buildMovimientoPayload(
+    dto: CreateMovimientoDto,
+    registradoPorId?: string,
+  ): Partial<Movimiento> {
+    return {
+      ...dto,
+      fecha: dto.fecha ?? new Date(),
+      ...(registradoPorId ? { registradoPorId } : {}),
+    };
+  }
+
+  private buildMovimientoEntity(
+    dto: CreateMovimientoDto,
+    registradoPorId?: string,
+  ): Movimiento {
+    return this.movimientoRepository.create(
+      this.buildMovimientoPayload(dto, registradoPorId),
+    );
   }
 
   /**

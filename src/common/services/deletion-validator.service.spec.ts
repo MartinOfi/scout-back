@@ -8,10 +8,19 @@ describe('DeletionValidatorService', () => {
   let service: DeletionValidatorService;
   let movimientoRepository: jest.Mocked<Repository<Movimiento>>;
 
+  // Query builder used by canDeleteEvento. Tests can stub `getCount` per case.
+  const mockQueryBuilder = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getCount: jest.fn(),
+  };
+
   beforeEach(async () => {
     const mockRepository = {
       count: jest.fn(),
+      createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
     };
+    mockQueryBuilder.getCount.mockReset();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -157,25 +166,28 @@ describe('DeletionValidatorService', () => {
   });
 
   describe('canDeleteEvento', () => {
-    it('should return canDelete=true when evento has no movements', async () => {
-      movimientoRepository.count.mockResolvedValue(0);
+    it('should return canDelete=true when evento has no external movements', async () => {
+      mockQueryBuilder.getCount.mockResolvedValue(0);
 
       const result = await service.canDeleteEvento('evento-uuid');
 
       expect(result.canDelete).toBe(true);
       expect(result.reason).toBeUndefined();
-      expect(movimientoRepository.count).toHaveBeenCalledWith({
-        where: { eventoId: 'evento-uuid' },
-      });
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
+        'm.evento_id = :eventoId',
+        { eventoId: 'evento-uuid' },
+      );
     });
 
-    it('should return canDelete=false when evento has movements', async () => {
-      movimientoRepository.count.mockResolvedValue(7);
+    it('should return canDelete=false when evento has external movements', async () => {
+      mockQueryBuilder.getCount.mockResolvedValue(7);
 
       const result = await service.canDeleteEvento('evento-uuid');
 
       expect(result.canDelete).toBe(false);
-      expect(result.reason).toContain('evento tiene 7 movimiento(s)');
+      expect(result.reason).toContain(
+        'evento tiene 7 movimiento(s) externo(s) a ventas',
+      );
       expect(result.movementCount).toBe(7);
     });
   });

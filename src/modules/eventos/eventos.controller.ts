@@ -18,189 +18,307 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { EventosService } from './eventos.service';
+import { VentasEventoService } from './services/ventas-evento.service';
 import { CreateEventoDto } from './dtos/create-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
 import { CreateVentaProductoDto } from './dtos/create-venta-producto.dto';
+import { DeleteVentaResponseDto } from './dtos/delete-venta-response.dto';
 import { RegistrarGastoEventoDto } from './dtos/registrar-gasto-evento.dto';
 import { RegistrarIngresoEventoDto } from './dtos/registrar-ingreso-evento.dto';
 import { RegisterVentasLoteDto } from './dtos/register-ventas-lote.dto';
 import { UpdateEventoDto } from './dtos/update-evento.dto';
+import {
+  EVENTOS_ROUTE_SEGMENTS,
+  EVENTOS_ROUTES,
+  EVENTOS_PARAM_NAMES,
+  EVENTOS_QUERY_NAMES,
+  EVENTOS_SWAGGER,
+} from './constants';
 
-@ApiTags('Eventos')
-@Controller('eventos')
+const UUID_PARAM_TYPE = { type: String, format: 'uuid' } as const;
+
+@ApiTags(EVENTOS_SWAGGER.TAG)
+@Controller(EVENTOS_ROUTE_SEGMENTS.BASE)
 export class EventosController {
-  constructor(private readonly eventosService: EventosService) {}
+  constructor(
+    private readonly eventosService: EventosService,
+    private readonly ventasEventoService: VentasEventoService,
+  ) {}
 
   // ==================== EVENTOS ====================
 
-  @Get()
-  @ApiOperation({ summary: 'Listar todos los eventos' })
-  @ApiResponse({ status: 200, description: 'Lista de eventos' })
+  @Get(EVENTOS_ROUTES.ROOT)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.EVENTOS.LIST_SUMMARY })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.EVENTOS.LIST_RESPONSE_OK,
+  })
   async findAll() {
     return this.eventosService.findAll();
   }
 
-  @Get(':id')
+  @Get(EVENTOS_ROUTES.BY_ID)
   @ApiOperation({
-    summary: 'Obtener un evento por ID con resumen financiero',
-    description:
-      'Retorna el evento con sus productos y el resumen financiero en tiempo real (ingresos, gastos, balance)',
+    summary: EVENTOS_SWAGGER.EVENTOS.FIND_ONE_SUMMARY,
+    description: EVENTOS_SWAGGER.EVENTOS.FIND_ONE_DESCRIPTION,
   })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Evento encontrado' })
-  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventosService.getEventoDetalle(id);
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.EVENTOS.FIND_ONE_RESPONSE_OK,
+  })
+  @ApiResponse({
+    status: 404,
+    description: EVENTOS_SWAGGER.EVENTOS.FIND_ONE_RESPONSE_NOT_FOUND,
+  })
+  async findOne(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+  ) {
+    return this.eventosService.getEventoDetalle(eventoId);
   }
 
-  @Post()
-  @ApiOperation({ summary: 'Crear un evento' })
-  @ApiResponse({ status: 201, description: 'Evento creado' })
+  @Post(EVENTOS_ROUTES.ROOT)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.EVENTOS.CREATE_SUMMARY })
+  @ApiResponse({
+    status: 201,
+    description: EVENTOS_SWAGGER.EVENTOS.CREATE_RESPONSE_CREATED,
+  })
   async create(@Body() dto: CreateEventoDto) {
     return this.eventosService.create(dto);
   }
 
-  @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar un evento' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Evento actualizado' })
-  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  @Patch(EVENTOS_ROUTES.BY_ID)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.EVENTOS.UPDATE_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.EVENTOS.UPDATE_RESPONSE_OK,
+  })
+  @ApiResponse({
+    status: 404,
+    description: EVENTOS_SWAGGER.EVENTOS.UPDATE_RESPONSE_NOT_FOUND,
+  })
   async update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
     @Body() dto: UpdateEventoDto,
   ) {
-    return this.eventosService.update(id, dto);
+    return this.eventosService.update(eventoId, dto);
   }
 
-  @Delete(':id')
-  @ApiOperation({ summary: 'Eliminar un evento (soft delete)' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Evento eliminado' })
-  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventosService.remove(id);
+  @Delete(EVENTOS_ROUTES.BY_ID)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.EVENTOS.REMOVE_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.EVENTOS.REMOVE_RESPONSE_OK,
+  })
+  @ApiResponse({
+    status: 404,
+    description: EVENTOS_SWAGGER.EVENTOS.REMOVE_RESPONSE_NOT_FOUND,
+  })
+  @ApiResponse({
+    status: 409,
+    description: EVENTOS_SWAGGER.EVENTOS.REMOVE_RESPONSE_CONFLICT,
+  })
+  async remove(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+  ) {
+    return this.eventosService.remove(eventoId);
   }
 
   // ==================== PRODUCTOS ====================
 
-  @Get(':id/productos')
-  @ApiOperation({ summary: 'Listar productos de un evento' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @Get(EVENTOS_ROUTES.PRODUCTOS_BY_EVENTO)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.PRODUCTOS.LIST_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
   @ApiResponse({
     status: 200,
-    description: 'Lista de productos con cantidad vendida acumulada',
+    description: EVENTOS_SWAGGER.PRODUCTOS.LIST_RESPONSE_OK,
   })
-  async findProductos(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventosService.findProductosConVentas(id);
+  async findProductos(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+  ) {
+    return this.eventosService.findProductosConVentas(eventoId);
   }
 
-  @Post(':id/productos')
-  @ApiOperation({ summary: 'Crear producto para un evento' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 201, description: 'Producto creado' })
+  @Post(EVENTOS_ROUTES.PRODUCTOS_BY_EVENTO)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.PRODUCTOS.CREATE_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 201,
+    description: EVENTOS_SWAGGER.PRODUCTOS.CREATE_RESPONSE_CREATED,
+  })
   async createProducto(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
     @Body() dto: CreateProductoDto,
   ) {
-    return this.eventosService.createProducto({ ...dto, eventoId: id });
+    return this.eventosService.createProducto({ ...dto, eventoId });
   }
 
-  @Delete('productos/:productoId')
-  @ApiOperation({ summary: 'Eliminar un producto' })
-  @ApiParam({ name: 'productoId', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Producto eliminado' })
-  async removeProducto(@Param('productoId', ParseUUIDPipe) productoId: string) {
+  @Delete(EVENTOS_ROUTES.PRODUCTO_BY_ID)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.PRODUCTOS.REMOVE_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.PRODUCTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.PRODUCTOS.REMOVE_RESPONSE_OK,
+  })
+  async removeProducto(
+    @Param(EVENTOS_PARAM_NAMES.PRODUCTO_ID, ParseUUIDPipe) productoId: string,
+  ) {
     return this.eventosService.removeProducto(productoId);
   }
 
   // ==================== VENTAS ====================
 
-  @Get(':id/ventas')
-  @ApiOperation({ summary: 'Listar ventas de un evento' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Lista de ventas' })
-  async findVentas(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventosService.findVentasByEvento(id);
+  @Get(EVENTOS_ROUTES.VENTAS_BY_EVENTO)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.VENTAS.LIST_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiQuery({
+    name: EVENTOS_QUERY_NAMES.VENDEDOR,
+    required: false,
+    description: EVENTOS_SWAGGER.VENTAS.QUERY_VENDEDOR_DESCRIPTION,
+  })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.VENTAS.LIST_RESPONSE_OK,
+  })
+  async findVentas(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+    @Query(EVENTOS_QUERY_NAMES.VENDEDOR) vendedor?: string,
+  ) {
+    return this.eventosService.findVentasByEvento(eventoId, vendedor);
   }
 
-  @Post(':id/ventas')
-  @ApiOperation({ summary: 'Registrar una venta' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 201, description: 'Venta registrada' })
+  @Post(EVENTOS_ROUTES.VENTAS_BY_EVENTO)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.VENTAS.REGISTRAR_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 201,
+    description: EVENTOS_SWAGGER.VENTAS.REGISTRAR_RESPONSE_CREATED,
+  })
   async registrarVenta(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
     @Body() dto: CreateVentaProductoDto,
   ) {
-    return this.eventosService.registrarVenta({ ...dto, eventoId: id });
+    return this.eventosService.registrarVenta({ ...dto, eventoId });
   }
 
-  @Post(':id/ventas/lote')
+  @Post(EVENTOS_ROUTES.VENTAS_LOTE_BY_EVENTO)
   @ApiOperation({
-    summary: 'Registrar ventas de múltiples productos para un vendedor',
-    description:
-      'Permite registrar en una sola request la venta de varios productos por parte de un mismo vendedor',
+    summary: EVENTOS_SWAGGER.VENTAS.REGISTRAR_LOTE_SUMMARY,
+    description: EVENTOS_SWAGGER.VENTAS.REGISTRAR_LOTE_DESCRIPTION,
   })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 201, description: 'Ventas registradas' })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 201,
+    description: EVENTOS_SWAGGER.VENTAS.REGISTRAR_LOTE_RESPONSE_CREATED,
+  })
   async registrarVentasLote(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
     @Body() dto: RegisterVentasLoteDto,
   ) {
-    return this.eventosService.registrarVentasLote(id, dto);
+    return this.eventosService.registrarVentasLote(eventoId, dto);
   }
 
-  @Get(':id/kpis')
+  @Delete(EVENTOS_ROUTES.VENTA_BY_ID)
   @ApiOperation({
-    summary: 'Obtener KPIs financieros del evento',
-    description:
-      'Retorna totales discriminados: ingresos, gastos efectivos (PAGADO) y gastos pendientes de reembolso (PENDIENTE_REEMBOLSO)',
+    summary: EVENTOS_SWAGGER.VENTAS.DELETE_SUMMARY,
+    description: EVENTOS_SWAGGER.VENTAS.DELETE_DESCRIPTION,
   })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'KPIs del evento' })
-  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
-  async getKpis(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventosService.getKpisEvento(id);
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.VENTA_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.VENTAS.DELETE_RESPONSE_OK,
+    type: DeleteVentaResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: EVENTOS_SWAGGER.VENTAS.DELETE_RESPONSE_BAD_REQUEST,
+  })
+  @ApiResponse({
+    status: 404,
+    description: EVENTOS_SWAGGER.VENTAS.DELETE_RESPONSE_NOT_FOUND,
+  })
+  @ApiResponse({
+    status: 409,
+    description: EVENTOS_SWAGGER.VENTAS.DELETE_RESPONSE_CONFLICT,
+  })
+  async deleteVenta(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+    @Param(EVENTOS_PARAM_NAMES.VENTA_ID, ParseUUIDPipe) ventaId: string,
+  ): Promise<DeleteVentaResponseDto> {
+    return this.ventasEventoService.deleteVenta(eventoId, ventaId);
   }
 
-  @Get(':id/resumen-ventas')
-  @ApiOperation({ summary: 'Obtener resumen de ventas del evento' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiQuery({
-    name: 'vendedor',
-    required: false,
-    description: 'Filtrar vendedores por nombre (búsqueda parcial)',
+  @Get(EVENTOS_ROUTES.KPIS_BY_EVENTO)
+  @ApiOperation({
+    summary: EVENTOS_SWAGGER.KPIS.GET_SUMMARY,
+    description: EVENTOS_SWAGGER.KPIS.GET_DESCRIPTION,
   })
-  @ApiResponse({ status: 200, description: 'Resumen de ventas' })
-  async getResumenVentas(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query('vendedor') vendedor?: string,
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.KPIS.GET_RESPONSE_OK,
+  })
+  @ApiResponse({
+    status: 404,
+    description: EVENTOS_SWAGGER.KPIS.GET_RESPONSE_NOT_FOUND,
+  })
+  async getKpis(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
   ) {
-    return this.eventosService.getResumenVentas(id, vendedor);
+    return this.eventosService.getKpisEvento(eventoId);
+  }
+
+  @Get(EVENTOS_ROUTES.RESUMEN_VENTAS_BY_EVENTO)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.RESUMEN_VENTAS.GET_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiQuery({
+    name: EVENTOS_QUERY_NAMES.VENDEDOR,
+    required: false,
+    description: EVENTOS_SWAGGER.RESUMEN_VENTAS.QUERY_VENDEDOR_DESCRIPTION,
+  })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.RESUMEN_VENTAS.GET_RESPONSE_OK,
+  })
+  async getResumenVentas(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+    @Query(EVENTOS_QUERY_NAMES.VENDEDOR) vendedor?: string,
+  ) {
+    return this.eventosService.getResumenVentas(eventoId, vendedor);
   }
 
   // ==================== MOVIMIENTOS ====================
 
-  @Get(':id/movimientos')
-  @ApiOperation({ summary: 'Listar movimientos financieros de un evento' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @Get(EVENTOS_ROUTES.MOVIMIENTOS_BY_EVENTO)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.MOVIMIENTOS.LIST_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
   @ApiQuery({
-    name: 'tipo',
+    name: EVENTOS_QUERY_NAMES.TIPO,
     required: false,
-    description: 'Filtrar por tipo: ingreso | egreso',
+    description: EVENTOS_SWAGGER.MOVIMIENTOS.QUERY_TIPO_DESCRIPTION,
   })
   @ApiQuery({
-    name: 'concepto',
+    name: EVENTOS_QUERY_NAMES.CONCEPTO,
     required: false,
-    description: 'Filtrar por concepto de movimiento',
+    description: EVENTOS_SWAGGER.MOVIMIENTOS.QUERY_CONCEPTO_DESCRIPTION,
   })
-  @ApiResponse({ status: 200, description: 'Lista de movimientos del evento' })
-  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.MOVIMIENTOS.LIST_RESPONSE_OK,
+  })
+  @ApiResponse({
+    status: 404,
+    description: EVENTOS_SWAGGER.MOVIMIENTOS.LIST_RESPONSE_NOT_FOUND,
+  })
   async findMovimientos(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query('tipo') tipo?: string,
-    @Query('concepto') concepto?: string,
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+    @Query(EVENTOS_QUERY_NAMES.TIPO) tipo?: string,
+    @Query(EVENTOS_QUERY_NAMES.CONCEPTO) concepto?: string,
   ) {
-    return this.eventosService.findMovimientosByEvento(id, {
+    return this.eventosService.findMovimientosByEvento(eventoId, {
       tipo: tipo as any,
       concepto: concepto as any,
     });
@@ -208,17 +326,20 @@ export class EventosController {
 
   // ==================== INGRESOS/GASTOS ====================
 
-  @Post(':id/ingresos')
-  @ApiOperation({ summary: 'Registrar ingreso de evento de grupo' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Ingreso registrado' })
+  @Post(EVENTOS_ROUTES.INGRESOS_BY_EVENTO)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.INGRESOS.REGISTRAR_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.INGRESOS.REGISTRAR_RESPONSE_OK,
+  })
   async registrarIngreso(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
     @Body() dto: RegistrarIngresoEventoDto,
     @CurrentUser('id') userId: string,
   ) {
     return this.eventosService.registrarIngresoEventoGrupo(
-      id,
+      eventoId,
       dto.monto,
       dto.descripcion,
       dto.responsableId,
@@ -227,17 +348,20 @@ export class EventosController {
     );
   }
 
-  @Post(':id/gastos')
-  @ApiOperation({ summary: 'Registrar gasto del evento' })
-  @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiResponse({ status: 200, description: 'Gasto registrado' })
+  @Post(EVENTOS_ROUTES.GASTOS_BY_EVENTO)
+  @ApiOperation({ summary: EVENTOS_SWAGGER.GASTOS.REGISTRAR_SUMMARY })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.GASTOS.REGISTRAR_RESPONSE_OK,
+  })
   async registrarGasto(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
     @Body() dto: RegistrarGastoEventoDto,
     @CurrentUser('id') userId: string,
   ) {
     return this.eventosService.registrarGastoEvento(
-      id,
+      eventoId,
       dto.monto,
       dto.descripcion,
       dto.responsableId,

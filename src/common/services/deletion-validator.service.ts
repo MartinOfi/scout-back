@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Movimiento } from '../../modules/movimientos/entities/movimiento.entity';
+import { DELETION_VALIDATOR_MESSAGES } from './deletion-validator.messages';
 
 /**
- * Result of a deletion validation check
+ * Result of a deletion validation check.
  */
 export interface DeletionCheckResult {
   canDelete: boolean;
@@ -13,11 +14,20 @@ export interface DeletionCheckResult {
 }
 
 /**
- * Service to validate if entities can be soft deleted
- * based on their financial relationships (movimientos)
+ * Service to validate if entities can be soft deleted based on their
+ * financial relationships (movimientos).
  *
  * Rule: An entity cannot be deleted if it has any associated movimientos,
  * because movimientos are the financial ledger and must be preserved.
+ *
+ * Special case for Eventos
+ * ------------------------
+ * Eventos have movimientos that originated from venta operations
+ * (concepto = EVENTO_VENTA_INGRESO/EVENTO_VENTA_GASTO with a live VentaProducto
+ * pointing at them). Those are CASCADE-deletable: erasing the evento removes
+ * the ventas and their associated movimientos in the same transaction.
+ * Only "external" movimientos (manual ingresos/gastos with no venta backing
+ * them) block evento deletion.
  */
 @Injectable()
 export class DeletionValidatorService {
@@ -26,141 +36,114 @@ export class DeletionValidatorService {
     private readonly movimientoRepository: Repository<Movimiento>,
   ) {}
 
-  /**
-   * Check if a Persona can be deleted
-   * A persona cannot be deleted if:
-   * - They are the responsable of any movimiento
-   * - They are personaAReembolsar of any movimiento
-   */
   async canDeletePersona(personaId: string): Promise<DeletionCheckResult> {
     const asResponsable = await this.movimientoRepository.count({
       where: { responsableId: personaId },
     });
-
     if (asResponsable > 0) {
-      return {
-        canDelete: false,
-        reason: `No se puede eliminar: la persona es responsable de ${asResponsable} movimiento(s)`,
-        movementCount: asResponsable,
-      };
+      return this.blocked(
+        DELETION_VALIDATOR_MESSAGES.PERSONA_IS_RESPONSABLE(asResponsable),
+        asResponsable,
+      );
     }
 
     const asReembolsar = await this.movimientoRepository.count({
       where: { personaAReembolsarId: personaId },
     });
-
     if (asReembolsar > 0) {
-      return {
-        canDelete: false,
-        reason: `No se puede eliminar: la persona tiene ${asReembolsar} reembolso(s) registrado(s)`,
-        movementCount: asReembolsar,
-      };
+      return this.blocked(
+        DELETION_VALIDATOR_MESSAGES.PERSONA_HAS_REIMBURSEMENTS(asReembolsar),
+        asReembolsar,
+      );
     }
 
-    return { canDelete: true };
+    return this.allowed();
   }
 
-  /**
-   * Check if an Inscripcion can be deleted
-   * An inscripcion cannot be deleted if it has any associated movimientos
-   */
   async canDeleteInscripcion(
     inscripcionId: string,
   ): Promise<DeletionCheckResult> {
-    const count = await this.movimientoRepository.count({
-      where: { inscripcionId },
-    });
-
-    if (count > 0) {
-      return {
-        canDelete: false,
-        reason: `No se puede eliminar: la inscripción tiene ${count} movimiento(s) asociado(s)`,
-        movementCount: count,
-      };
-    }
-
-    return { canDelete: true };
+    return this.checkRelationByCount(
+      { inscripcionId },
+      DELETION_VALIDATOR_MESSAGES.INSCRIPCION_HAS_MOVEMENTS,
+    );
   }
 
-  /**
-   * Check if a Cuota can be deleted
-   * A cuota cannot be deleted if it has any associated movimientos
-   */
   async canDeleteCuota(cuotaId: string): Promise<DeletionCheckResult> {
-    const count = await this.movimientoRepository.count({
-      where: { cuotaId },
-    });
-
-    if (count > 0) {
-      return {
-        canDelete: false,
-        reason: `No se puede eliminar: la cuota tiene ${count} movimiento(s) asociado(s)`,
-        movementCount: count,
-      };
-    }
-
-    return { canDelete: true };
+    return this.checkRelationByCount(
+      { cuotaId },
+      DELETION_VALIDATOR_MESSAGES.CUOTA_HAS_MOVEMENTS,
+    );
   }
 
-  /**
-   * Check if a Campamento can be deleted
-   * A campamento cannot be deleted if it has any associated movimientos
-   */
   async canDeleteCampamento(
     campamentoId: string,
   ): Promise<DeletionCheckResult> {
-    const count = await this.movimientoRepository.count({
-      where: { campamentoId },
-    });
+    return this.checkRelationByCount(
+      { campamentoId },
+      DELETION_VALIDATOR_MESSAGES.CAMPAMENTO_HAS_MOVEMENTS,
+    );
+  }
 
-    if (count > 0) {
-      return {
-        canDelete: false,
-        reason: `No se puede eliminar: el campamento tiene ${count} movimiento(s) asociado(s)`,
-        movementCount: count,
-      };
-    }
-
-    return { canDelete: true };
+  async canDeleteCaja(cajaId: string): Promise<DeletionCheckResult> {
+    return this.checkRelationByCount(
+      { cajaId },
+      DELETION_VALIDATOR_MESSAGES.CAJA_HAS_MOVEMENTS,
+    );
   }
 
   /**
-   * Check if an Evento can be deleted
-   * An evento cannot be deleted if it has any associated movimientos
+   * Evento deletion is allowed when every movimiento attached to it is
+   * cascade-deletable (i.e. has at least one live venta_producto pointing at
+   * its id). External movimientos — manual ingresos/gastos with no venta —
+   * block deletion to protect the financial ledger from accidental wipes.
+   *
+   * Implemented with a single query that counts external movimientos using
+   * a NOT EXISTS subquery, avoiding round trips and N+1 patterns.
    */
   async canDeleteEvento(eventoId: string): Promise<DeletionCheckResult> {
-    const count = await this.movimientoRepository.count({
-      where: { eventoId },
-    });
+    const externalCount = await this.movimientoRepository
+      .createQueryBuilder('m')
+      .where('m.evento_id = :eventoId', { eventoId })
+      .andWhere(
+        `NOT EXISTS (
+          SELECT 1
+          FROM ventas_productos v
+          WHERE v.movimiento_id = m.id
+            AND v."deletedAt" IS NULL
+        )`,
+      )
+      .getCount();
 
-    if (count > 0) {
-      return {
-        canDelete: false,
-        reason: `No se puede eliminar: el evento tiene ${count} movimiento(s) asociado(s)`,
-        movementCount: count,
-      };
+    if (externalCount > 0) {
+      return this.blocked(
+        DELETION_VALIDATOR_MESSAGES.EVENTO_HAS_EXTERNAL_MOVEMENTS(
+          externalCount,
+        ),
+        externalCount,
+      );
     }
+    return this.allowed();
+  }
 
+  // ----- private helpers -----
+
+  private async checkRelationByCount(
+    where: Record<string, string>,
+    message: (count: number) => string,
+  ): Promise<DeletionCheckResult> {
+    const count = await this.movimientoRepository.count({ where });
+    if (count > 0) {
+      return this.blocked(message(count), count);
+    }
+    return this.allowed();
+  }
+
+  private allowed(): DeletionCheckResult {
     return { canDelete: true };
   }
 
-  /**
-   * Check if a Caja can be deleted
-   * A caja cannot be deleted if it has any associated movimientos
-   */
-  async canDeleteCaja(cajaId: string): Promise<DeletionCheckResult> {
-    const count = await this.movimientoRepository.count({
-      where: { cajaId },
-    });
-
-    if (count > 0) {
-      return {
-        canDelete: false,
-        reason: `No se puede eliminar: la caja tiene ${count} movimiento(s) asociado(s)`,
-        movementCount: count,
-      };
-    }
-
-    return { canDelete: true };
+  private blocked(reason: string, movementCount: number): DeletionCheckResult {
+    return { canDelete: false, reason, movementCount };
   }
 }

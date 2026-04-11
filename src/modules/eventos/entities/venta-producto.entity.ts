@@ -3,6 +3,7 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 import { Evento } from './evento.entity';
 import { Producto } from './producto.entity';
 import { Persona } from '../../personas/entities/persona.entity';
+import { Movimiento } from '../../movimientos/entities/movimiento.entity';
 
 /**
  * VentaProducto entity - Sales record per product per participant
@@ -49,6 +50,23 @@ export class VentaProducto extends BaseEntity {
    */
   @Column()
   cantidad!: number;
+
+  /**
+   * Linked income Movimiento generated when this sale was registered.
+   *
+   * Cardinality is N:1 — many ventas (e.g. those created in a single
+   * registrarVentasLote call) can share the same aggregated movimiento.
+   *
+   * Nullable for backward-compat with rows created before this column existed.
+   * The DB-level FK is ON DELETE SET NULL: if the movimiento is removed via
+   * a different code path, the venta survives without dangling references.
+   */
+  @ManyToOne(() => Movimiento, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'movimiento_id' })
+  movimiento!: Movimiento | null;
+
+  @Column({ name: 'movimiento_id', type: 'uuid', nullable: true })
+  movimientoId!: string | null;
 
   /**
    * Profit for this sale = (producto.precioVenta - producto.precioCosto) × cantidad

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { EventosService } from './eventos.service';
 import { Evento } from './entities/evento.entity';
@@ -29,8 +29,17 @@ describe('EventosService', () => {
   let productoRepository: jest.Mocked<Repository<Producto>>;
   let ventaProductoRepository: jest.Mocked<Repository<VentaProducto>>;
   let personasService: jest.Mocked<PersonasService>;
+  let cajasService: jest.Mocked<CajasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
+  let fakeManager: {
+    create: jest.Mock;
+    save: jest.Mock;
+    find: jest.Mock;
+    findOne: jest.Mock;
+    softRemove: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
 
   const mockPersona: Partial<Persona> = {
     id: 'persona-uuid',
@@ -111,6 +120,7 @@ describe('EventosService', () => {
       create: jest.fn(),
       save: jest.fn(),
       softRemove: jest.fn(),
+      createQueryBuilder: jest.fn(),
     };
 
     const mockPersonasService = {
@@ -124,11 +134,41 @@ describe('EventosService', () => {
 
     const mockMovimientosService = {
       create: jest.fn(),
+      createWithManager: jest.fn().mockResolvedValue({ id: 'movimiento-uuid' }),
+      softRemoveWithManager: jest.fn().mockResolvedValue(undefined),
       findByRelatedEntity: jest.fn(),
     };
 
     const mockDeletionValidator = {
       canDeleteEvento: jest.fn().mockResolvedValue({ canDelete: true }),
+    };
+
+    /**
+     * In-memory DataSource mock that runs the transaction callback
+     * synchronously against a fake EntityManager. The fake manager
+     * supports the calls EventosService makes inside its transactions:
+     *   - create / save (registrarVenta + Lote)
+     *   - find (cascade removal of ventas/productos)
+     *   - softRemove (cascade)
+     *   - createQueryBuilder (cascade of venta-derived movimientos)
+     */
+    fakeManager = {
+      create: jest.fn((_entity: unknown, payload: unknown) => payload),
+      save: jest.fn((entity: unknown) => Promise.resolve(entity)),
+      find: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(),
+      softRemove: jest.fn().mockResolvedValue(undefined),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      }),
+    };
+
+    const mockDataSource = {
+      transaction: jest.fn(async (cb: (m: typeof fakeManager) => unknown) =>
+        cb(fakeManager),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -162,6 +202,10 @@ describe('EventosService', () => {
           provide: DeletionValidatorService,
           useValue: mockDeletionValidator,
         },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
+        },
       ],
     }).compile();
 
@@ -170,6 +214,7 @@ describe('EventosService', () => {
     productoRepository = module.get(getRepositoryToken(Producto));
     ventaProductoRepository = module.get(getRepositoryToken(VentaProducto));
     personasService = module.get(PersonasService);
+    cajasService = module.get(CajasService);
     movimientosService = module.get(MovimientosService);
     deletionValidator = module.get(DeletionValidatorService);
   });
@@ -235,18 +280,16 @@ describe('EventosService', () => {
         deletionValidator.canDeleteEvento.mockResolvedValue({
           canDelete: true,
         });
-        ventaProductoRepository.find.mockResolvedValue([]);
-        productoRepository.find.mockResolvedValue([]);
-        eventoRepository.softRemove.mockResolvedValue(mockEvento as Evento);
+        fakeManager.find.mockResolvedValue([]);
 
         await service.remove('evento-uuid');
 
         expect(deletionValidator.canDeleteEvento).toHaveBeenCalledWith(
           'evento-uuid',
         );
-        expect(ventaProductoRepository.softRemove).not.toHaveBeenCalled();
-        expect(productoRepository.softRemove).not.toHaveBeenCalled();
-        expect(eventoRepository.softRemove).toHaveBeenCalledWith(mockEvento);
+        // Only the evento itself was soft-removed (no cascade rows existed).
+        expect(fakeManager.softRemove).toHaveBeenCalledTimes(1);
+        expect(fakeManager.softRemove).toHaveBeenCalledWith(mockEvento);
       });
 
       it('should cascade delete ventas and productos when removing evento', async () => {
@@ -257,57 +300,61 @@ describe('EventosService', () => {
         deletionValidator.canDeleteEvento.mockResolvedValue({
           canDelete: true,
         });
-        ventaProductoRepository.find.mockResolvedValue(ventas);
-        productoRepository.find.mockResolvedValue(productos);
-        ventaProductoRepository.softRemove.mockResolvedValue(
-          ventas as unknown as VentaProducto,
-        );
-        productoRepository.softRemove.mockResolvedValue(
-          productos as unknown as Producto,
-        );
-        eventoRepository.softRemove.mockResolvedValue(mockEvento as Evento);
+        fakeManager.find.mockImplementation(async (entity: unknown) => {
+          if (entity === VentaProducto) return ventas;
+          if (entity === Producto) return productos;
+          return [];
+        });
 
         await service.remove('evento-uuid');
 
-        expect(ventaProductoRepository.find).toHaveBeenCalledWith({
-          where: { eventoId: 'evento-uuid' },
-        });
-        expect(ventaProductoRepository.softRemove).toHaveBeenCalledWith(ventas);
-        expect(productoRepository.find).toHaveBeenCalledWith({
-          where: { eventoId: 'evento-uuid' },
-        });
-        expect(productoRepository.softRemove).toHaveBeenCalledWith(productos);
-        expect(eventoRepository.softRemove).toHaveBeenCalledWith(mockEvento);
+        // Manager should have soft-removed the ventas list, the productos list,
+        // and the evento itself (3 calls).
+        expect(fakeManager.softRemove).toHaveBeenCalledWith(ventas);
+        expect(fakeManager.softRemove).toHaveBeenCalledWith(productos);
+        expect(fakeManager.softRemove).toHaveBeenCalledWith(mockEvento);
       });
 
-      it('should delete ventas first, then productos, then evento (correct order)', async () => {
+      it('should delete movimientos, ventas, productos, then evento (correct order)', async () => {
         const callOrder: string[] = [];
+        const ventas = [mockVenta as VentaProducto];
+        const productos = [mockProducto as Producto];
+        const movimientos = [{ id: 'mov-uuid' }];
 
         eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
         deletionValidator.canDeleteEvento.mockResolvedValue({
           canDelete: true,
         });
-        ventaProductoRepository.find.mockResolvedValue([
-          mockVenta as VentaProducto,
-        ]);
-        productoRepository.find.mockResolvedValue([mockProducto as Producto]);
 
-        ventaProductoRepository.softRemove.mockImplementation(async () => {
-          callOrder.push('ventas');
-          return mockVenta as VentaProducto;
+        // movimientos cascade goes through createQueryBuilder
+        fakeManager.createQueryBuilder.mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getMany: jest.fn().mockResolvedValue(movimientos),
         });
-        productoRepository.softRemove.mockImplementation(async () => {
-          callOrder.push('productos');
-          return mockProducto as Producto;
+
+        fakeManager.find.mockImplementation(async (entity: unknown) => {
+          if (entity === VentaProducto) return ventas;
+          if (entity === Producto) return productos;
+          return [];
         });
-        eventoRepository.softRemove.mockImplementation(async () => {
-          callOrder.push('evento');
-          return mockEvento as Evento;
+
+        fakeManager.softRemove.mockImplementation(async (arg: unknown) => {
+          if (arg === movimientos) callOrder.push('movimientos');
+          else if (arg === ventas) callOrder.push('ventas');
+          else if (arg === productos) callOrder.push('productos');
+          else callOrder.push('evento');
+          return undefined;
         });
 
         await service.remove('evento-uuid');
 
-        expect(callOrder).toEqual(['ventas', 'productos', 'evento']);
+        expect(callOrder).toEqual([
+          'movimientos',
+          'ventas',
+          'productos',
+          'evento',
+        ]);
       });
     });
   });
@@ -458,18 +505,22 @@ describe('EventosService', () => {
         productoId: 'producto-uuid',
         vendedorId: 'persona-uuid',
         cantidad: 5,
+        medioPago: MedioPago.EFECTIVO,
       };
-
-      const created = { ...dto, id: 'new-venta-uuid' };
 
       eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
       productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
-      ventaProductoRepository.create.mockReturnValue(created as VentaProducto);
-      ventaProductoRepository.save.mockResolvedValue(created as VentaProducto);
+      // Stub the personal caja so the in-tx movimiento creation has an id.
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
 
       const result = await service.registrarVenta(dto);
 
       expect(personasService.findOne).toHaveBeenCalledWith('persona-uuid');
+      // The venta is created via the fake EntityManager inside the transaction.
+      expect(fakeManager.create).toHaveBeenCalled();
+      expect(fakeManager.save).toHaveBeenCalled();
       expect(result.cantidad).toBe(5);
     });
 
@@ -482,6 +533,7 @@ describe('EventosService', () => {
         productoId: 'non-existent-producto',
         vendedorId: 'persona-uuid',
         cantidad: 5,
+        medioPago: MedioPago.EFECTIVO,
       };
 
       await expect(service.registrarVenta(dto)).rejects.toThrow(
@@ -505,6 +557,7 @@ describe('EventosService', () => {
         productoId: 'producto-uuid',
         vendedorId: 'persona-uuid',
         cantidad: 5,
+        medioPago: MedioPago.EFECTIVO,
       };
 
       await expect(service.registrarVenta(dto)).rejects.toThrow(
@@ -528,6 +581,7 @@ describe('EventosService', () => {
     it('should register multiple ventas for a single vendedor in one call', async () => {
       const dto = {
         vendedorId: 'persona-uuid',
+        medioPago: MedioPago.EFECTIVO,
         items: [
           { productoId: 'producto-uuid', cantidad: 5 },
           { productoId: 'producto-2-uuid', cantidad: 3 },
@@ -539,10 +593,12 @@ describe('EventosService', () => {
         mockProducto as Producto,
         mockProducto2 as Producto,
       ]);
-      ventaProductoRepository.create.mockImplementation(
-        (data) => data as VentaProducto,
-      );
-      ventaProductoRepository.save.mockResolvedValue([
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
+      // The fakeManager.save returns whatever it receives, so to count items
+      // we hand it back an array of two ventas after the bulk save.
+      fakeManager.save.mockImplementationOnce(async () => [
         {
           ...dto.items[0],
           eventoId: 'evento-uuid',
@@ -553,15 +609,15 @@ describe('EventosService', () => {
           eventoId: 'evento-uuid',
           vendedorId: 'persona-uuid',
         },
-      ] as unknown as VentaProducto);
+      ]);
 
       const result = await service.registrarVentasLote('evento-uuid', dto);
 
       expect(personasService.findOne).toHaveBeenCalledTimes(1);
       expect(personasService.findOne).toHaveBeenCalledWith('persona-uuid');
       expect(eventoRepository.findOne).toHaveBeenCalledTimes(1);
-      expect(ventaProductoRepository.create).toHaveBeenCalledTimes(2);
-      expect(ventaProductoRepository.save).toHaveBeenCalledTimes(1);
+      // The transaction creates 2 venta entities via the manager.
+      expect(fakeManager.create).toHaveBeenCalled();
       expect(result).toHaveLength(2);
     });
 
@@ -608,9 +664,10 @@ describe('EventosService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should bulk save all ventas in a single repository call', async () => {
+    it('should bulk save all ventas in a single manager call', async () => {
       const dto = {
         vendedorId: 'persona-uuid',
+        medioPago: MedioPago.EFECTIVO,
         items: [
           { productoId: 'producto-uuid', cantidad: 10 },
           { productoId: 'producto-2-uuid', cantidad: 7 },
@@ -622,29 +679,20 @@ describe('EventosService', () => {
         mockProducto as Producto,
         mockProducto2 as Producto,
       ]);
-      ventaProductoRepository.create.mockImplementation(
-        (data) => data as VentaProducto,
-      );
-      ventaProductoRepository.save.mockResolvedValue(
-        [] as unknown as VentaProducto,
-      );
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
+      // First save = bulk array of ventas, returns empty list (we don't care
+      // about the response shape here, only that the bulk call happened).
+      fakeManager.save.mockImplementationOnce(async () => []);
 
       await service.registrarVentasLote('evento-uuid', dto);
 
-      expect(ventaProductoRepository.save).toHaveBeenCalledWith([
-        {
-          eventoId: 'evento-uuid',
-          productoId: 'producto-uuid',
-          vendedorId: 'persona-uuid',
-          cantidad: 10,
-        },
-        {
-          eventoId: 'evento-uuid',
-          productoId: 'producto-2-uuid',
-          vendedorId: 'persona-uuid',
-          cantidad: 7,
-        },
-      ]);
+      // The first save() must have received an array of 2 venta payloads
+      // — one bulk insert, not two separate calls.
+      const firstCallArg = fakeManager.save.mock.calls[0]?.[0];
+      expect(Array.isArray(firstCallArg)).toBe(true);
+      expect((firstCallArg as unknown[]).length).toBe(2);
     });
   });
 
@@ -736,19 +784,118 @@ describe('EventosService', () => {
   });
 
   describe('findVentasByEvento', () => {
-    it('should return ventas for an evento with relations', async () => {
-      ventaProductoRepository.find.mockResolvedValue([
-        mockVenta as VentaProducto,
-      ]);
+    /**
+     * Creates a chainable query builder stub that records every call so
+     * tests can assert the assembled query (joins, where clauses, order
+     * by, parameters) without standing up a real database.
+     */
+    function createQbStub(returnRows: VentaProducto[]) {
+      const qb = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        setParameter: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(returnRows),
+      };
+      return qb;
+    }
+
+    it('should join producto+vendedor and order by date / vendedor / producto', async () => {
+      const qb = createQbStub([mockVenta as VentaProducto]);
+      ventaProductoRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<
+          typeof ventaProductoRepository.createQueryBuilder
+        >,
+      );
 
       const result = await service.findVentasByEvento('evento-uuid');
 
       expect(result).toHaveLength(1);
-      expect(ventaProductoRepository.find).toHaveBeenCalledWith({
-        where: { eventoId: 'evento-uuid' },
-        relations: ['producto', 'vendedor'],
-        order: { createdAt: 'DESC' },
+      expect(ventaProductoRepository.createQueryBuilder).toHaveBeenCalledWith(
+        'venta',
+      );
+      expect(qb.leftJoinAndSelect).toHaveBeenCalledWith(
+        'venta.producto',
+        'producto',
+      );
+      expect(qb.leftJoinAndSelect).toHaveBeenCalledWith(
+        'venta.vendedor',
+        'vendedor',
+      );
+      expect(qb.where).toHaveBeenCalledWith('venta.eventoId = :eventoId', {
+        eventoId: 'evento-uuid',
       });
+      expect(qb.orderBy).toHaveBeenCalledWith(
+        expect.stringContaining('AT TIME ZONE :tz'),
+        'DESC',
+      );
+      expect(qb.addOrderBy).toHaveBeenCalledWith('vendedor.nombre', 'ASC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('producto.nombre', 'ASC');
+      expect(qb.setParameter).toHaveBeenCalledWith(
+        'tz',
+        'America/Argentina/Buenos_Aires',
+      );
+      expect(qb.andWhere).not.toHaveBeenCalled();
+    });
+
+    it('should NOT add an ILIKE filter when vendedor is undefined', async () => {
+      const qb = createQbStub([]);
+      ventaProductoRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<
+          typeof ventaProductoRepository.createQueryBuilder
+        >,
+      );
+
+      await service.findVentasByEvento('evento-uuid');
+
+      expect(qb.andWhere).not.toHaveBeenCalled();
+    });
+
+    it('should NOT add an ILIKE filter when vendedor is whitespace-only', async () => {
+      const qb = createQbStub([]);
+      ventaProductoRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<
+          typeof ventaProductoRepository.createQueryBuilder
+        >,
+      );
+
+      await service.findVentasByEvento('evento-uuid', '   ');
+
+      expect(qb.andWhere).not.toHaveBeenCalled();
+    });
+
+    it('should add ILIKE filter wrapped in % wildcards when vendedor is provided', async () => {
+      const qb = createQbStub([]);
+      ventaProductoRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<
+          typeof ventaProductoRepository.createQueryBuilder
+        >,
+      );
+
+      await service.findVentasByEvento('evento-uuid', 'mar');
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'vendedor.nombre ILIKE :nombre',
+        { nombre: '%mar%' },
+      );
+    });
+
+    it('should escape LIKE special characters to prevent wildcard bypass', async () => {
+      const qb = createQbStub([]);
+      ventaProductoRepository.createQueryBuilder.mockReturnValue(
+        qb as unknown as ReturnType<
+          typeof ventaProductoRepository.createQueryBuilder
+        >,
+      );
+
+      await service.findVentasByEvento('evento-uuid', '%_\\');
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'vendedor.nombre ILIKE :nombre',
+        { nombre: '%\\%\\_\\\\%' },
+      );
     });
   });
 
@@ -790,10 +937,15 @@ describe('EventosService', () => {
         mockGastoPagado,
         mockGastoPendiente,
       ] as unknown as Movimiento[]);
+      // KPI calc reads ventas + productos to compute totalRecaudado.
+      // Grupo events have neither, so empty arrays are correct.
+      ventaProductoRepository.find.mockResolvedValue([]);
+      productoRepository.find.mockResolvedValue([]);
 
       const result = await service.getKpisEvento('evento-grupo-uuid');
 
-      expect(result.totalIngresos).toBe(15000);
+      // gananciaVentas now sums INGRESO movimientos (used to be totalIngresos).
+      expect(result.gananciaVentas).toBe(15000);
       expect(result.totalGastado).toBe(4000);
       expect(result.totalPendienteReembolso).toBe(2500);
       expect(result.balance).toBe(15000 - 4000); // 11000
@@ -805,6 +957,8 @@ describe('EventosService', () => {
         mockIngreso, // 15000 ingreso
         mockGastoPendiente, // 2500 pendiente (should NOT affect balance)
       ] as unknown as Movimiento[]);
+      ventaProductoRepository.find.mockResolvedValue([]);
+      productoRepository.find.mockResolvedValue([]);
 
       const result = await service.getKpisEvento('evento-grupo-uuid');
 
@@ -816,10 +970,12 @@ describe('EventosService', () => {
     it('should return zeros when evento has no movements', async () => {
       eventoRepository.findOne.mockResolvedValue(mockEventoGrupo as Evento);
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
+      ventaProductoRepository.find.mockResolvedValue([]);
+      productoRepository.find.mockResolvedValue([]);
 
       const result = await service.getKpisEvento('evento-grupo-uuid');
 
-      expect(result.totalIngresos).toBe(0);
+      expect(result.gananciaVentas).toBe(0);
       expect(result.totalGastado).toBe(0);
       expect(result.totalPendienteReembolso).toBe(0);
       expect(result.balance).toBe(0);
