@@ -330,7 +330,7 @@ describe('MovimientosService', () => {
       );
     });
 
-    it('setea concepto TRANSFERENCIA_ENTRE_CAJAS en ambos movimientos', async () => {
+    it('setea concepto TRANSFERENCIA_ENTRE_CAJAS y medioPago EFECTIVO por default', async () => {
       await service.crearTransferencia(baseTransferDto);
 
       const egresoPayload = mockManager.create.mock.calls[0][1];
@@ -340,6 +340,7 @@ describe('MovimientosService', () => {
         expect.objectContaining({
           tipo: TipoMovimiento.EGRESO,
           concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+          medioPago: MedioPago.EFECTIVO,
           cajaId: 'caja-origen-uuid',
           responsableId: 'persona-uuid',
           registradoPorId: 'persona-uuid',
@@ -349,9 +350,33 @@ describe('MovimientosService', () => {
         expect.objectContaining({
           tipo: TipoMovimiento.INGRESO,
           concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+          medioPago: MedioPago.EFECTIVO,
           cajaId: 'caja-destino-uuid',
           responsableId: 'persona-uuid',
           registradoPorId: 'persona-uuid',
+        }),
+      );
+    });
+
+    it('acepta un concepto explicito (override) y lo aplica a ambos movimientos', async () => {
+      await service.crearTransferencia(
+        baseTransferDto,
+        ConceptoMovimiento.TRANSFERENCIA_BAJA,
+      );
+
+      const egresoPayload = mockManager.create.mock.calls[0][1];
+      const ingresoPayload = mockManager.create.mock.calls[1][1];
+
+      expect(egresoPayload).toEqual(
+        expect.objectContaining({
+          concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
+          medioPago: MedioPago.EFECTIVO,
+        }),
+      );
+      expect(ingresoPayload).toEqual(
+        expect.objectContaining({
+          concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
+          medioPago: MedioPago.EFECTIVO,
         }),
       );
     });
