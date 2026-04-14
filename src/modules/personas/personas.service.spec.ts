@@ -19,8 +19,15 @@ import {
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
-import { PersonaType, EstadoPersona, Rama, CajaType } from '../../common/enums';
+import {
+  PersonaType,
+  EstadoPersona,
+  Rama,
+  CajaType,
+  ConceptoMovimiento,
+} from '../../common/enums';
 import { Caja } from '../cajas/entities/caja.entity';
+import { CajaResponseDto } from '../cajas/dtos';
 
 describe('PersonasService', () => {
   let service: PersonasService;
@@ -113,6 +120,7 @@ describe('PersonasService', () => {
     const mockMovimientosService = {
       calcularSaldo: jest.fn(),
       create: jest.fn(),
+      crearTransferencia: jest.fn(),
     };
 
     const mockDeletionValidator = {
@@ -611,6 +619,127 @@ describe('PersonasService', () => {
         where: { estado: EstadoPersona.ACTIVO },
         order: { nombre: 'ASC' },
       });
+    });
+  });
+
+  describe('darDeBaja', () => {
+    const personaProtagonista = {
+      id: 'persona-uuid',
+      tipo: PersonaType.PROTAGONISTA,
+      nombre: 'Juan Perez',
+      estado: EstadoPersona.ACTIVO,
+    } as Persona;
+
+    const cajaPersonal = { id: 'caja-personal-uuid' } as Caja;
+    const cajaGrupo = { id: 'caja-grupo-uuid' } as CajaResponseDto;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      jest.spyOn(service, 'findOne').mockResolvedValue(personaProtagonista);
+      cajasService.findCajaPersonal.mockResolvedValue(cajaPersonal);
+      cajasService.findCajaGrupo.mockResolvedValue(cajaGrupo);
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+      movimientosService.crearTransferencia.mockResolvedValue({
+        egreso: { id: 'egreso-uuid' },
+        ingreso: { id: 'ingreso-uuid' },
+      } as never);
+    });
+
+    it('protagonista con saldo > 0 → llama crearTransferencia con TRANSFERENCIA_BAJA y retorna saldoTransferido', async () => {
+      movimientosService.calcularSaldo.mockResolvedValue(1500);
+
+      const result = await service.darDeBaja('persona-uuid', 'admin-uuid');
+
+      expect(movimientosService.crearTransferencia).toHaveBeenCalledTimes(1);
+      expect(movimientosService.crearTransferencia).toHaveBeenCalledWith(
+        {
+          cajaOrigenId: 'caja-personal-uuid',
+          cajaDestinoId: 'caja-grupo-uuid',
+          monto: 1500,
+          responsableId: 'admin-uuid',
+          descripcion: 'Transferencia por baja de Juan Perez',
+        },
+        ConceptoMovimiento.TRANSFERENCIA_BAJA,
+      );
+      expect(result).toEqual({ saldoTransferido: 1500 });
+    });
+
+    it('educador con saldo > 0 → idem protagonista', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        ...personaProtagonista,
+        tipo: PersonaType.EDUCADOR,
+      } as Persona);
+      movimientosService.calcularSaldo.mockResolvedValue(800);
+
+      const result = await service.darDeBaja('persona-uuid', 'admin-uuid');
+
+      expect(movimientosService.crearTransferencia).toHaveBeenCalledWith(
+        expect.objectContaining({ monto: 800, responsableId: 'admin-uuid' }),
+        ConceptoMovimiento.TRANSFERENCIA_BAJA,
+      );
+      expect(result).toEqual({ saldoTransferido: 800 });
+    });
+
+    it('protagonista con saldo === 0 → NO llama crearTransferencia, retorna saldoTransferido 0', async () => {
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+
+      const result = await service.darDeBaja('persona-uuid', 'admin-uuid');
+
+      expect(movimientosService.crearTransferencia).not.toHaveBeenCalled();
+      expect(result).toEqual({ saldoTransferido: 0 });
+    });
+
+    it('persona externa → NO busca caja, NO transfiere, retorna 0', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        ...personaProtagonista,
+        tipo: PersonaType.EXTERNA,
+      } as Persona);
+
+      const result = await service.darDeBaja('persona-uuid', 'admin-uuid');
+
+      expect(cajasService.findCajaPersonal).not.toHaveBeenCalled();
+      expect(movimientosService.crearTransferencia).not.toHaveBeenCalled();
+      expect(result).toEqual({ saldoTransferido: 0 });
+    });
+
+    it('protagonista sin caja personal → retorna 0 sin error', async () => {
+      cajasService.findCajaPersonal.mockResolvedValue(null);
+
+      const result = await service.darDeBaja('persona-uuid', 'admin-uuid');
+
+      expect(movimientosService.crearTransferencia).not.toHaveBeenCalled();
+      expect(result).toEqual({ saldoTransferido: 0 });
+    });
+
+    it('NO muta persona.estado bajo ninguna circunstancia (saldo > 0)', async () => {
+      const saveSpy = jest.spyOn(personaRepository, 'save');
+      movimientosService.calcularSaldo.mockResolvedValue(1500);
+
+      await service.darDeBaja('persona-uuid', 'admin-uuid');
+
+      expect(saveSpy).not.toHaveBeenCalled();
+      expect(personaProtagonista.estado).toBe(EstadoPersona.ACTIVO);
+    });
+
+    it('NO muta persona.estado bajo ninguna circunstancia (saldo === 0)', async () => {
+      const saveSpy = jest.spyOn(personaRepository, 'save');
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+
+      await service.darDeBaja('persona-uuid', 'admin-uuid');
+
+      expect(saveSpy).not.toHaveBeenCalled();
+      expect(personaProtagonista.estado).toBe(EstadoPersona.ACTIVO);
+    });
+
+    it('registradoPorId undefined → cae al id de la persona como fallback', async () => {
+      movimientosService.calcularSaldo.mockResolvedValue(1500);
+
+      await service.darDeBaja('persona-uuid');
+
+      expect(movimientosService.crearTransferencia).toHaveBeenCalledWith(
+        expect.objectContaining({ responsableId: 'persona-uuid' }),
+        ConceptoMovimiento.TRANSFERENCIA_BAJA,
+      );
     });
   });
 });
