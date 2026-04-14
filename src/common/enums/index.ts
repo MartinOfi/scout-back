@@ -114,7 +114,7 @@ export enum ConceptoMovimiento {
   ASIGNACION_FONDO_RAMA = 'asignacion_fondo_rama', // Ingreso a fondo de rama (no egreso de caja)
 
   // Transferencias internas
-  TRANSFERENCIA_BAJA = 'transferencia_baja', // Transferencia de cuenta personal a caja al dar baja
+  TRANSFERENCIA_SALDO_PERSONAL = 'transferencia_saldo_personal', // Transferencia total del saldo de una caja personal a la caja grupo
   TRANSFERENCIA_ENTRE_CAJAS = 'transferencia_entre_cajas', // Movimiento de fondos de una caja a otra (egreso+ingreso linkeados)
 
   // Uso de saldo personal

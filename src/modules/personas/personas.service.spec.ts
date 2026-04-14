@@ -645,7 +645,7 @@ describe('PersonasService', () => {
       } as never);
     });
 
-    it('protagonista con saldo > 0 → llama crearTransferencia con TRANSFERENCIA_BAJA y retorna saldoTransferido', async () => {
+    it('protagonista con saldo > 0 → llama crearTransferencia con TRANSFERENCIA_SALDO_PERSONAL y retorna saldoTransferido', async () => {
       movimientosService.calcularSaldo.mockResolvedValue(1500);
 
       const result = await service.darDeBaja('persona-uuid', 'admin-uuid');
@@ -657,9 +657,10 @@ describe('PersonasService', () => {
           cajaDestinoId: 'caja-grupo-uuid',
           monto: 1500,
           responsableId: 'admin-uuid',
-          descripcion: 'Transferencia por baja de Juan Perez',
+          descripcion:
+            'Transferencia de saldo personal de Juan Perez a caja grupo',
         },
-        ConceptoMovimiento.TRANSFERENCIA_BAJA,
+        ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
       );
       expect(result).toEqual({ saldoTransferido: 1500 });
     });
@@ -675,7 +676,7 @@ describe('PersonasService', () => {
 
       expect(movimientosService.crearTransferencia).toHaveBeenCalledWith(
         expect.objectContaining({ monto: 800, responsableId: 'admin-uuid' }),
-        ConceptoMovimiento.TRANSFERENCIA_BAJA,
+        ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
       );
       expect(result).toEqual({ saldoTransferido: 800 });
     });
@@ -738,7 +739,7 @@ describe('PersonasService', () => {
 
       expect(movimientosService.crearTransferencia).toHaveBeenCalledWith(
         expect.objectContaining({ responsableId: 'persona-uuid' }),
-        ConceptoMovimiento.TRANSFERENCIA_BAJA,
+        ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
       );
     });
   });

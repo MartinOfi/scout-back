@@ -213,9 +213,9 @@ export class PersonasService {
         cajaDestinoId: cajaGrupo.id,
         monto: saldo,
         responsableId: registradoPorId ?? id,
-        descripcion: `Transferencia por baja de ${persona.nombre}`,
+        descripcion: `Transferencia de saldo personal de ${persona.nombre} a caja grupo`,
       },
-      ConceptoMovimiento.TRANSFERENCIA_BAJA,
+      ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
     );
 
     return { saldoTransferido: saldo };

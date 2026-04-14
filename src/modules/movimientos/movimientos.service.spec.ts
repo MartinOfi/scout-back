@@ -361,7 +361,7 @@ describe('MovimientosService', () => {
     it('acepta un concepto explicito (override) y lo aplica a ambos movimientos', async () => {
       await service.crearTransferencia(
         baseTransferDto,
-        ConceptoMovimiento.TRANSFERENCIA_BAJA,
+        ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
       );
 
       const egresoPayload = mockManager.create.mock.calls[0][1];
@@ -369,13 +369,13 @@ describe('MovimientosService', () => {
 
       expect(egresoPayload).toEqual(
         expect.objectContaining({
-          concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
+          concepto: ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
           medioPago: MedioPago.EFECTIVO,
         }),
       );
       expect(ingresoPayload).toEqual(
         expect.objectContaining({
-          concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
+          concepto: ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
           medioPago: MedioPago.EFECTIVO,
         }),
       );
