@@ -61,7 +61,7 @@ export enum ConceptoMovimiento {
   REEMBOLSO = 'reembolso',
   AJUSTE_INICIAL = 'ajuste_inicial',
   ASIGNACION_FONDO_RAMA = 'asignacion_fondo_rama',
-  TRANSFERENCIA_BAJA = 'transferencia_baja',
+  TRANSFERENCIA_SALDO_PERSONAL = 'transferencia_saldo_personal',
 }
 
 export enum MedioPago {

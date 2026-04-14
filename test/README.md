@@ -102,7 +102,7 @@ test/
 ├── app.e2e-spec.ts                     # App bootstrap smoke test
 ├── auth.e2e-spec.ts                    # Auth flow e2e
 ├── eventos-ventas-delete.e2e-spec.ts   # Eventos > venta delete e2e
-├── personas-baja.e2e-spec.ts           # Personas > dar-de-baja e2e
+├── personas-baja.e2e-spec.ts           # Personas > transferir-saldo-a-grupo e2e
 ├── jest-e2e.json                       # Jest config for e2e
 └── README.md                           # This file
 ```

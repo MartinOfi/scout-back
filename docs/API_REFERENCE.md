@@ -588,7 +588,7 @@ Base: `/personas`
 | POST | `/personas/educadores` | `CreateEducadorDto` | `Educador` | Crear educador |
 | POST | `/personas/externas` | `CreatePersonaExternaDto` | `PersonaExterna` | Crear persona externa |
 | PATCH | `/personas/:id` | `UpdatePersonaDto` | `Persona` | Actualizar persona |
-| POST | `/personas/:id/dar-de-baja` | - | `{ saldoTransferido: number }` | Dar de baja (transfiere saldo) |
+| POST | `/personas/:id/transferir-saldo-a-grupo` | - | `{ saldoTransferido: number }` | Dar de baja (transfiere saldo) |
 | DELETE | `/personas/:id` | - | `Persona` | Eliminar (soft delete) |
 
 #### Ejemplos

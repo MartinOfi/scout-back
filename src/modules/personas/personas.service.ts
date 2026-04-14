@@ -44,7 +44,7 @@ export class PersonasService {
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
     private readonly deletionValidator: DeletionValidatorService,
-  ) {}
+  ) { }
 
   async findAll(): Promise<Persona[]> {
     return this.personaRepository.find({
@@ -182,7 +182,7 @@ export class PersonasService {
    * - NO muta persona.estado: la persona puede volver al grupo más adelante.
    * - PRD F1, RN1
    */
-  async darDeBaja(
+  async transferirSaldoAGrupo(
     id: string,
     registradoPorId?: string,
   ): Promise<{ saldoTransferido: number }> {

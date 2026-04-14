@@ -32,7 +32,7 @@ export class PersonasController {
   constructor(
     private readonly personasService: PersonasService,
     private readonly dashboardService: PersonasDashboardService,
-  ) {}
+  ) { }
 
   @Get()
   @ApiOperation({ summary: 'Listar todas las personas' })
@@ -119,16 +119,16 @@ export class PersonasController {
     return this.personasService.update(id, dto);
   }
 
-  @Post(':id/dar-de-baja')
+  @Post(':id/transferir-saldo-a-grupo')
   @ApiOperation({
-    summary: 'Dar de baja a una persona',
+    summary: 'Transferir saldo de caja personal a caja grupo',
     description:
       'Transfiere saldo de cuenta personal a caja grupo y marca como inactivo',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
   @ApiResponse({
     status: 200,
-    description: 'Persona dada de baja',
+    description: 'Transferencia realizada',
     schema: {
       type: 'object',
       properties: {
@@ -137,11 +137,11 @@ export class PersonasController {
     },
   })
   @ApiResponse({ status: 404, description: 'Persona no encontrada' })
-  async darDeBaja(
+  async transferirSaldoAGrupo(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser('id') userId: string,
   ) {
-    return this.personasService.darDeBaja(id, userId);
+    return this.personasService.transferirSaldoAGrupo(id, userId);
   }
 
   @Delete(':id')

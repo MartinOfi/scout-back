@@ -1,10 +1,10 @@
 /**
- * E2E coverage for POST /api/v1/personas/:id/dar-de-baja
+ * E2E coverage for POST /api/v1/personas/:id/transferir-saldo-a-grupo
  *
  * Covers:
  * 1. Happy path: balance > 0 → atomic transfer to caja grupo,
  *    personal caja drained, persona.estado untouched, two linked
- *    movimientos with concepto = TRANSFERENCIA_BAJA, medioPago = EFECTIVO.
+ *    movimientos with concepto = TRANSFERENCIA_SALDO_PERSONAL, medioPago = EFECTIVO.
  * 2. Idempotent: balance === 0 → response saldoTransferido 0, no movimientos created.
  * 3. Double trigger: second POST after a successful first one is a clean no-op.
  *
@@ -44,7 +44,7 @@ interface DarDeBajaResponse {
 
 jest.setTimeout(30_000);
 
-describe('Personas > dar-de-baja (e2e)', () => {
+describe('Personas > transferir-saldo-a-grupo (e2e)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let cajaGrupo: Caja;
@@ -89,7 +89,7 @@ describe('Personas > dar-de-baja (e2e)', () => {
     const grupoBefore = await calcularSaldoRaw(dataSource, cajaGrupo.id);
 
     const response = await request(app.getHttpServer())
-      .post(`${API_PREFIX}/personas/${persona.id}/dar-de-baja`)
+      .post(`${API_PREFIX}/personas/${persona.id}/transferir-saldo-a-grupo`)
       .set('Authorization', `Bearer ${authToken}`)
       .expect(201);
 
@@ -102,7 +102,7 @@ describe('Personas > dar-de-baja (e2e)', () => {
     );
 
     const movimientos = await dataSource.getRepository(Movimiento).find({
-      where: { concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA },
+      where: { concepto: ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL },
       order: { tipo: 'ASC' },
     });
     expect(movimientos).toHaveLength(2);
@@ -125,16 +125,16 @@ describe('Personas > dar-de-baja (e2e)', () => {
       await createProtagonistaConCajaPersonal(dataSource);
 
     const response = await request(app.getHttpServer())
-      .post(`${API_PREFIX}/personas/${persona.id}/dar-de-baja`)
+      .post(`${API_PREFIX}/personas/${persona.id}/transferir-saldo-a-grupo`)
       .set('Authorization', `Bearer ${authToken}`)
       .expect(201);
 
     const body = response.body as DarDeBajaResponse;
     expect(Number(body.saldoTransferido)).toBe(0);
 
-    const movimientos = await dataSource
-      .getRepository(Movimiento)
-      .find({ where: { concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA } });
+    const movimientos = await dataSource.getRepository(Movimiento).find({
+      where: { concepto: ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL },
+    });
     expect(movimientos).toHaveLength(0);
 
     expect(await calcularSaldoRaw(dataSource, cajaPersonal.id)).toBe(0);
@@ -151,21 +151,21 @@ describe('Personas > dar-de-baja (e2e)', () => {
     await seedIngreso(dataSource, cajaPersonal.id, persona.id, 1500);
 
     await request(app.getHttpServer())
-      .post(`${API_PREFIX}/personas/${persona.id}/dar-de-baja`)
+      .post(`${API_PREFIX}/personas/${persona.id}/transferir-saldo-a-grupo`)
       .set('Authorization', `Bearer ${authToken}`)
       .expect(201);
 
     const second = await request(app.getHttpServer())
-      .post(`${API_PREFIX}/personas/${persona.id}/dar-de-baja`)
+      .post(`${API_PREFIX}/personas/${persona.id}/transferir-saldo-a-grupo`)
       .set('Authorization', `Bearer ${authToken}`)
       .expect(201);
 
     const body = second.body as DarDeBajaResponse;
     expect(Number(body.saldoTransferido)).toBe(0);
 
-    const movimientos = await dataSource
-      .getRepository(Movimiento)
-      .find({ where: { concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA } });
+    const movimientos = await dataSource.getRepository(Movimiento).find({
+      where: { concepto: ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL },
+    });
     expect(movimientos).toHaveLength(2); // del primer disparo solamente
   });
 });
