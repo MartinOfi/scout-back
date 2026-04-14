@@ -38,6 +38,10 @@ import {
 
 const API_PREFIX = '/api/v1';
 
+interface DarDeBajaResponse {
+  saldoTransferido: number;
+}
+
 jest.setTimeout(30_000);
 
 describe('Personas > dar-de-baja (e2e)', () => {
@@ -89,7 +93,8 @@ describe('Personas > dar-de-baja (e2e)', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .expect(201);
 
-    expect(Number(response.body.saldoTransferido)).toBe(1500);
+    const body = response.body as DarDeBajaResponse;
+    expect(Number(body.saldoTransferido)).toBe(1500);
 
     expect(await calcularSaldoRaw(dataSource, cajaPersonal.id)).toBe(0);
     expect(await calcularSaldoRaw(dataSource, cajaGrupo.id)).toBe(
@@ -124,7 +129,8 @@ describe('Personas > dar-de-baja (e2e)', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .expect(201);
 
-    expect(Number(response.body.saldoTransferido)).toBe(0);
+    const body = response.body as DarDeBajaResponse;
+    expect(Number(body.saldoTransferido)).toBe(0);
 
     const movimientos = await dataSource
       .getRepository(Movimiento)
@@ -154,7 +160,8 @@ describe('Personas > dar-de-baja (e2e)', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .expect(201);
 
-    expect(Number(second.body.saldoTransferido)).toBe(0);
+    const body = second.body as DarDeBajaResponse;
+    expect(Number(body.saldoTransferido)).toBe(0);
 
     const movimientos = await dataSource
       .getRepository(Movimiento)
@@ -204,11 +211,11 @@ async function ensureAuthUserAndGetToken(
     })
     .expect(201);
 
-  const token = response.body.accessToken as string | undefined;
-  if (!token) {
+  const body = response.body as { accessToken?: string };
+  if (!body.accessToken) {
     throw new Error('Auth register did not return accessToken');
   }
-  return token;
+  return body.accessToken;
 }
 
 async function cleanupForBajaTests(dataSource: DataSource): Promise<void> {
@@ -289,6 +296,6 @@ async function calcularSaldoRaw(
       'saldo',
     )
     .where('m.cajaId = :cajaId', { cajaId })
-    .getRawOne();
+    .getRawOne<{ saldo: string | null }>();
   return Number(result?.saldo ?? 0);
 }
