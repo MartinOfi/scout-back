@@ -14,6 +14,8 @@ import { CuotasModule } from './modules/cuotas/cuotas.module';
 import { CampamentosModule } from './modules/campamentos/campamentos.module';
 import { EventosModule } from './modules/eventos/eventos.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BackupsModule } from './modules/backups/backups.module';
+import { ExportsModule } from './modules/exports/exports.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -33,6 +35,8 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     CuotasModule,
     CampamentosModule,
     EventosModule,
+    BackupsModule,
+    ExportsModule,
   ],
   controllers: [AppController],
   providers: [
