@@ -25,10 +25,7 @@ import { DeletionValidatorService } from '../../common/services/deletion-validat
 import {
   PersonaType,
   EstadoPersona,
-  TipoMovimiento,
   ConceptoMovimiento,
-  MedioPago,
-  EstadoPago,
 } from '../../common/enums';
 
 @Injectable()
@@ -179,12 +176,11 @@ export class PersonasService {
   }
 
   /**
-   * Da de baja a una persona (soft delete + transferencia de saldo)
-   * PRD RN1, F1: Al dar de baja:
-   * - Transferir saldo de cuenta personal a caja de grupo
-   * - Marcar como inactivo
-   * - NO aparece en listas de nuevos eventos/inscripciones
-   * - SÍ aparece en reportes de deudores si tiene deudas
+   * Da de baja a una persona transfiriendo el saldo de su caja personal a la caja del grupo.
+   * - Operación atómica (delegada a MovimientosService.crearTransferencia).
+   * - Idempotente: si saldo === 0, no crea movimientos.
+   * - NO muta persona.estado: la persona puede volver al grupo más adelante.
+   * - PRD F1, RN1
    */
   async darDeBaja(
     id: string,
@@ -192,66 +188,37 @@ export class PersonasService {
   ): Promise<{ saldoTransferido: number }> {
     const persona = await this.findOne(id);
 
-    // Solo protagonistas y educadores tienen cuenta personal
     if (
-      persona.tipo === PersonaType.PROTAGONISTA ||
-      persona.tipo === PersonaType.EDUCADOR
+      persona.tipo !== PersonaType.PROTAGONISTA &&
+      persona.tipo !== PersonaType.EDUCADOR
     ) {
-      const cajaPersonal = await this.cajasService.findCajaPersonal(id);
-
-      if (cajaPersonal) {
-        const saldo = await this.movimientosService.calcularSaldo(
-          cajaPersonal.id,
-        );
-
-        if (saldo > 0) {
-          // Transferir saldo positivo a caja del grupo
-          const cajaGrupo = await this.cajasService.findCajaGrupo();
-
-          // Egreso de cuenta personal
-          await this.movimientosService.create(
-            {
-              cajaId: cajaPersonal.id,
-              tipo: TipoMovimiento.EGRESO,
-              monto: saldo,
-              concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
-              descripcion: `Transferencia por baja de ${persona.nombre}`,
-              responsableId: id,
-              medioPago: MedioPago.TRANSFERENCIA,
-              estadoPago: EstadoPago.PAGADO,
-            },
-            registradoPorId,
-          );
-
-          // Ingreso a caja del grupo
-          await this.movimientosService.create(
-            {
-              cajaId: cajaGrupo.id,
-              tipo: TipoMovimiento.INGRESO,
-              monto: saldo,
-              concepto: ConceptoMovimiento.TRANSFERENCIA_BAJA,
-              descripcion: `Transferencia por baja de ${persona.nombre}`,
-              responsableId: id,
-              medioPago: MedioPago.TRANSFERENCIA,
-              estadoPago: EstadoPago.PAGADO,
-            },
-            registradoPorId,
-          );
-
-          // Marcar como inactivo
-          persona.estado = EstadoPersona.INACTIVO;
-          await this.personaRepository.save(persona);
-
-          return { saldoTransferido: saldo };
-        }
-      }
+      return { saldoTransferido: 0 };
     }
 
-    // Si no tiene saldo o es persona externa, solo marcar inactivo
-    persona.estado = EstadoPersona.INACTIVO;
-    await this.personaRepository.save(persona);
+    const cajaPersonal = await this.cajasService.findCajaPersonal(id);
+    if (!cajaPersonal) {
+      return { saldoTransferido: 0 };
+    }
 
-    return { saldoTransferido: 0 };
+    const saldo = await this.movimientosService.calcularSaldo(cajaPersonal.id);
+    if (saldo === 0) {
+      return { saldoTransferido: 0 };
+    }
+
+    const cajaGrupo = await this.cajasService.findCajaGrupo();
+
+    await this.movimientosService.crearTransferencia(
+      {
+        cajaOrigenId: cajaPersonal.id,
+        cajaDestinoId: cajaGrupo.id,
+        monto: saldo,
+        responsableId: registradoPorId ?? id,
+        descripcion: `Transferencia por baja de ${persona.nombre}`,
+      },
+      ConceptoMovimiento.TRANSFERENCIA_BAJA,
+    );
+
+    return { saldoTransferido: saldo };
   }
 
   /**
