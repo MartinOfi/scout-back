@@ -371,6 +371,7 @@ export class MovimientosService {
    */
   async crearTransferencia(
     dto: CreateTransferenciaDto,
+    concepto: ConceptoMovimiento = ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
   ): Promise<{ egreso: Movimiento; ingreso: Movimiento }> {
     if (dto.cajaOrigenId === dto.cajaDestinoId) {
       throw new BadRequestException(
@@ -399,10 +400,10 @@ export class MovimientosService {
         cajaId: dto.cajaOrigenId,
         tipo: TipoMovimiento.EGRESO,
         monto: dto.monto,
-        concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+        concepto,
         descripcion: dto.descripcion ?? null,
         responsableId: dto.responsableId,
-        medioPago: MedioPago.TRANSFERENCIA,
+        medioPago: MedioPago.EFECTIVO,
         estadoPago: EstadoPago.PAGADO,
         requiereComprobante: false,
         fecha,
@@ -412,10 +413,10 @@ export class MovimientosService {
         cajaId: dto.cajaDestinoId,
         tipo: TipoMovimiento.INGRESO,
         monto: dto.monto,
-        concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+        concepto,
         descripcion: dto.descripcion ?? null,
         responsableId: dto.responsableId,
-        medioPago: MedioPago.TRANSFERENCIA,
+        medioPago: MedioPago.EFECTIVO,
         estadoPago: EstadoPago.PAGADO,
         requiereComprobante: false,
         fecha,
