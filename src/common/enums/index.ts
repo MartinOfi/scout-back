@@ -115,6 +115,7 @@ export enum ConceptoMovimiento {
 
   // Transferencias internas
   TRANSFERENCIA_BAJA = 'transferencia_baja', // Transferencia de cuenta personal a caja al dar baja
+  TRANSFERENCIA_ENTRE_CAJAS = 'transferencia_entre_cajas', // Movimiento de fondos de una caja a otra (egreso+ingreso linkeados)
 
   // Uso de saldo personal
   USO_SALDO_PERSONAL = 'uso_saldo_personal', // Egreso desde caja personal para pago
@@ -140,6 +141,21 @@ export enum MedioPago {
 export enum EstadoPago {
   PAGADO = 'pagado',
   PENDIENTE_REEMBOLSO = 'pendiente_reembolso',
+}
+
+/**
+ * Category of movement — orthogonal axis to concepto, used for reports.
+ * Nullable in DB: legacy rows and non-applicable concepts do not require it.
+ */
+export enum CategoriaMovimiento {
+  INSUMOS = 'insumos',
+  COMIDA = 'comida',
+  TRANSPORTE = 'transporte',
+  ALQUILER = 'alquiler',
+  SERVICIOS = 'servicios',
+  MATERIAL_DIDACTICO = 'material_didactico',
+  MANTENIMIENTO = 'mantenimiento',
+  OTROS = 'otros',
 }
 
 // ============================================================================

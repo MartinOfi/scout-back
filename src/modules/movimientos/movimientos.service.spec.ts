@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { DataSource, Repository } from 'typeorm';
 import { MovimientosService } from './movimientos.service';
 import { Movimiento } from './entities/movimiento.entity';
 import { CajasService } from '../cajas/cajas.service';
@@ -10,6 +11,7 @@ import {
   ConceptoMovimiento,
   MedioPago,
   EstadoPago,
+  CategoriaMovimiento,
 } from '../../common/enums';
 import { CreateMovimientoDto } from './dtos/create-movimiento.dto';
 
@@ -18,6 +20,7 @@ describe('MovimientosService', () => {
   let movimientoRepository: jest.Mocked<Repository<Movimiento>>;
   let cajasService: jest.Mocked<CajasService>;
   let personasService: jest.Mocked<PersonasService>;
+  let dataSource: jest.Mocked<DataSource>;
 
   const mockCaja = { id: 'caja-uuid' };
   const mockPersona = { id: 'persona-uuid', nombre: 'Juan Scout' };
@@ -53,6 +56,10 @@ describe('MovimientosService', () => {
       findOne: jest.fn().mockResolvedValue(mockPersona),
     };
 
+    const mockDataSource = {
+      transaction: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MovimientosService,
@@ -62,6 +69,7 @@ describe('MovimientosService', () => {
         },
         { provide: CajasService, useValue: mockCajasService },
         { provide: PersonasService, useValue: mockPersonasService },
+        { provide: DataSource, useValue: mockDataSource },
       ],
     }).compile();
 
@@ -69,6 +77,7 @@ describe('MovimientosService', () => {
     movimientoRepository = module.get(getRepositoryToken(Movimiento));
     cajasService = module.get(CajasService);
     personasService = module.get(PersonasService);
+    dataSource = module.get(DataSource);
   });
 
   describe('create', () => {
@@ -118,6 +127,52 @@ describe('MovimientosService', () => {
 
       expect(movimientoRepository.save).toHaveBeenCalled();
       expect(result).toEqual(mockMovimiento);
+    });
+
+    it('debe persistir el campo categoria cuando viene en el DTO', async () => {
+      const dtoConCategoria: CreateMovimientoDto = {
+        ...baseDto,
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.GASTO_GENERAL,
+        categoria: CategoriaMovimiento.INSUMOS,
+      };
+
+      await service.create(dtoConCategoria);
+
+      expect(movimientoRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ categoria: CategoriaMovimiento.INSUMOS }),
+      );
+    });
+
+    it('debe aceptar movimiento sin categoria (campo opcional)', async () => {
+      await service.create(baseDto);
+
+      expect(movimientoRepository.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('findWithFilters - categoria', () => {
+    it('debe filtrar movimientos por categoria cuando viene en los filtros', async () => {
+      const mockQb = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      };
+      movimientoRepository.createQueryBuilder.mockReturnValue(mockQb as never);
+
+      await service.findWithFilters({
+        categoria: CategoriaMovimiento.COMIDA,
+      } as never);
+
+      const andWhereCalls = mockQb.andWhere.mock.calls.map((c) => c[0]);
+      expect(andWhereCalls.some((s: string) => s.includes('categoria'))).toBe(
+        true,
+      );
     });
   });
 
@@ -199,6 +254,176 @@ describe('MovimientosService', () => {
       expect(createSpy).toHaveBeenCalledWith(
         expect.objectContaining({ monto: 5000 }),
         undefined,
+      );
+    });
+  });
+
+  describe('crearTransferencia', () => {
+    const baseTransferDto = {
+      cajaOrigenId: 'caja-origen-uuid',
+      cajaDestinoId: 'caja-destino-uuid',
+      monto: 500,
+      responsableId: 'persona-uuid',
+      descripcion: 'Asignacion mensual a Manada',
+    };
+
+    const mockEgreso: Partial<Movimiento> = {
+      id: 'mov-egreso-uuid',
+      cajaId: 'caja-origen-uuid',
+      tipo: TipoMovimiento.EGRESO,
+      monto: 500,
+    };
+    const mockIngreso: Partial<Movimiento> = {
+      id: 'mov-ingreso-uuid',
+      cajaId: 'caja-destino-uuid',
+      tipo: TipoMovimiento.INGRESO,
+      monto: 500,
+    };
+
+    const mockManager = {
+      create: jest
+        .fn()
+        .mockImplementationOnce(() => mockEgreso)
+        .mockImplementationOnce(() => mockIngreso),
+      save: jest
+        .fn()
+        .mockImplementationOnce(() => Promise.resolve(mockEgreso))
+        .mockImplementationOnce(() => Promise.resolve(mockIngreso)),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+
+    beforeEach(() => {
+      mockManager.create.mockClear();
+      mockManager.save.mockClear();
+      mockManager.update.mockClear();
+      mockManager.create
+        .mockImplementationOnce(() => mockEgreso)
+        .mockImplementationOnce(() => mockIngreso);
+      mockManager.save
+        .mockImplementationOnce(() => Promise.resolve(mockEgreso))
+        .mockImplementationOnce(() => Promise.resolve(mockIngreso));
+
+      (dataSource.transaction as unknown as jest.Mock).mockImplementation(
+        async (cb: (m: unknown) => Promise<unknown>) => cb(mockManager),
+      );
+
+      jest.spyOn(service, 'calcularSaldo').mockResolvedValue(10000);
+
+      cajasService.findOne
+        .mockResolvedValueOnce({ id: 'caja-origen-uuid' } as never)
+        .mockResolvedValueOnce({ id: 'caja-destino-uuid' } as never);
+    });
+
+    it('happy path: crea egreso + ingreso linkeados por movimientoRelacionadoId', async () => {
+      const result = await service.crearTransferencia(baseTransferDto);
+
+      expect(dataSource.transaction).toHaveBeenCalled();
+      expect(mockManager.create).toHaveBeenCalledTimes(2);
+      expect(mockManager.save).toHaveBeenCalledTimes(2);
+      expect(mockManager.update).toHaveBeenCalledTimes(2);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          egreso: expect.objectContaining({ id: 'mov-egreso-uuid' }),
+          ingreso: expect.objectContaining({ id: 'mov-ingreso-uuid' }),
+        }),
+      );
+    });
+
+    it('setea concepto TRANSFERENCIA_ENTRE_CAJAS en ambos movimientos', async () => {
+      await service.crearTransferencia(baseTransferDto);
+
+      const egresoPayload = mockManager.create.mock.calls[0][1];
+      const ingresoPayload = mockManager.create.mock.calls[1][1];
+
+      expect(egresoPayload).toEqual(
+        expect.objectContaining({
+          tipo: TipoMovimiento.EGRESO,
+          concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+          cajaId: 'caja-origen-uuid',
+          responsableId: 'persona-uuid',
+          registradoPorId: 'persona-uuid',
+        }),
+      );
+      expect(ingresoPayload).toEqual(
+        expect.objectContaining({
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+          cajaId: 'caja-destino-uuid',
+          responsableId: 'persona-uuid',
+          registradoPorId: 'persona-uuid',
+        }),
+      );
+    });
+
+    it('rechaza cuando cajaOrigenId === cajaDestinoId', async () => {
+      cajasService.findOne.mockReset();
+
+      await expect(
+        service.crearTransferencia({
+          ...baseTransferDto,
+          cajaDestinoId: baseTransferDto.cajaOrigenId,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rechaza cuando monto <= 0', async () => {
+      cajasService.findOne.mockReset();
+
+      await expect(
+        service.crearTransferencia({ ...baseTransferDto, monto: 0 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('propaga NotFoundException cuando caja origen no existe', async () => {
+      cajasService.findOne.mockReset();
+      cajasService.findOne.mockRejectedValueOnce(new NotFoundException());
+
+      await expect(
+        service.crearTransferencia(baseTransferDto),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('propaga NotFoundException cuando caja destino no existe', async () => {
+      cajasService.findOne.mockReset();
+      cajasService.findOne
+        .mockResolvedValueOnce({ id: 'caja-origen-uuid' } as never)
+        .mockRejectedValueOnce(new NotFoundException());
+
+      await expect(
+        service.crearTransferencia(baseTransferDto),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('propaga NotFoundException cuando responsable no existe', async () => {
+      personasService.findOne.mockRejectedValueOnce(new NotFoundException());
+
+      await expect(
+        service.crearTransferencia(baseTransferDto),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rechaza con BadRequestException cuando saldo origen es insuficiente', async () => {
+      jest.spyOn(service, 'calcularSaldo').mockResolvedValue(100);
+
+      await expect(
+        service.crearTransferencia({ ...baseTransferDto, monto: 500 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('si la transaccion falla, no retorna movimientos parciales (rollback)', async () => {
+      dataSource.transaction.mockRejectedValueOnce(new Error('DB failure'));
+
+      await expect(service.crearTransferencia(baseTransferDto)).rejects.toThrow(
+        'DB failure',
       );
     });
   });

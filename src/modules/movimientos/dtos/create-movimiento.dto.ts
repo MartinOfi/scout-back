@@ -16,6 +16,7 @@ import {
   ConceptoMovimiento,
   MedioPago,
   EstadoPago,
+  CategoriaMovimiento,
 } from '../../../common/enums';
 
 export class CreateMovimientoDto {
@@ -41,6 +42,14 @@ export class CreateMovimientoDto {
   })
   @IsEnum(ConceptoMovimiento)
   concepto!: ConceptoMovimiento;
+
+  @ApiPropertyOptional({
+    enum: CategoriaMovimiento,
+    description: 'Categoría para reportes (ortogonal al concepto)',
+  })
+  @IsEnum(CategoriaMovimiento)
+  @IsOptional()
+  categoria?: CategoriaMovimiento;
 
   @ApiPropertyOptional({
     example: 'Pago inscripción Scout Argentina 2026',

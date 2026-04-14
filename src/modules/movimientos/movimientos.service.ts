@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  BadRequestException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
@@ -11,11 +12,13 @@ import {
   FindOptionsWhere,
   In,
   EntityManager,
+  DataSource,
 } from 'typeorm';
 import { Movimiento } from './entities/movimiento.entity';
 import { CreateMovimientoDto } from './dtos/create-movimiento.dto';
 import { UpdateMovimientoDto } from './dtos/update-movimiento.dto';
 import { FilterMovimientosDto } from './dtos/filter-movimientos.dto';
+import { CreateTransferenciaDto } from './dtos/create-transferencia.dto';
 import { CajasService } from '../cajas/cajas.service';
 import { PersonasService } from '../personas/personas.service';
 import { PaginatedResponseDto } from '../../common/dtos';
@@ -35,6 +38,7 @@ export class MovimientosService {
     private readonly cajasService: CajasService,
     @Inject(forwardRef(() => PersonasService))
     private readonly personasService: PersonasService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findAll(): Promise<Movimiento[]> {
@@ -83,6 +87,12 @@ export class MovimientosService {
     if (filters.concepto) {
       queryBuilder.andWhere('m.concepto = :concepto', {
         concepto: filters.concepto,
+      });
+    }
+
+    if (filters.categoria) {
+      queryBuilder.andWhere('m.categoria = :categoria', {
+        categoria: filters.categoria,
       });
     }
 
@@ -341,6 +351,92 @@ export class MovimientosService {
       this.buildMovimientoPayload(dto, registradoPorId),
     );
     return manager.save(entity);
+  }
+
+  /**
+   * Transfer funds between two cajas atomically.
+   *
+   * Creates an EGRESO in cajaOrigen and an INGRESO in cajaDestino, both with
+   * concepto = TRANSFERENCIA_ENTRE_CAJAS, linked via movimientoRelacionadoId.
+   *
+   * Validations run BEFORE opening the transaction:
+   *  - cajaOrigen != cajaDestino
+   *  - monto > 0 (class-validator also enforces, double-checked here)
+   *  - both cajas exist (delegated to CajasService)
+   *  - responsable exists (delegated to PersonasService)
+   *  - origen has enough balance (calcularSaldo)
+   *
+   * All writes happen inside a single dataSource.transaction so any failure
+   * rolls back both movimientos.
+   */
+  async crearTransferencia(
+    dto: CreateTransferenciaDto,
+  ): Promise<{ egreso: Movimiento; ingreso: Movimiento }> {
+    if (dto.cajaOrigenId === dto.cajaDestinoId) {
+      throw new BadRequestException(
+        'La caja de origen y destino deben ser distintas',
+      );
+    }
+    if (dto.monto <= 0) {
+      throw new BadRequestException('El monto debe ser mayor a cero');
+    }
+
+    await this.personasService.findOne(dto.responsableId);
+    await this.cajasService.findOne(dto.cajaOrigenId);
+    await this.cajasService.findOne(dto.cajaDestinoId);
+
+    const saldoOrigen = await this.calcularSaldo(dto.cajaOrigenId);
+    if (saldoOrigen < dto.monto) {
+      throw new BadRequestException(
+        `Saldo insuficiente en caja origen (disponible: ${saldoOrigen}, requerido: ${dto.monto})`,
+      );
+    }
+
+    const fecha = dto.fecha ?? new Date();
+
+    return this.dataSource.transaction(async (manager) => {
+      const egresoPayload: Partial<Movimiento> = {
+        cajaId: dto.cajaOrigenId,
+        tipo: TipoMovimiento.EGRESO,
+        monto: dto.monto,
+        concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+        descripcion: dto.descripcion ?? null,
+        responsableId: dto.responsableId,
+        medioPago: MedioPago.TRANSFERENCIA,
+        estadoPago: EstadoPago.PAGADO,
+        requiereComprobante: false,
+        fecha,
+        registradoPorId: dto.responsableId,
+      };
+      const ingresoPayload: Partial<Movimiento> = {
+        cajaId: dto.cajaDestinoId,
+        tipo: TipoMovimiento.INGRESO,
+        monto: dto.monto,
+        concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+        descripcion: dto.descripcion ?? null,
+        responsableId: dto.responsableId,
+        medioPago: MedioPago.TRANSFERENCIA,
+        estadoPago: EstadoPago.PAGADO,
+        requiereComprobante: false,
+        fecha,
+        registradoPorId: dto.responsableId,
+      };
+
+      const egresoEntity = manager.create(Movimiento, egresoPayload);
+      const egreso = await manager.save(egresoEntity);
+
+      const ingresoEntity = manager.create(Movimiento, ingresoPayload);
+      const ingreso = await manager.save(ingresoEntity);
+
+      await manager.update(Movimiento, egreso.id, {
+        movimientoRelacionadoId: ingreso.id,
+      });
+      await manager.update(Movimiento, ingreso.id, {
+        movimientoRelacionadoId: egreso.id,
+      });
+
+      return { egreso, ingreso };
+    });
   }
 
   async update(id: string, dto: UpdateMovimientoDto): Promise<Movimiento> {

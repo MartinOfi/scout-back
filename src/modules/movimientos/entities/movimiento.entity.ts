@@ -5,6 +5,7 @@ import {
   ConceptoMovimiento,
   MedioPago,
   EstadoPago,
+  CategoriaMovimiento,
 } from '../../../common/enums';
 import { Caja } from '../../cajas/entities/caja.entity';
 import { Persona } from '../../personas/entities/persona.entity';
@@ -52,6 +53,16 @@ export class Movimiento extends BaseEntity {
    */
   @Column({ type: 'enum', enum: ConceptoMovimiento })
   concepto!: ConceptoMovimiento;
+
+  /**
+   * Category for reporting (orthogonal to concepto). Nullable.
+   */
+  @Column({
+    type: 'enum',
+    enum: CategoriaMovimiento,
+    nullable: true,
+  })
+  categoria!: CategoriaMovimiento | null;
 
   /**
    * Free text description for additional context

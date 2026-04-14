@@ -23,6 +23,7 @@ import {
   CreateMovimientoDto,
   UpdateMovimientoDto,
   FilterMovimientosDto,
+  CreateTransferenciaDto,
 } from './dtos';
 import { PaginatedResponseDto, PaginationMeta } from '../../common/dtos';
 import { MedioPago, EstadoPago } from '../../common/enums';
@@ -166,6 +167,27 @@ export class MovimientosController {
     @CurrentUser('id') userId: string,
   ) {
     return this.movimientosService.create(dto, userId);
+  }
+
+  @Post('transferencia')
+  @ApiOperation({
+    summary: 'Transferir fondos entre dos cajas',
+    description:
+      'Crea atómicamente un EGRESO en cajaOrigen y un INGRESO en cajaDestino, ' +
+      'linkeados por movimientoRelacionadoId. Valida saldo suficiente en origen.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Transferencia registrada (egreso + ingreso)',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Caja origen igual a destino, monto inválido o saldo insuficiente',
+  })
+  @ApiResponse({ status: 404, description: 'Caja o responsable no encontrado' })
+  async crearTransferencia(@Body() dto: CreateTransferenciaDto) {
+    return this.movimientosService.crearTransferencia(dto);
   }
 
   @Post('gasto-general')

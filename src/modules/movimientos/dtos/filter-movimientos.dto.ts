@@ -7,6 +7,7 @@ import {
   ConceptoMovimiento,
   EstadoPago,
   CajaType,
+  CategoriaMovimiento,
 } from '../../../common/enums';
 
 /**
@@ -53,6 +54,14 @@ export class FilterMovimientosDto extends PaginationQueryDto {
   @IsEnum(ConceptoMovimiento)
   @IsOptional()
   concepto?: ConceptoMovimiento;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por categoría',
+    enum: CategoriaMovimiento,
+  })
+  @IsEnum(CategoriaMovimiento)
+  @IsOptional()
+  categoria?: CategoriaMovimiento;
 
   @ApiPropertyOptional({
     description: 'Filtrar por ID del responsable',
