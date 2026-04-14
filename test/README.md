@@ -1,8 +1,56 @@
 # Test Infrastructure
 
+## ⚠️ SAFETY RULES (NON-NEGOTIABLE)
+
+Before adding or modifying anything in this directory, read this section.
+
+### Rule 1 — No bulk `DELETE` / `TRUNCATE`
+
+**NUNCA** usar `DELETE FROM <tabla>` sin `WHERE`, ni `TRUNCATE TABLE`, ni
+`dropSchema: true`, ni nada que pueda vaciar una tabla completa.
+
+**Por qué:** la configuración del proyecto hace que `AppModule` cargue
+`.env.local` hardcodeado (ver `src/app.module.ts`), por lo que cualquier
+test e2e que importe `AppModule` se conecta a la base apuntada por
+`.env.local` — que **no** es la de testing en Docker. Un `DELETE FROM
+movimientos` en un helper de test llegó a destruir datos reales de
+desarrollo/staging en Neon en el pasado (ver `docs/superpowers/` o el
+historial de incidentes).
+
+### Rule 2 — Todo dato de test debe ser prefix-scoped
+
+Cuando un test crea datos, **todo** lo que inserta debe llevar un prefijo
+único e identificable (`E2EVentasDelete-`, `E2EBaja-`, `E2EVendedor-`,
+etc.). La cleanup **siempre** filtra por ese prefijo usando `WHERE ... LIKE
+'Prefijo%'` o subconsultas con joins sobre personas/eventos/cajas
+prefijadas.
+
+Invariante a mantener: **si un test corre accidentalmente contra una base
+de datos real, solo debe poder afectar filas con su propio prefijo — cero
+blast radius.**
+
+### Rule 3 — Cleanup respeta el orden de FKs
+
+En un mismo helper de cleanup, borrar primero las filas hijo (que
+referencian) y después las padre. El orden típico:
+`ventas_productos → movimientos → productos → eventos → personas`.
+
+### Rule 4 — Si necesitás utilidades de cleanup "genéricas" para un nuevo suite, inline-las en el propio spec
+
+No recrear un módulo `helpers/database-cleaner.ts` u otro archivo
+genérico. La tentación de "abstraer el cleanup" es exactamente lo que
+llevó al incidente anterior — quedó un arsenal de funciones destructivas
+en un archivo huérfano que nadie recordaba, importado solo por un script
+manual. Si el cleanup vive dentro del `.e2e-spec.ts` al que pertenece, su
+radio de reuso está limitado y su scope es auditable en un único lugar.
+
+---
+
 ## Overview
 
-This directory contains the test infrastructure for the Scout backend application, including database setup, cleanup utilities, and data factories for testing.
+Este directorio contiene los tests end-to-end (e2e) del backend Scout. Los
+tests usan Jest + Supertest + NestJS Testing Module, y se conectan a una
+base de PostgreSQL separada a través de Docker.
 
 ## Getting Started
 
@@ -12,7 +60,8 @@ This directory contains the test infrastructure for the Scout backend applicatio
 npm run db:test:start
 ```
 
-This starts a PostgreSQL 15 Docker container on port 5433 (to avoid conflicts with local PostgreSQL).
+Arranca un container PostgreSQL 15 en puerto 5433 (para no chocar con
+PostgreSQL local en 5432).
 
 ### 2. Run Tests
 
@@ -38,334 +87,89 @@ npm run db:test:stop
 
 ### 4. Reset Test Database
 
-If you need a clean slate:
+Si necesitás arrancar de cero:
 
 ```bash
 npm run db:test:reset
 ```
 
-This destroys the container and volumes, then recreates everything.
+Esto destruye el container y sus volúmenes, luego los recrea.
 
 ## File Structure
 
 ```
 test/
-├── helpers/
-│   ├── database-cleaner.ts    # Advanced cleanup utilities
-│   └── test-data-factory.ts   # Factory pattern for test data
-├── test-setup.ts               # Core test infrastructure
-├── verify-test-db.ts          # Verification script (dev only)
-└── README.md                   # This file
+├── app.e2e-spec.ts                     # App bootstrap smoke test
+├── auth.e2e-spec.ts                    # Auth flow e2e
+├── eventos-ventas-delete.e2e-spec.ts   # Eventos > venta delete e2e
+├── personas-baja.e2e-spec.ts           # Personas > dar-de-baja e2e
+├── jest-e2e.json                       # Jest config for e2e
+└── README.md                           # This file
 ```
 
-## Test Setup
-
-### Core Functions
-
-#### `setupTestDatabase(): Promise<DataSource>`
-
-Initializes connection to test database using `.env.test` configuration.
+## Writing a new e2e test — pattern
 
 ```typescript
-import { setupTestDatabase } from './test-setup';
-
-const dataSource = await setupTestDatabase();
-```
-
-#### `cleanDatabase(): Promise<void>`
-
-Truncates all tables and resets sequences. Safe for use between tests.
-
-```typescript
-import { cleanDatabase } from './test-setup';
-
-beforeEach(async () => {
-  await cleanDatabase();
-});
-```
-
-#### `closeTestDatabase(): Promise<void>`
-
-Closes the test database connection. Use in global teardown.
-
-```typescript
-import { closeTestDatabase } from './test-setup';
-
-afterAll(async () => {
-  await closeTestDatabase();
-});
-```
-
-## Data Factories
-
-### Overview
-
-Data factories provide convenient methods to create test entities with sensible defaults.
-
-```typescript
-import { createTestDataFactory } from './helpers/test-data-factory';
-
-const factory = createTestDataFactory(dataSource);
-```
-
-### Available Factories
-
-#### ProtagonistaFactory
-
-```typescript
-// Create single protagonista with defaults
-const protagonista = await factory.protagonista.create();
-
-// Override defaults
-const customProtagonista = await factory.protagonista.create({
-  nombre: 'Juan',
-  apellido: 'Pérez',
-  rama: Rama.UNIDAD,
-});
-
-// Create multiple
-const protagonistas = await factory.protagonista.createMany(5);
-```
-
-#### EducadorFactory
-
-```typescript
-const educador = await factory.educador.create({
-  nombre: 'Maria',
-  rama: Rama.MANADA,
-});
-```
-
-#### CampamentoFactory
-
-```typescript
-const campamento = await factory.campamento.create({
-  nombre: 'Campamento de Verano 2026',
-  fechaInicio: new Date('2026-01-15'),
-  fechaFin: new Date('2026-01-22'),
-});
-```
-
-#### MovimientoFactory
-
-```typescript
-const movimiento = await factory.movimiento.create({
-  tipo: TipoMovimiento.INGRESO,
-  monto: 5000,
-  concepto: ConceptoMovimiento.CUOTA_GRUPO,
-});
-```
-
-#### EventoFactory
-
-```typescript
-const evento = await factory.evento.create({
-  nombre: 'Venta de empanadas',
-  fecha: new Date('2026-05-10'),
-});
-```
-
-## Database Cleaner Utilities
-
-For more granular control over database state:
-
-### `truncateTables(dataSource, entityNames)`
-
-Truncate only specific tables:
-
-```typescript
-import { truncateTables } from './helpers/database-cleaner';
-
-await truncateTables(dataSource, ['Persona', 'Movimiento']);
-```
-
-### `verifyDatabaseIsEmpty(dataSource)`
-
-Verify all tables are empty:
-
-```typescript
-import { verifyDatabaseIsEmpty } from './helpers/database-cleaner';
-
-const isEmpty = await verifyDatabaseIsEmpty(dataSource);
-if (!isEmpty) {
-  console.error('Database is not empty!');
-}
-```
-
-### `fullDatabaseReset(dataSource)`
-
-Most aggressive cleanup - truncates all tables, resets sequences, and verifies:
-
-```typescript
-import { fullDatabaseReset } from './helpers/database-cleaner';
-
-await fullDatabaseReset(dataSource);
-```
-
-## Environment Configuration
-
-### `.env.test`
-
-```env
-NODE_ENV=test
-DATABASE_URL='postgresql://test_user:test_password@localhost:5433/scout_test?schema=public'
-JWT_SECRET=test-secret-for-e2e-tests
-JWT_EXPIRATION=1h
-PORT=3001
-LOG_LEVEL=error
-```
-
-**Important:**
-- Uses port 5433 (not 5432) to avoid conflicts
-- Separate database from development (`scout_test`)
-- Test credentials are different from production
-- Log level set to `error` for clean test output
-
-## Docker Configuration
-
-### `docker-compose.test.yml`
-
-- Image: `postgres:15-alpine`
-- Container name: `scout-postgres-test`
-- Port: `5433:5432` (external:internal)
-- Volume: `postgres_test_data` (persists between runs)
-- Performance optimizations for testing:
-  - `fsync=off`
-  - `synchronous_commit=off`
-  - `full_page_writes=off`
-
-**Warning:** These optimizations are safe for test databases but NEVER use in production.
-
-## Example Test Suite
-
-```typescript
-import { setupTestDatabase, cleanDatabase, closeTestDatabase } from './test-setup';
-import { createTestDataFactory } from './helpers/test-data-factory';
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
 import { DataSource } from 'typeorm';
+import { AppModule } from '../src/app.module';
 
-describe('Protagonistas E2E Tests', () => {
+const API_PREFIX = '/api/v1';
+const E2E_PREFIX = 'E2EMiFeature'; // ← único por suite, lo usás en cleanup
+
+describe('Mi Feature (e2e)', () => {
+  let app: INestApplication;
   let dataSource: DataSource;
-  let factory: ReturnType<typeof createTestDataFactory>;
 
   beforeAll(async () => {
-    dataSource = await setupTestDatabase();
-    factory = createTestDataFactory(dataSource);
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    app.setGlobalPrefix(API_PREFIX.replace(/^\//, ''));
+    await app.init();
+    dataSource = moduleFixture.get(DataSource);
   });
 
   afterAll(async () => {
-    await closeTestDatabase();
+    await app.close();
   });
 
   beforeEach(async () => {
-    await cleanDatabase();
+    await cleanupScoped(dataSource);
   });
 
-  it('should create a protagonista', async () => {
-    const protagonista = await factory.protagonista.create({
-      nombre: 'Test',
-      apellido: 'User',
-    });
-
-    expect(protagonista.id).toBeDefined();
-    expect(protagonista.nombre).toBe('Test');
-    expect(protagonista.estado).toBe(EstadoPersona.ACTIVO);
-  });
-
-  it('should create multiple protagonistas', async () => {
-    const protagonistas = await factory.protagonista.createMany(5);
-
-    expect(protagonistas).toHaveLength(5);
-    expect(protagonistas[0].rama).toBe(Rama.MANADA);
+  it('...', async () => {
+    // crear datos con el prefijo: nombre: `${E2E_PREFIX}-${Date.now()}`
+    // usar request(app.getHttpServer()) para golpear endpoints
   });
 });
-```
 
-## Troubleshooting
-
-### Connection Refused
-
-If you get `ECONNREFUSED` errors:
-
-1. Check Docker container is running:
-   ```bash
-   docker ps | grep scout-postgres-test
-   ```
-
-2. Check container logs:
-   ```bash
-   npm run db:test:logs
-   ```
-
-3. Restart container:
-   ```bash
-   npm run db:test:reset
-   ```
-
-### Port Already in Use
-
-If port 5433 is already in use, edit `docker-compose.test.yml`:
-
-```yaml
-ports:
-  - "5434:5432"  # Change to 5434 or another free port
-```
-
-Then update `.env.test`:
-
-```env
-DATABASE_URL='postgresql://test_user:test_password@localhost:5434/scout_test?schema=public'
-```
-
-### Enum Value Errors
-
-If you get errors like `invalid input value for enum`:
-
-- Make sure you're using enum constants, not strings:
-  ```typescript
-  // ✅ Correct
-  tipo: PersonaType.PROTAGONISTA,
-  estado: EstadoPersona.ACTIVO,
-
-  // ❌ Wrong
-  tipo: 'PROTAGONISTA',
-  estado: 'ACTIVO',
-  ```
-
-### TypeORM Metadata Errors
-
-If you get errors like `Data type "Object" not supported`:
-
-- This happens with optional nullable fields using `?:` syntax
-- Fix by using `!:` and explicit column type:
-  ```typescript
-  // ❌ Wrong
-  @Column({ nullable: true })
-  field?: string | null;
-
-  // ✅ Correct
-  @Column({ type: 'varchar', nullable: true })
-  field!: string | null;
-  ```
-
-## npm Scripts Reference
-
-```json
-{
-  "db:test:start": "Start test database",
-  "db:test:stop": "Stop test database",
-  "db:test:logs": "View database logs",
-  "db:test:reset": "Full reset (down + up)",
-  "test": "Run unit tests",
-  "test:watch": "Unit tests in watch mode",
-  "test:cov": "Unit tests with coverage",
-  "test:e2e": "Run E2E tests",
-  "test:e2e:watch": "E2E tests in watch mode"
+// ============================================================================
+// Cleanup: SIEMPRE scoped por prefijo. Jamás DELETE FROM <tabla> sin WHERE.
+// ============================================================================
+async function cleanupScoped(dataSource: DataSource): Promise<void> {
+  await dataSource.query(
+    `DELETE FROM movimientos WHERE responsable_id IN (
+       SELECT id FROM personas WHERE nombre LIKE $1
+     )`,
+    [`${E2E_PREFIX}%`],
+  );
+  await dataSource.query(
+    `DELETE FROM personas WHERE nombre LIKE $1`,
+    [`${E2E_PREFIX}%`],
+  );
 }
 ```
 
-## Next Steps
-
-- [ ] Frontend test utilities (Phase 1.2)
-- [ ] Playwright installation (Phase 1.3)
-- [ ] Write E2E test suites (Phase 2)
-- [ ] CI/CD integration (Phase 5)
+Ver `test/personas-baja.e2e-spec.ts` y `test/eventos-ventas-delete.e2e-spec.ts`
+para ejemplos concretos.

@@ -331,16 +331,64 @@ describe('Eventos > Delete Venta (e2e)', () => {
 // Test fixtures and helpers
 // ============================================================================
 
+/**
+ * Todos los helpers prefijan los datos creados con `E2EVentasDelete`.
+ * La cleanup SOLO borra filas que matchean ese prefijo — NUNCA hace
+ * `DELETE FROM <tabla>` sin `WHERE`.
+ *
+ * Invariante: si esta suite llegara a correr contra una base real, solo
+ * afectaría filas con el prefijo de test — cero blast radius sobre datos
+ * de usuarios reales.
+ */
+const E2E_PREFIX = 'E2EVentasDelete';
+
 async function cleanupForVentaTests(dataSource: DataSource): Promise<void> {
-  // Soft-delete tables first to satisfy FK ordering: ventas -> movimientos -> ...
-  await dataSource.query('DELETE FROM ventas_productos');
-  await dataSource.query('DELETE FROM movimientos');
-  await dataSource.query('DELETE FROM productos');
-  await dataSource.query('DELETE FROM eventos');
+  // 1. ventas_productos: solo las que pertenecen a productos de eventos de test
   await dataSource.query(
-    `DELETE FROM cajas WHERE tipo NOT IN ('grupo')`,
+    `DELETE FROM ventas_productos
+      WHERE producto_id IN (
+        SELECT id FROM productos
+         WHERE evento_id IN (
+           SELECT id FROM eventos WHERE nombre LIKE $1
+         )
+      )`,
+    [`${E2E_PREFIX}%`],
   );
-  await dataSource.query('DELETE FROM personas WHERE nombre LIKE \'E2EVendedor%\'');
+
+  // 2. movimientos: solo los ligados a eventos de test, o a responsables de test
+  await dataSource.query(
+    `DELETE FROM movimientos
+      WHERE evento_id IN (
+        SELECT id FROM eventos WHERE nombre LIKE $1
+      )
+         OR responsable_id IN (
+           SELECT id FROM personas WHERE nombre LIKE $2
+         )`,
+    [`${E2E_PREFIX}%`, 'E2EVendedor%'],
+  );
+
+  // 3. productos: solo los de eventos de test
+  await dataSource.query(
+    `DELETE FROM productos
+      WHERE evento_id IN (
+        SELECT id FROM eventos WHERE nombre LIKE $1
+      )`,
+    [`${E2E_PREFIX}%`],
+  );
+
+  // 4. eventos de test
+  await dataSource.query(`DELETE FROM eventos WHERE nombre LIKE $1`, [
+    `${E2E_PREFIX}%`,
+  ]);
+
+  // 5. personas de test (vendedores)
+  await dataSource.query(`DELETE FROM personas WHERE nombre LIKE $1`, [
+    'E2EVendedor%',
+  ]);
+
+  // NOTA: no tocamos `cajas`. Esta suite no crea cajas no-grupo, así que
+  // no hay nada que limpiar. El `DELETE FROM cajas WHERE tipo NOT IN ('grupo')`
+  // anterior barría TODAS las cajas personales/rama reales del sistema.
 }
 
 async function ensureCajaGrupo(dataSource: DataSource): Promise<Caja> {
@@ -349,7 +397,7 @@ async function ensureCajaGrupo(dataSource: DataSource): Promise<Caja> {
   if (existing) return existing;
   const created = repo.create({
     tipo: CajaType.GRUPO,
-    nombre: 'Caja Grupo (E2E)',
+    nombre: `${E2E_PREFIX}-CajaGrupo`,
   } as Partial<Caja>);
   return repo.save(created);
 }
@@ -376,7 +424,7 @@ async function createEventoVenta(
 ): Promise<Evento> {
   const repo = dataSource.getRepository(Evento);
   const evento = repo.create({
-    nombre: 'Venta E2E',
+    nombre: `${E2E_PREFIX}-Evento-${Date.now()}`,
     fecha: new Date('2026-09-01'),
     tipo: TipoEvento.VENTA,
     destinoGanancia: DestinoGanancia.CAJA_GRUPO,
@@ -394,7 +442,7 @@ async function createProducto(
   const repo = dataSource.getRepository(Producto);
   const producto = repo.create({
     eventoId,
-    nombre: 'Empanada E2E',
+    nombre: `${E2E_PREFIX}-Producto`,
     precioCosto: 500,
     precioVenta: 1000,
     ...overrides,

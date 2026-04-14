@@ -218,9 +218,37 @@ async function ensureAuthUserAndGetToken(
   return body.accessToken;
 }
 
+/**
+ * Scoped cleanup — NEVER uses `DELETE FROM <tabla>` sin `WHERE`.
+ *
+ * Solo borra filas creadas por esta suite, identificadas por el prefijo
+ * `E2EBaja` en `personas.nombre` y sus referencias (cajas personales cuyo
+ * propietario es una persona de test, movimientos cuyo responsable o caja
+ * cae en ese mismo subconjunto).
+ *
+ * Invariante: si alguna consulta llegara a una DB que NO sea la de test,
+ * solo afectaría filas con prefijo `E2EBaja` — cero blast radius sobre
+ * datos reales.
+ */
 async function cleanupForBajaTests(dataSource: DataSource): Promise<void> {
-  await dataSource.query('DELETE FROM movimientos');
-  await dataSource.query(`DELETE FROM cajas WHERE tipo <> 'grupo'`);
+  await dataSource.query(
+    `DELETE FROM movimientos
+      WHERE responsable_id IN (
+        SELECT id FROM personas WHERE nombre LIKE 'E2EBaja%'
+      )
+         OR caja_id IN (
+           SELECT id FROM cajas
+            WHERE propietario_id IN (
+              SELECT id FROM personas WHERE nombre LIKE 'E2EBaja%'
+            )
+         )`,
+  );
+  await dataSource.query(
+    `DELETE FROM cajas
+      WHERE propietario_id IN (
+        SELECT id FROM personas WHERE nombre LIKE 'E2EBaja%'
+      )`,
+  );
   await dataSource.query(`DELETE FROM personas WHERE nombre LIKE 'E2EBaja-%'`);
 }
 
