@@ -4,10 +4,10 @@
 
 <div align="center">
 
-![Header](https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,6,20,24,30&height=220&section=header&text=Scout%20Backend&fontSize=60&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=API%20REST%20para%20la%20gesti%C3%B3n%20financiera%20de%20un%20grupo%20scout&descAlignY=58&descSize=16)
+<img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,6,20,24,30&height=220&section=header&text=Scout%20Backend&fontSize=60&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=API%20REST%20para%20la%20gesti%C3%B3n%20financiera%20de%20un%20grupo%20scout&descAlignY=58&descSize=16" width="100%" alt="Scout Backend — API REST NestJS de gestión financiera para grupos scout" />
 
-<a href="#-scout--backend">
-  <img src="https://readme-typing-svg.demolab.com/?lines=NestJS+11+%7C+TypeORM+%7C+PostgreSQL;JWT+Auth+%2B+Swagger+OpenAPI;15+conceptos+de+movimientos;Soft+delete+%2B+multi-tenancy&center=true&width=700&height=50&color=E0234E&vCenter=true&size=22&pause=800" alt="Typing SVG" />
+<a href="#scout-backend--api-nestjs-de-gestión-financiera-para-grupos-scout">
+  <img src="https://readme-typing-svg.demolab.com/?lines=NestJS+11+%7C+TypeORM+%7C+PostgreSQL;JWT+Auth+%2B+Swagger+OpenAPI;15+conceptos+de+movimientos;Soft+delete+%2B+multi-tenancy&center=true&width=700&height=50&color=E0234E&vCenter=true&size=22&pause=800" width="700" height="50" alt="NestJS 11, TypeORM y PostgreSQL con autenticación JWT, documentación Swagger OpenAPI, 15 conceptos de movimientos, soft delete y multi-tenancy" />
 </a>
 
 <br/>
@@ -33,7 +33,11 @@
 
 ---
 
-# 🚀 Scout — Backend
+# Scout Backend — API NestJS de gestión financiera para grupos scout 🚀
+
+**Scout Backend** es la **API REST en NestJS 11 + TypeORM + PostgreSQL** que sostiene toda la operación de **gestión financiera de un grupo scout**. Centraliza el padrón de personas (protagonistas, educadores y personas externas), las cajas contables del grupo y las ramas, los movimientos de ingresos y egresos con 15 conceptos distintos, las inscripciones anuales a **Scouts de Argentina**, las cuotas mensuales, los campamentos y los eventos — con saldos calculados en tiempo real, soft-delete en todas las entidades, autenticación JWT y documentación OpenAPI.
+
+> 📦 **Parte del monorepo [Scout](../README.md)** · Ver también: [🎯 Frontend (Angular)](../frontend/README.md) · [🤖 AGENTS.md](../AGENTS.md)
 
 > **API REST** que sostiene la operación financiera y administrativa de un grupo scout. Centraliza padrón de personas, cajas contables, movimientos, inscripciones, cuotas, campamentos y eventos — con saldos calculados en tiempo real y soft-delete en todas las entidades.
 
