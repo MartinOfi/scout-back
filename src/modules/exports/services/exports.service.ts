@@ -14,6 +14,7 @@ import { Movimiento } from '../../movimientos/entities/movimiento.entity';
 import { Inscripcion } from '../../inscripciones/entities/inscripcion.entity';
 import { Cuota } from '../../cuotas/entities/cuota.entity';
 import { Campamento } from '../../campamentos/entities/campamento.entity';
+import { CampamentoParticipante } from '../../campamentos/entities/campamento-participante.entity';
 import { Evento } from '../../eventos/entities/evento.entity';
 import { Producto } from '../../eventos/entities/producto.entity';
 import { VentaProducto } from '../../eventos/entities/venta-producto.entity';
@@ -66,7 +67,9 @@ export class ExportsService {
       this.movimientoRepo.find(),
       this.inscripcionRepo.find(),
       this.cuotaRepo.find(),
-      this.campamentoRepo.find({ relations: ['participantes'] }),
+      this.campamentoRepo.find({
+        relations: ['participantes', 'participantes.persona'],
+      }),
       this.eventoRepo.find(),
       this.productoRepo.find(),
       this.ventaProductoRepo.find(),
@@ -119,10 +122,18 @@ export class ExportsService {
       { header: 'Email verificado', key: 'emailVerified', type: 'boolean' },
       { header: 'Rama', key: 'rama' },
       { header: 'Cargo', key: 'cargo' },
-      { header: 'Partida nacimiento', key: 'partidaNacimiento', type: 'boolean' },
+      {
+        header: 'Partida nacimiento',
+        key: 'partidaNacimiento',
+        type: 'boolean',
+      },
       { header: 'DNI', key: 'dni', type: 'boolean' },
       { header: 'DNI padres', key: 'dniPadres', type: 'boolean' },
-      { header: 'Carnet obra social', key: 'carnetObraSocial', type: 'boolean' },
+      {
+        header: 'Carnet obra social',
+        key: 'carnetObraSocial',
+        type: 'boolean',
+      },
       { header: 'Contacto', key: 'contacto' },
       { header: 'Notas', key: 'notas' },
       { header: 'Creado', key: 'createdAt', type: 'date' },
@@ -138,10 +149,12 @@ export class ExportsService {
       emailVerified: p.emailVerified,
       rama: (p as { rama?: unknown }).rama ?? null,
       cargo: (p as { cargo?: unknown }).cargo ?? null,
-      partidaNacimiento: (p as { partidaNacimiento?: unknown }).partidaNacimiento ?? null,
+      partidaNacimiento:
+        (p as { partidaNacimiento?: unknown }).partidaNacimiento ?? null,
       dni: (p as { dni?: unknown }).dni ?? null,
       dniPadres: (p as { dniPadres?: unknown }).dniPadres ?? null,
-      carnetObraSocial: (p as { carnetObraSocial?: unknown }).carnetObraSocial ?? null,
+      carnetObraSocial:
+        (p as { carnetObraSocial?: unknown }).carnetObraSocial ?? null,
       contacto: (p as { contacto?: unknown }).contacto ?? null,
       notas: (p as { notas?: unknown }).notas ?? null,
       createdAt: p.createdAt,
@@ -197,8 +210,16 @@ export class ExportsService {
       { header: 'Caja', key: 'cajaNombre' },
       { header: 'Responsable ID', key: 'responsableId' },
       { header: 'Responsable', key: 'responsableNombre' },
-      { header: 'Requiere comprobante', key: 'requiereComprobante', type: 'boolean' },
-      { header: 'Comprobante entregado', key: 'comprobanteEntregado', type: 'boolean' },
+      {
+        header: 'Requiere comprobante',
+        key: 'requiereComprobante',
+        type: 'boolean',
+      },
+      {
+        header: 'Comprobante entregado',
+        key: 'comprobanteEntregado',
+        type: 'boolean',
+      },
       { header: 'Evento ID', key: 'eventoId' },
       { header: 'Campamento ID', key: 'campamentoId' },
       { header: 'Inscripción ID', key: 'inscripcionId' },
@@ -244,7 +265,11 @@ export class ExportsService {
       { header: 'Año', key: 'ano', type: 'number' },
       { header: 'Monto total', key: 'montoTotal', type: 'currency' },
       { header: 'Monto bonificado', key: 'montoBonificado', type: 'currency' },
-      { header: 'Declaración salud', key: 'declaracionDeSalud', type: 'boolean' },
+      {
+        header: 'Declaración salud',
+        key: 'declaracionDeSalud',
+        type: 'boolean',
+      },
       {
         header: 'Autorización imagen',
         key: 'autorizacionDeImagen',
@@ -341,7 +366,9 @@ export class ExportsService {
   }
 
   private buildCampamentoParticipantesSheet(
-    campamentos: Array<Campamento & { participantes?: Persona[] }>,
+    campamentos: Array<
+      Campamento & { participantes?: CampamentoParticipante[] }
+    >,
   ): SheetSpec {
     const columns: ColumnDef[] = [
       { header: 'Campamento ID', key: 'campamentoId' },
@@ -353,12 +380,12 @@ export class ExportsService {
     const rows: Record<string, unknown>[] = [];
     for (const camp of campamentos) {
       const participantes = camp.participantes ?? [];
-      for (const persona of participantes) {
+      for (const junction of participantes) {
         rows.push({
           campamentoId: camp.id,
           campamentoNombre: camp.nombre,
-          personaId: persona.id,
-          personaNombre: persona.nombre,
+          personaId: junction.personaId,
+          personaNombre: junction.persona?.nombre ?? '',
         });
       }
     }

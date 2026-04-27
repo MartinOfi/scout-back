@@ -1,6 +1,6 @@
-import { Entity, Column, ManyToMany, JoinTable } from 'typeorm';
+import { Entity, Column, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
-import { Persona } from '../../personas/entities/persona.entity';
+import { CampamentoParticipante } from './campamento-participante.entity';
 
 /**
  * Campamento entity - Camp/excursion
@@ -37,17 +37,8 @@ export class Campamento extends BaseEntity {
   @Column({ type: 'text', nullable: true })
   descripcion!: string | null;
 
-  /**
-   * Participants - Dynamic list
-   * Assigned over time, not necessarily at creation
-   */
-  @ManyToMany(() => Persona)
-  @JoinTable({
-    name: 'campamento_participantes',
-    joinColumn: { name: 'campamento_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'persona_id', referencedColumnName: 'id' },
-  })
-  participantes!: Persona[];
+  @OneToMany(() => CampamentoParticipante, (cp) => cp.campamento)
+  participantes!: CampamentoParticipante[];
 
   /**
    * Payments and expenses are tracked via Movimiento entities

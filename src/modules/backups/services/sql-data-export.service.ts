@@ -10,7 +10,7 @@ const EXPORTED_TABLES_IN_FK_ORDER = [
   'inscripciones',
   'cuotas',
   'campamentos',
-  'campamento_participantes',
+  'campamento_participante',
   'movimientos',
   'ventas_productos',
 ] as const;
@@ -25,7 +25,7 @@ export class SqlDataExportService {
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   async generateDump(): Promise<string> {
     const parts: string[] = [];

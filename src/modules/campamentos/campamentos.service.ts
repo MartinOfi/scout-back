@@ -6,11 +6,13 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, IsNull } from 'typeorm';
 import { Campamento } from './entities/campamento.entity';
+import { CampamentoParticipante } from './entities/campamento-participante.entity';
 import { CreateCampamentoDto } from './dtos/create-campamento.dto';
 import { UpdateCampamentoDto } from './dtos/update-campamento.dto';
 import { AddParticipanteDto } from './dtos/add-participante.dto';
+import { UpdateParticipanteAutorizacionDto } from './dtos/update-participante-autorizacion.dto';
 import { PagarCampamentoDto } from './dtos/pagar-campamento.dto';
 import { PersonasService } from '../personas/personas.service';
 import { CajasService } from '../cajas/cajas.service';
@@ -33,7 +35,6 @@ import {
   CampamentoKpisDto,
 } from './dtos/campamento-detalle.dto';
 import { Movimiento } from '../movimientos/entities/movimiento.entity';
-import { Persona } from '../personas/entities/persona.entity';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
 @Injectable()
@@ -41,6 +42,8 @@ export class CampamentosService {
   constructor(
     @InjectRepository(Campamento)
     private readonly campamentoRepository: Repository<Campamento>,
+    @InjectRepository(CampamentoParticipante)
+    private readonly campamentoParticipanteRepository: Repository<CampamentoParticipante>,
     @Inject(forwardRef(() => PersonasService))
     private readonly personasService: PersonasService,
     @Inject(forwardRef(() => CajasService))
@@ -55,7 +58,7 @@ export class CampamentosService {
 
   async findAll(): Promise<Campamento[]> {
     return this.campamentoRepository.find({
-      relations: ['participantes'],
+      relations: ['participantes', 'participantes.persona'],
       order: { fechaInicio: 'DESC' },
     });
   }
@@ -63,7 +66,7 @@ export class CampamentosService {
   async findOne(id: string): Promise<Campamento> {
     const campamento = await this.campamentoRepository.findOne({
       where: { id },
-      relations: ['participantes'],
+      relations: ['participantes', 'participantes.persona'],
     });
 
     if (!campamento) {
@@ -74,11 +77,7 @@ export class CampamentosService {
   }
 
   async create(dto: CreateCampamentoDto): Promise<Campamento> {
-    const campamento = this.campamentoRepository.create({
-      ...dto,
-      participantes: [],
-    });
-
+    const campamento = this.campamentoRepository.create(dto);
     return this.campamentoRepository.save(campamento);
   }
 
@@ -92,32 +91,69 @@ export class CampamentosService {
     id: string,
     dto: AddParticipanteDto,
   ): Promise<Campamento> {
-    const campamento = await this.findOne(id);
-    const persona = await this.personasService.findOne(dto.personaId);
+    await this.findOne(id);
+    await this.personasService.findOne(dto.personaId);
 
-    // Verificar que no esté ya agregado
-    const yaEstaAgregado = campamento.participantes.some(
-      (p) => p.id === dto.personaId,
-    );
+    const existing = await this.campamentoParticipanteRepository.findOne({
+      where: {
+        campamentoId: id,
+        personaId: dto.personaId,
+        deletedAt: IsNull(),
+      },
+    });
 
-    if (yaEstaAgregado) {
+    if (existing) {
       throw new BadRequestException(
         'Esta persona ya está inscrita en el campamento',
       );
     }
 
-    campamento.participantes.push(persona);
-    return this.campamentoRepository.save(campamento);
+    await this.campamentoParticipanteRepository.save(
+      this.campamentoParticipanteRepository.create({
+        campamentoId: id,
+        personaId: dto.personaId,
+        autorizacionEntregada: dto.autorizacionEntregada ?? false,
+      }),
+    );
+
+    return this.findOne(id);
   }
 
   async removeParticipante(id: string, personaId: string): Promise<Campamento> {
-    const campamento = await this.findOne(id);
+    const junction = await this.campamentoParticipanteRepository.findOne({
+      where: { campamentoId: id, personaId, deletedAt: IsNull() },
+    });
 
-    campamento.participantes = campamento.participantes.filter(
-      (p) => p.id !== personaId,
-    );
+    if (!junction) {
+      throw new NotFoundException(
+        'El participante no está inscrito en el campamento',
+      );
+    }
 
-    return this.campamentoRepository.save(campamento);
+    await this.campamentoParticipanteRepository.softDelete(junction.id);
+
+    return this.findOne(id);
+  }
+
+  async updateParticipanteAutorizacion(
+    campamentoId: string,
+    personaId: string,
+    dto: UpdateParticipanteAutorizacionDto,
+  ): Promise<void> {
+    const junction = await this.campamentoParticipanteRepository.findOne({
+      where: { campamentoId, personaId, deletedAt: IsNull() },
+    });
+
+    if (!junction) {
+      throw new NotFoundException(
+        'El participante no está inscrito en el campamento',
+      );
+    }
+
+    await this.campamentoParticipanteRepository.save({
+      ...junction,
+      autorizacionEntregada: dto.autorizacionEntregada,
+    });
   }
 
   /**
@@ -297,15 +333,15 @@ export class CampamentosService {
     const costoPorPersona = Number(campamento.costoPorPersona);
 
     // Construir respuesta con todos los participantes
-    return campamento.participantes.map((participante) => {
-      const datosPago = pagosPorParticipante.get(participante.id) || {
+    return campamento.participantes.map((cp) => {
+      const datosPago = pagosPorParticipante.get(cp.personaId) || {
         totalPagado: 0,
         pagos: [],
       };
 
       return {
-        participanteId: participante.id,
-        participanteNombre: participante.nombre,
+        participanteId: cp.personaId,
+        participanteNombre: cp.persona.nombre,
         costoPorPersona,
         totalPagado: datosPago.totalPagado,
         saldoPendiente: costoPorPersona - datosPago.totalPagado,
@@ -452,15 +488,15 @@ export class CampamentosService {
    * Build participant DTOs with payment status
    */
   private buildParticipantesDto(
-    participantes: Persona[],
+    participantes: CampamentoParticipante[],
     pagosPorParticipante: Map<
       string,
       { totalPagado: number; pagos: PagoParticipanteDto[] }
     >,
     costoPorPersona: number,
   ): ParticipantePagoDto[] {
-    return participantes.map((participante) => {
-      const datosPago = pagosPorParticipante.get(participante.id) ?? {
+    return participantes.map((cp) => {
+      const datosPago = pagosPorParticipante.get(cp.personaId) ?? {
         totalPagado: 0,
         pagos: [],
       };
@@ -471,21 +507,19 @@ export class CampamentosService {
         costoPorPersona,
       );
 
-      // Get rama from persona (only for Protagonista/Educador)
       const rama =
-        'rama' in participante
-          ? (participante as { rama: unknown }).rama
-          : null;
+        'rama' in cp.persona ? (cp.persona as { rama: unknown }).rama : null;
 
       return {
-        id: participante.id,
-        nombre: participante.nombre,
-        tipo: participante.tipo,
+        id: cp.personaId,
+        nombre: cp.persona.nombre,
+        tipo: cp.persona.tipo,
         rama: rama as ParticipantePagoDto['rama'],
         costoPorPersona,
         totalPagado: datosPago.totalPagado,
         saldoPendiente,
         estadoPago,
+        autorizacionEntregada: cp.autorizacionEntregada,
         pagos: datosPago.pagos.sort(
           (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),
         ),
@@ -671,7 +705,8 @@ export class CampamentosService {
         `COUNT(CASE WHEN c."costoPorPersona" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END)`,
         'cantidad',
       )
-      .innerJoin('c.participantes', 'p')
+      .innerJoin('c.participantes', 'cp')
+      .innerJoin('cp.persona', 'p')
       .leftJoin(
         (qb) =>
           qb

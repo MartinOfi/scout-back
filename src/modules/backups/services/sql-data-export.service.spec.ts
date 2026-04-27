@@ -78,7 +78,7 @@ describe('SqlDataExportService', () => {
         'inscripciones',
         'cuotas',
         'campamentos',
-        'campamento_participantes',
+        'campamento_participante',
         'movimientos',
         'ventas_productos',
       ];

@@ -23,6 +23,7 @@ import { CreateCampamentoDto } from './dtos/create-campamento.dto';
 import { UpdateCampamentoDto } from './dtos/update-campamento.dto';
 import { AddParticipanteDto } from './dtos/add-participante.dto';
 import { PagarCampamentoDto } from './dtos/pagar-campamento.dto';
+import { UpdateParticipanteAutorizacionDto } from './dtos/update-participante-autorizacion.dto';
 import {
   MedioPago,
   EstadoPago,
@@ -163,6 +164,24 @@ export class CampamentosController {
     @Param('personaId', ParseUUIDPipe) personaId: string,
   ) {
     return this.campamentosService.removeParticipante(id, personaId);
+  }
+
+  @Patch(':id/participantes/:personaId')
+  @ApiOperation({ summary: 'Actualizar autorización de participante' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiParam({ name: 'personaId', type: String, format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'Autorización actualizada' })
+  @ApiResponse({ status: 404, description: 'Participante no encontrado' })
+  async updateParticipanteAutorizacion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('personaId', ParseUUIDPipe) personaId: string,
+    @Body() dto: UpdateParticipanteAutorizacionDto,
+  ) {
+    return this.campamentosService.updateParticipanteAutorizacion(
+      id,
+      personaId,
+      dto,
+    );
   }
 
   @Post(':id/pagos/:personaId')

@@ -82,6 +82,9 @@ export class ParticipantePagoDto {
 
   @ApiProperty({ type: [PagoParticipanteDto] })
   pagos!: PagoParticipanteDto[];
+
+  @ApiProperty({ example: false })
+  autorizacionEntregada!: boolean;
 }
 
 /**

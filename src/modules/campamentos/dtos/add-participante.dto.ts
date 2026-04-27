@@ -1,5 +1,5 @@
-import { IsUUID } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AddParticipanteDto {
   @ApiProperty({
@@ -8,4 +8,12 @@ export class AddParticipanteDto {
   })
   @IsUUID()
   personaId!: string;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Si el participante ya entregó la autorización',
+  })
+  @IsBoolean()
+  @IsOptional()
+  autorizacionEntregada?: boolean;
 }

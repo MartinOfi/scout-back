@@ -22,7 +22,7 @@ export class CajasService {
     private readonly deletionValidator: DeletionValidatorService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
-  ) {}
+  ) { }
 
   async findAll(): Promise<CajaResponseDto[]> {
     const cajas = await this.cajaRepository.find({
@@ -88,9 +88,9 @@ export class CajasService {
       propietarioId: caja.propietarioId,
       propietario: caja.propietario
         ? {
-            id: caja.propietario.id,
-            nombre: caja.propietario.nombre,
-          }
+          id: caja.propietario.id,
+          nombre: caja.propietario.nombre,
+        }
         : null,
       saldoActual: saldo,
       createdAt: caja.createdAt,
@@ -245,7 +245,7 @@ export class CajasService {
           COALESCE(SUM(GREATEST(0, c."costoPorPersona" - COALESCE(pagos.total_pagado, 0))), 0) AS total,
           COUNT(CASE WHEN c."costoPorPersona" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END) AS cantidad
         FROM campamentos c
-        INNER JOIN campamento_participantes cp ON cp.campamento_id = c.id
+        INNER JOIN campamento_participante cp ON cp.campamento_id = c.id
         LEFT JOIN (
           SELECT responsable_id, campamento_id, SUM(monto) AS total_pagado
           FROM movimientos

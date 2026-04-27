@@ -4,6 +4,7 @@ import { Repository, DataSource } from 'typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CampamentosService } from './campamentos.service';
 import { Campamento } from './entities/campamento.entity';
+import { CampamentoParticipante } from './entities/campamento-participante.entity';
 import { PersonasService } from '../personas/personas.service';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
@@ -24,6 +25,9 @@ import { Caja } from '../cajas/entities/caja.entity';
 describe('CampamentosService', () => {
   let service: CampamentosService;
   let campamentoRepository: jest.Mocked<Repository<Campamento>>;
+  let campamentoParticipanteRepository: jest.Mocked<
+    Repository<CampamentoParticipante>
+  >;
   let personasService: jest.Mocked<PersonasService>;
   let cajasService: jest.Mocked<CajasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
@@ -33,6 +37,15 @@ describe('CampamentosService', () => {
   const mockPersona: Partial<Persona> = {
     id: 'persona-uuid',
     nombre: 'Juan Scout',
+  };
+
+  const mockCampamentoParticipante: Partial<CampamentoParticipante> = {
+    id: 'cp-uuid',
+    campamentoId: 'campamento-uuid',
+    personaId: 'persona-uuid',
+    autorizacionEntregada: false,
+    persona: mockPersona as Persona,
+    deletedAt: null,
   };
 
   const mockCampamento: Partial<Campamento> = {
@@ -60,6 +73,13 @@ describe('CampamentosService', () => {
       save: jest.fn(),
       softRemove: jest.fn(),
       createQueryBuilder: jest.fn(),
+    };
+
+    const mockCampamentoParticipanteRepository = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+      save: jest.fn(),
+      softDelete: jest.fn(),
     };
 
     const mockPersonasService = {
@@ -110,6 +130,10 @@ describe('CampamentosService', () => {
           useValue: mockCampamentoRepository,
         },
         {
+          provide: getRepositoryToken(CampamentoParticipante),
+          useValue: mockCampamentoParticipanteRepository,
+        },
+        {
           provide: PersonasService,
           useValue: mockPersonasService,
         },
@@ -138,6 +162,9 @@ describe('CampamentosService', () => {
 
     service = module.get<CampamentosService>(CampamentosService);
     campamentoRepository = module.get(getRepositoryToken(Campamento));
+    campamentoParticipanteRepository = module.get(
+      getRepositoryToken(CampamentoParticipante),
+    );
     personasService = module.get(PersonasService);
     cajasService = module.get(CajasService);
     movimientosService = module.get(MovimientosService);
@@ -160,7 +187,7 @@ describe('CampamentosService', () => {
       expect(result).toEqual(mockCampamento);
       expect(campamentoRepository.findOne).toHaveBeenCalledWith({
         where: { id: 'campamento-uuid' },
-        relations: ['participantes'],
+        relations: ['participantes', 'participantes.persona'],
       });
     });
 
@@ -225,7 +252,7 @@ describe('CampamentosService', () => {
   });
 
   describe('create', () => {
-    it('should create a campamento with empty participantes', async () => {
+    it('should create a campamento', async () => {
       const dto = {
         nombre: 'Nuevo Campamento',
         fechaInicio: new Date('2024-06-01'),
@@ -233,22 +260,15 @@ describe('CampamentosService', () => {
         costoPorPersona: 20000,
       };
 
-      const created = {
-        ...dto,
-        id: 'new-uuid',
-        participantes: [],
-      };
+      const created = { ...dto, id: 'new-uuid', participantes: [] };
 
       campamentoRepository.create.mockReturnValue(created as Campamento);
       campamentoRepository.save.mockResolvedValue(created as Campamento);
 
       const result = await service.create(dto);
 
-      expect(campamentoRepository.create).toHaveBeenCalledWith({
-        ...dto,
-        participantes: [],
-      });
-      expect(result.participantes).toEqual([]);
+      expect(campamentoRepository.create).toHaveBeenCalledWith(dto);
+      expect(result).toBeDefined();
     });
   });
 
@@ -258,11 +278,21 @@ describe('CampamentosService', () => {
         ...mockCampamento,
         participantes: [],
       };
-      campamentoRepository.findOne.mockResolvedValue(
-        campamentoSinParticipantes as Campamento,
+      const campamentoConParticipante = {
+        ...mockCampamento,
+        participantes: [mockCampamentoParticipante as CampamentoParticipante],
+      };
+
+      campamentoRepository.findOne
+        .mockResolvedValueOnce(campamentoSinParticipantes as Campamento)
+        .mockResolvedValueOnce(campamentoConParticipante as Campamento);
+
+      campamentoParticipanteRepository.findOne.mockResolvedValue(null);
+      campamentoParticipanteRepository.create.mockReturnValue(
+        mockCampamentoParticipante as CampamentoParticipante,
       );
-      campamentoRepository.save.mockImplementation((camp) =>
-        Promise.resolve(camp as Campamento),
+      campamentoParticipanteRepository.save.mockResolvedValue(
+        mockCampamentoParticipante as CampamentoParticipante,
       );
 
       const result = await service.addParticipante('campamento-uuid', {
@@ -270,16 +300,16 @@ describe('CampamentosService', () => {
       });
 
       expect(personasService.findOne).toHaveBeenCalledWith('persona-uuid');
-      expect(result.participantes).toContainEqual(mockPersona);
+      expect(campamentoParticipanteRepository.save).toHaveBeenCalled();
+      expect(result.participantes).toHaveLength(1);
     });
 
     it('should throw BadRequestException when participant already added', async () => {
-      const campamentoConParticipante = {
-        ...mockCampamento,
-        participantes: [mockPersona as Persona],
-      };
       campamentoRepository.findOne.mockResolvedValue(
-        campamentoConParticipante as Campamento,
+        mockCampamento as Campamento,
+      );
+      campamentoParticipanteRepository.findOne.mockResolvedValue(
+        mockCampamentoParticipante as CampamentoParticipante,
       );
 
       await expect(
@@ -296,24 +326,69 @@ describe('CampamentosService', () => {
   });
 
   describe('removeParticipante', () => {
-    it('should remove a participant from campamento', async () => {
-      const campamentoConParticipante = {
+    it('should soft-delete the junction record and return updated campamento', async () => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue(
+        mockCampamentoParticipante as CampamentoParticipante,
+      );
+      campamentoParticipanteRepository.softDelete.mockResolvedValue({
+        affected: 1,
+      } as any);
+      campamentoRepository.findOne.mockResolvedValue({
         ...mockCampamento,
-        participantes: [mockPersona as Persona],
-      };
-      campamentoRepository.findOne.mockResolvedValue(
-        campamentoConParticipante as Campamento,
-      );
-      campamentoRepository.save.mockImplementation((camp) =>
-        Promise.resolve(camp as Campamento),
-      );
+        participantes: [],
+      } as Campamento);
 
       const result = await service.removeParticipante(
         'campamento-uuid',
         'persona-uuid',
       );
 
+      expect(campamentoParticipanteRepository.softDelete).toHaveBeenCalledWith(
+        'cp-uuid',
+      );
       expect(result.participantes).toHaveLength(0);
+    });
+
+    it('should throw NotFoundException when participant is not inscribed', async () => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.removeParticipante('campamento-uuid', 'persona-uuid'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateParticipanteAutorizacion', () => {
+    it('should update autorizacionEntregada when participant is found', async () => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue(
+        mockCampamentoParticipante as CampamentoParticipante,
+      );
+      campamentoParticipanteRepository.save.mockResolvedValue({
+        ...mockCampamentoParticipante,
+        autorizacionEntregada: true,
+      } as CampamentoParticipante);
+
+      await service.updateParticipanteAutorizacion(
+        'campamento-uuid',
+        'persona-uuid',
+        { autorizacionEntregada: true },
+      );
+
+      expect(campamentoParticipanteRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ autorizacionEntregada: true }),
+      );
+    });
+
+    it('should throw NotFoundException when participant is not inscribed', async () => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.updateParticipanteAutorizacion(
+          'campamento-uuid',
+          'persona-uuid',
+          { autorizacionEntregada: true },
+        ),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -441,8 +516,12 @@ describe('CampamentosService', () => {
       const campamentoConParticipantes = {
         ...mockCampamento,
         participantes: [
-          mockPersona as Persona,
-          { id: 'persona2', nombre: 'Maria' },
+          mockCampamentoParticipante as CampamentoParticipante,
+          {
+            id: 'cp-uuid-2',
+            personaId: 'persona2',
+            persona: { nombre: 'Maria' },
+          } as CampamentoParticipante,
         ],
       };
       campamentoRepository.findOne.mockResolvedValue(
@@ -471,7 +550,7 @@ describe('CampamentosService', () => {
 
       expect(result).toHaveLength(1);
       expect(campamentoRepository.find).toHaveBeenCalledWith({
-        relations: ['participantes'],
+        relations: ['participantes', 'participantes.persona'],
         order: { fechaInicio: 'DESC' },
       });
     });
@@ -522,7 +601,7 @@ describe('CampamentosService', () => {
       costoPorPersona: 15000,
       cuotasBase: 3,
       descripcion: null,
-      participantes: [mockPersona as Persona],
+      participantes: [mockCampamentoParticipante as CampamentoParticipante],
     };
 
     beforeEach(() => {
@@ -683,6 +762,12 @@ describe('CampamentosService', () => {
       expect(participante.totalPagado).toBe(10000);
       expect(participante.saldoPendiente).toBe(5000); // 15000 - 10000
       expect(participante.estadoPago).toBe(EstadoPagoCampamento.PARCIAL);
+    });
+
+    it('should include autorizacionEntregada in participant DTOs', async () => {
+      const result = await service.getDetalle('campamento-uuid');
+
+      expect(result.participantes[0].autorizacionEntregada).toBe(false);
     });
   });
 

@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Campamento } from './entities/campamento.entity';
+import { CampamentoParticipante } from './entities/campamento-participante.entity';
 import { CampamentosService } from './campamentos.service';
 import { CampamentosController } from './campamentos.controller';
 import { PersonasModule } from '../personas/personas.module';
@@ -10,7 +11,7 @@ import { PagosModule } from '../pagos/pagos.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Campamento]),
+    TypeOrmModule.forFeature([Campamento, CampamentoParticipante]),
     forwardRef(() => PersonasModule),
     forwardRef(() => CajasModule),
     forwardRef(() => MovimientosModule),
