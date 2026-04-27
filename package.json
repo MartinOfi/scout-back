@@ -26,7 +26,11 @@
     "db:test:stop": "docker-compose -f docker-compose.test.yml down",
     "db:test:logs": "docker-compose -f docker-compose.test.yml logs -f",
     "db:test:reset": "docker-compose -f docker-compose.test.yml down -v && docker-compose -f docker-compose.test.yml up -d",
-    "seed": "ts-node src/database/seeds/run-seeds.ts"
+    "seed": "ts-node src/database/seeds/run-seeds.ts",
+    "migration:run": "ts-node -r tsconfig-paths/register node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts",
+    "migration:revert": "ts-node -r tsconfig-paths/register node_modules/typeorm/cli.js migration:revert -d src/database/data-source.ts",
+    "migration:generate": "ts-node -r tsconfig-paths/register node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts",
+    "migration:create": "ts-node -r tsconfig-paths/register node_modules/typeorm/cli.js migration:create"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
