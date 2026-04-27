@@ -26,6 +26,7 @@ import {
   EstadoPago,
   EstadoPagoCampamento,
   FiltroMovimientosCampamento,
+  Rama,
 } from '../../common/enums';
 import {
   CampamentoDetalleDto,
@@ -360,6 +361,8 @@ export class CampamentosService {
   async getDetalle(
     campamentoId: string,
     filtroMovimientos?: FiltroMovimientosCampamento,
+    nombre?: string,
+    rama?: Rama,
   ): Promise<CampamentoDetalleDto> {
     // 1. Load campamento with participants
     const campamento = await this.findOne(campamentoId);
@@ -395,6 +398,13 @@ export class CampamentosService {
       costoPorPersona,
     );
 
+    // 6b. Apply participant filters after KPI calculation (KPIs always reflect full camp)
+    const participantesFiltrados = this.filterParticipantes(
+      participantesDto,
+      nombre,
+      rama,
+    );
+
     // 7. Filter and build movimientos DTO based on filter
     const movimientosFiltrados = this.filterMovimientos(
       todosMovimientos,
@@ -413,7 +423,7 @@ export class CampamentosService {
         cuotasBase: campamento.cuotasBase,
         descripcion: campamento.descripcion,
       },
-      participantes: participantesDto,
+      participantes: participantesFiltrados,
       movimientos: movimientosDto,
       kpis,
     };
@@ -422,6 +432,22 @@ export class CampamentosService {
   /**
    * Filter movements based on the specified filter
    */
+  private filterParticipantes(
+    participantes: ParticipantePagoDto[],
+    nombre?: string,
+    rama?: Rama,
+  ): ParticipantePagoDto[] {
+    return participantes.filter((p) => {
+      if (nombre && !p.nombre.toLowerCase().includes(nombre.toLowerCase())) {
+        return false;
+      }
+      if (rama !== undefined && p.rama !== rama) {
+        return false;
+      }
+      return true;
+    });
+  }
+
   private filterMovimientos(
     movimientos: Movimiento[],
     filtro?: FiltroMovimientosCampamento,

@@ -16,7 +16,6 @@ import {
   ApiResponse,
   ApiParam,
   ApiBody,
-  ApiQuery,
 } from '@nestjs/swagger';
 import { CampamentosService } from './campamentos.service';
 import { CreateCampamentoDto } from './dtos/create-campamento.dto';
@@ -24,12 +23,9 @@ import { UpdateCampamentoDto } from './dtos/update-campamento.dto';
 import { AddParticipanteDto } from './dtos/add-participante.dto';
 import { PagarCampamentoDto } from './dtos/pagar-campamento.dto';
 import { UpdateParticipanteAutorizacionDto } from './dtos/update-participante-autorizacion.dto';
-import {
-  MedioPago,
-  EstadoPago,
-  FiltroMovimientosCampamento,
-} from '../../common/enums';
+import { MedioPago, EstadoPago } from '../../common/enums';
 import { CampamentoDetalleDto } from './dtos/campamento-detalle.dto';
+import { CampamentoDetalleQueryDto } from './dtos/campamento-detalle-query.dto';
 import { ResultadoPagoDto } from '../pagos/dtos/resultado-pago.dto';
 
 @ApiTags('Campamentos')
@@ -103,13 +99,6 @@ export class CampamentosController {
       'Retorna participantes con estado de pago, movimientos filtrados y KPIs financieros',
   })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
-  @ApiQuery({
-    name: 'filtroMovimientos',
-    enum: FiltroMovimientosCampamento,
-    required: false,
-    description:
-      'Filtro de movimientos: todos (default), ingresos (pagos recibidos), gastos (compras reales, sin uso de saldo personal)',
-  })
   @ApiResponse({
     status: 200,
     description: 'Detalle completo del campamento',
@@ -118,9 +107,14 @@ export class CampamentosController {
   @ApiResponse({ status: 404, description: 'Campamento no encontrado' })
   async getDetalle(
     @Param('id', ParseUUIDPipe) id: string,
-    @Query('filtroMovimientos') filtro?: FiltroMovimientosCampamento,
+    @Query() query: CampamentoDetalleQueryDto,
   ): Promise<CampamentoDetalleDto> {
-    return this.campamentosService.getDetalle(id, filtro);
+    return this.campamentosService.getDetalle(
+      id,
+      query.filtroMovimientos,
+      query.nombre,
+      query.rama,
+    );
   }
 
   @Post()
