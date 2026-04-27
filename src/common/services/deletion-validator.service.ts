@@ -92,6 +92,16 @@ export class DeletionValidatorService {
     );
   }
 
+  async canRemoveParticipanteCampamento(
+    campamentoId: string,
+    personaId: string,
+  ): Promise<DeletionCheckResult> {
+    return this.checkRelationByCount(
+      { campamentoId, responsableId: personaId },
+      DELETION_VALIDATOR_MESSAGES.PARTICIPANTE_CAMPAMENTO_HAS_MOVEMENTS,
+    );
+  }
+
   /**
    * Evento deletion is allowed when every movimiento attached to it is
    * cascade-deletable (i.e. has at least one live venta_producto pointing at

@@ -131,6 +131,14 @@ export class CampamentosService {
       );
     }
 
+    const check = await this.deletionValidator.canRemoveParticipanteCampamento(
+      id,
+      personaId,
+    );
+    if (!check.canDelete) {
+      throw new BadRequestException(check.reason);
+    }
+
     await this.campamentoParticipanteRepository.softDelete(junction.id);
 
     return this.findOne(id);

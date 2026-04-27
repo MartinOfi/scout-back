@@ -19,4 +19,6 @@ export const DELETION_VALIDATOR_MESSAGES = {
     `No se puede eliminar: el evento tiene ${count} movimiento(s) externo(s) a ventas (ingresos/gastos manuales)`,
   CAJA_HAS_MOVEMENTS: (count: number): string =>
     `No se puede eliminar: la caja tiene ${count} movimiento(s) asociado(s)`,
+  PARTICIPANTE_CAMPAMENTO_HAS_MOVEMENTS: (count: number): string =>
+    `No se puede desinscribir: el participante tiene ${count} pago(s) registrado(s) en este campamento`,
 } as const;
