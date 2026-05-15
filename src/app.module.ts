@@ -16,6 +16,7 @@ import { EventosModule } from './modules/eventos/eventos.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { ExportsModule } from './modules/exports/exports.module';
+import { ReportesModule } from './modules/reportes/reportes.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -37,6 +38,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     EventosModule,
     BackupsModule,
     ExportsModule,
+    ReportesModule,
   ],
   controllers: [AppController],
   providers: [
