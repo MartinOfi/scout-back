@@ -8,7 +8,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { DestinoGanancia } from '../../../common/enums';
+import { DestinoGanancia, TipoEvento } from '../../../common/enums';
 
 export class UpdateEventoDto {
   @ApiPropertyOptional({
@@ -43,7 +43,17 @@ export class UpdateEventoDto {
   descripcion?: string;
 
   @ApiPropertyOptional({
-    description: 'Destino de la ganancia del evento',
+    description: 'Tipo de evento',
+    enum: TipoEvento,
+    example: TipoEvento.VENTA,
+  })
+  @IsEnum(TipoEvento)
+  @IsOptional()
+  tipo?: TipoEvento;
+
+  @ApiPropertyOptional({
+    description:
+      'Destino de la ganancia del evento (solo para eventos de venta)',
     enum: DestinoGanancia,
     example: DestinoGanancia.CUENTAS_PERSONALES,
   })

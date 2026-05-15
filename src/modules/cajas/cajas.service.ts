@@ -9,7 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Caja } from './entities/caja.entity';
 import { CreateCajaDto, ConsolidadoSaldosDto, CajaResponseDto } from './dtos';
-import { CajaType } from '../../common/enums';
+import { CajaType, PersonaType } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 
@@ -22,7 +22,7 @@ export class CajasService {
     private readonly deletionValidator: DeletionValidatorService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
-  ) { }
+  ) {}
 
   async findAll(): Promise<CajaResponseDto[]> {
     const cajas = await this.cajaRepository.find({
@@ -37,8 +37,28 @@ export class CajasService {
     const cajas = await this.cajaRepository.find({
       where: { tipo },
       relations: ['propietario'],
+      order: { nombre: 'ASC' },
     });
 
+    return this.mapCajasWithSaldo(cajas);
+  }
+
+  async findPersonales(ramaFilter?: string): Promise<CajaResponseDto[]> {
+    const qb = this.cajaRepository
+      .createQueryBuilder('caja')
+      .leftJoinAndSelect('caja.propietario', 'propietario')
+      .where('caja.tipo = :tipo', { tipo: CajaType.PERSONAL })
+      .orderBy('propietario.nombre', 'ASC');
+
+    if (ramaFilter === 'educadores') {
+      qb.andWhere('propietario.tipo = :tipoPersona', {
+        tipoPersona: PersonaType.EDUCADOR,
+      });
+    } else if (ramaFilter) {
+      qb.andWhere('propietario.rama = :rama', { rama: ramaFilter });
+    }
+
+    const cajas = await qb.getMany();
     return this.mapCajasWithSaldo(cajas);
   }
 
@@ -88,9 +108,13 @@ export class CajasService {
       propietarioId: caja.propietarioId,
       propietario: caja.propietario
         ? {
-          id: caja.propietario.id,
-          nombre: caja.propietario.nombre,
-        }
+            id: caja.propietario.id,
+            nombre: caja.propietario.nombre,
+            rama:
+              'rama' in caja.propietario
+                ? (caja.propietario as { rama: string | null }).rama
+                : null,
+          }
         : null,
       saldoActual: saldo,
       createdAt: caja.createdAt,

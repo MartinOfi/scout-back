@@ -14,6 +14,10 @@ export const EVENTOS_ERROR_MESSAGES = {
   EVENTO_HAS_EXTERNAL_MOVEMENTS: (count: number): string =>
     `No se puede eliminar: el evento tiene ${count} movimiento(s) externo(s) a ventas (ingresos/gastos manuales)`,
   ONLY_FOR_EVENTO_GRUPO: 'Este endpoint es solo para eventos de grupo',
+  VENTA_REQUIRES_DESTINO_GANANCIA:
+    'Los eventos de venta requieren especificar un destino de ganancia',
+  GRUPO_CANNOT_HAVE_DESTINO_GANANCIA:
+    'Los eventos de grupo no pueden tener destino de ganancia',
 } as const;
 
 export const PRODUCTOS_ERROR_MESSAGES = {

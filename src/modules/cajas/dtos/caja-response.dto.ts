@@ -23,6 +23,7 @@ export class CajaResponseDto {
   propietario!: {
     id: string;
     nombre: string;
+    rama?: string | null;
   } | null;
 
   @ApiProperty({ description: 'Saldo actual calculado desde movimientos' })

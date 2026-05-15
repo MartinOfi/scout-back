@@ -27,12 +27,24 @@ export class CajasController {
   @Get()
   @ApiOperation({ summary: 'Listar todas las cajas con saldo actual' })
   @ApiQuery({ name: 'tipo', enum: CajaType, required: false })
+  @ApiQuery({
+    name: 'rama',
+    required: false,
+    description:
+      'Filtro por rama del propietario (solo aplica con tipo=personal). Valores: Manada, Unidad, Caminantes, Rovers, educadores',
+  })
   @ApiResponse({
     status: 200,
     description: 'Lista de cajas con saldo calculado',
     type: [CajaResponseDto],
   })
-  async findAll(@Query('tipo') tipo?: CajaType): Promise<CajaResponseDto[]> {
+  async findAll(
+    @Query('tipo') tipo?: CajaType,
+    @Query('rama') rama?: string,
+  ): Promise<CajaResponseDto[]> {
+    if (tipo === CajaType.PERSONAL) {
+      return this.cajasService.findPersonales(rama);
+    }
     if (tipo) {
       return this.cajasService.findByTipo(tipo);
     }

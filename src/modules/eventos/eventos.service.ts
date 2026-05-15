@@ -100,14 +100,41 @@ export class EventosService {
   }
 
   async create(dto: CreateEventoDto): Promise<Evento> {
+    this.validateTipoDestinoGanancia(dto);
     const evento = this.eventoRepository.create(dto);
     return this.eventoRepository.save(evento);
   }
 
   async update(id: string, dto: UpdateEventoDto): Promise<Evento> {
     const evento = await this.findOne(id);
+    this.validateTipoDestinoGanancia(dto, evento);
     const updated = this.eventoRepository.merge(evento, dto);
     return this.eventoRepository.save(updated);
+  }
+
+  private validateTipoDestinoGanancia(
+    dto: CreateEventoDto | UpdateEventoDto,
+    currentEvento?: Evento,
+  ): void {
+    const tipoToValidate = dto.tipo ?? currentEvento?.tipo;
+    const destinoToValidate =
+      dto.destinoGanancia ?? currentEvento?.destinoGanancia;
+
+    if (tipoToValidate === TipoEvento.VENTA) {
+      if (!destinoToValidate) {
+        throw new BadRequestException(
+          EVENTOS_ERROR_MESSAGES.VENTA_REQUIRES_DESTINO_GANANCIA,
+        );
+      }
+    }
+
+    if (tipoToValidate === TipoEvento.GRUPO) {
+      if (destinoToValidate) {
+        throw new BadRequestException(
+          EVENTOS_ERROR_MESSAGES.GRUPO_CANNOT_HAVE_DESTINO_GANANCIA,
+        );
+      }
+    }
   }
 
   /**
