@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Movimiento } from '../../modules/movimientos/entities/movimiento.entity';
+import { VentaProducto } from '../../modules/eventos/entities/venta-producto.entity';
+import { ConceptoMovimiento } from '../enums';
 import { DELETION_VALIDATOR_MESSAGES } from './deletion-validator.messages';
 
 /**
@@ -29,11 +31,26 @@ export interface DeletionCheckResult {
  * Only "external" movimientos (manual ingresos/gastos with no venta backing
  * them) block evento deletion.
  */
+const LINKED_PAIR_CONCEPTOS: readonly ConceptoMovimiento[] = [
+  ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+  ConceptoMovimiento.USO_SALDO_PERSONAL,
+  ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
+] as const;
+
+const INSCRIPCION_CUOTA_CONCEPTOS: readonly ConceptoMovimiento[] = [
+  ConceptoMovimiento.INSCRIPCION_GRUPO,
+  ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA,
+  ConceptoMovimiento.INSCRIPCION_PAGO_SCOUT_ARGENTINA,
+  ConceptoMovimiento.CUOTA_GRUPO,
+] as const;
+
 @Injectable()
 export class DeletionValidatorService {
   constructor(
     @InjectRepository(Movimiento)
     private readonly movimientoRepository: Repository<Movimiento>,
+    @InjectRepository(VentaProducto)
+    private readonly ventaProductoRepository: Repository<VentaProducto>,
   ) {}
 
   async canDeletePersona(personaId: string): Promise<DeletionCheckResult> {
@@ -133,6 +150,68 @@ export class DeletionValidatorService {
         externalCount,
       );
     }
+    return this.allowed();
+  }
+
+  /**
+   * Guards for direct movimiento deletion via DELETE /movimientos/:id.
+   *
+   * Checks are ordered cheapest-first (enum → DB):
+   *  1. Belongs to a venta → must delete from the venta, not directly.
+   *  2. Part of a linked pair → must delete from the originating flow.
+   *  3. Campamento payment → must delete from the campamento flow.
+   *  4. Inscripcion/cuota payment → must delete from the payment flow.
+   */
+  async canDeleteMovimiento(id: string): Promise<DeletionCheckResult> {
+    const movimiento = await this.movimientoRepository.findOne({
+      where: { id },
+      select: ['id', 'concepto', 'movimientoRelacionadoId'],
+    });
+
+    if (!movimiento) {
+      return this.allowed();
+    }
+
+    if (INSCRIPCION_CUOTA_CONCEPTOS.includes(movimiento.concepto)) {
+      return this.blocked(
+        DELETION_VALIDATOR_MESSAGES.MOVIMIENTO_IS_INSCRIPCION_OR_CUOTA(),
+        1,
+      );
+    }
+
+    if (movimiento.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO) {
+      return this.blocked(
+        DELETION_VALIDATOR_MESSAGES.MOVIMIENTO_IS_CAMPAMENTO_PAGO(),
+        1,
+      );
+    }
+
+    if (
+      movimiento.movimientoRelacionadoId !== null &&
+      LINKED_PAIR_CONCEPTOS.includes(movimiento.concepto)
+    ) {
+      const sibling = await this.movimientoRepository.findOne({
+        where: { id: movimiento.movimientoRelacionadoId },
+        select: ['id'],
+      });
+      if (sibling) {
+        return this.blocked(
+          DELETION_VALIDATOR_MESSAGES.MOVIMIENTO_HAS_LINKED_PAIR(),
+          1,
+        );
+      }
+    }
+
+    const ventaCount = await this.ventaProductoRepository.count({
+      where: { movimientoId: id },
+    });
+    if (ventaCount > 0) {
+      return this.blocked(
+        DELETION_VALIDATOR_MESSAGES.MOVIMIENTO_BELONGS_TO_VENTA(),
+        ventaCount,
+      );
+    }
+
     return this.allowed();
   }
 

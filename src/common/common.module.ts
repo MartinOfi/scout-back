@@ -1,6 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Movimiento } from '../modules/movimientos/entities/movimiento.entity';
+import { VentaProducto } from '../modules/eventos/entities/venta-producto.entity';
 import { DeletionValidatorService } from './services/deletion-validator.service';
 
 /**
@@ -10,7 +11,7 @@ import { DeletionValidatorService } from './services/deletion-validator.service'
  */
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([Movimiento])],
+  imports: [TypeOrmModule.forFeature([Movimiento, VentaProducto])],
   providers: [DeletionValidatorService],
   exports: [DeletionValidatorService],
 })

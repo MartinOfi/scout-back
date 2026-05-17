@@ -28,6 +28,7 @@ import {
   EstadoPago,
   MedioPago,
 } from '../../common/enums';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
 @Injectable()
 export class MovimientosService {
@@ -39,6 +40,7 @@ export class MovimientosService {
     @Inject(forwardRef(() => PersonasService))
     private readonly personasService: PersonasService,
     private readonly dataSource: DataSource,
+    private readonly deletionValidator: DeletionValidatorService,
   ) {}
 
   async findAll(): Promise<Movimiento[]> {
@@ -447,6 +449,10 @@ export class MovimientosService {
   }
 
   async remove(id: string): Promise<void> {
+    const check = await this.deletionValidator.canDeleteMovimiento(id);
+    if (!check.canDelete) {
+      throw new BadRequestException(check.reason);
+    }
     const movimiento = await this.findOne(id);
     await this.movimientoRepository.softRemove(movimiento);
   }
