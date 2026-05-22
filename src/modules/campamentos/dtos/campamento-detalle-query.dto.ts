@@ -5,15 +5,15 @@ import { FiltroMovimientosCampamento, Rama } from '../../../common/enums';
 export class CampamentoDetalleQueryDto {
   @ApiPropertyOptional({
     enum: FiltroMovimientosCampamento,
-    description:
-      'Filtro de movimientos: todos (default), ingresos, gastos',
+    description: 'Filtro de movimientos: todos (default), ingresos, gastos',
   })
   @IsOptional()
   @IsEnum(FiltroMovimientosCampamento)
   filtroMovimientos?: FiltroMovimientosCampamento;
 
   @ApiPropertyOptional({
-    description: 'Filtrar participantes por nombre (búsqueda parcial, case-insensitive)',
+    description:
+      'Filtrar participantes por nombre (búsqueda parcial, case-insensitive)',
   })
   @IsOptional()
   @IsString()

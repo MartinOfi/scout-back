@@ -18,6 +18,8 @@ export const EVENTOS_ROUTE_SEGMENTS = {
   MOVIMIENTOS: 'movimientos',
   INGRESOS: 'ingresos',
   GASTOS: 'gastos',
+  ENTREGAS: 'entregas',
+  ENTREGAS_STOCK_DISPONIBLE: 'stock-disponible',
 } as const;
 
 /**
@@ -28,6 +30,7 @@ export const EVENTOS_PARAM_NAMES = {
   EVENTO_ID: 'eventoId',
   PRODUCTO_ID: 'productoId',
   VENTA_ID: 'ventaId',
+  ENTREGA_ID: 'entregaId',
 } as const;
 
 /**
@@ -57,3 +60,21 @@ export const EVENTOS_ROUTES = {
   INGRESOS_BY_EVENTO: `:${EVENTOS_PARAM_NAMES.EVENTO_ID}/${EVENTOS_ROUTE_SEGMENTS.INGRESOS}`,
   GASTOS_BY_EVENTO: `:${EVENTOS_PARAM_NAMES.EVENTO_ID}/${EVENTOS_ROUTE_SEGMENTS.GASTOS}`,
 } as const;
+
+/**
+ * Sub-routes for the EntregasController. The controller's base path is
+ * `eventos/:eventoId/entregas`; these are the segments below that base.
+ *
+ * IMPORTANT: declare STOCK_DISPONIBLE before BY_ID in the controller to
+ * avoid `:entregaId` shadowing the literal `stock-disponible` path.
+ */
+export const ENTREGAS_ROUTES = {
+  ROOT: '',
+  STOCK_DISPONIBLE: EVENTOS_ROUTE_SEGMENTS.ENTREGAS_STOCK_DISPONIBLE,
+  BY_ID: `:${EVENTOS_PARAM_NAMES.ENTREGA_ID}`,
+} as const;
+
+/**
+ * Base path for the EntregasController.
+ */
+export const ENTREGAS_CONTROLLER_PATH = `${EVENTOS_ROUTE_SEGMENTS.BASE}/:${EVENTOS_PARAM_NAMES.EVENTO_ID}/${EVENTOS_ROUTE_SEGMENTS.ENTREGAS}`;

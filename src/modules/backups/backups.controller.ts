@@ -9,7 +9,7 @@ import { BackupsService } from './services/backups.service';
 export class BackupsController {
   private readonly logger = new Logger(BackupsController.name);
 
-  constructor(private readonly backupsService: BackupsService) { }
+  constructor(private readonly backupsService: BackupsService) {}
 
   @Get('download')
   @ApiOperation({

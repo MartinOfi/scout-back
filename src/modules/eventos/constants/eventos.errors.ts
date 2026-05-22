@@ -34,4 +34,23 @@ export const VENTAS_ERROR_MESSAGES = {
   VENTA_NOT_FOUND: (id: string): string => `Venta con ID ${id} no encontrada`,
   VENTA_NOT_IN_EVENTO: 'La venta no pertenece a este evento',
   VENTA_ALREADY_DELETED: 'La venta ya fue eliminada',
+  VENTA_HAS_ENTREGAS:
+    'No se puede eliminar la venta: existen entregas asociadas. Eliminá primero las entregas.',
+} as const;
+
+export const ENTREGAS_ERROR_MESSAGES = {
+  ENTREGA_NOT_FOUND: (id: string): string =>
+    `Entrega con ID ${id} no encontrada`,
+  ENTREGA_NOT_IN_EVENTO: 'La entrega no pertenece a este evento',
+  ENTREGA_ALREADY_DELETED: 'La entrega ya fue eliminada',
+  STOCK_INSUFICIENTE: (
+    productoNombre: string,
+    disponible: number,
+    solicitado: number,
+  ): string =>
+    `Stock insuficiente del producto "${productoNombre}" para este vendedor: disponible ${disponible}, solicitado ${solicitado}`,
+  VENDEDOR_SIN_VENTAS_DEL_PRODUCTO: (productoNombre: string): string =>
+    `El vendedor no tiene ventas del producto "${productoNombre}" en este evento`,
+  DUPLICATE_PRODUCTO_IN_ITEMS:
+    'Hay productos duplicados en los items de la entrega',
 } as const;

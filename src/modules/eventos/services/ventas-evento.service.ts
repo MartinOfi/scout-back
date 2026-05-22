@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { VentaProducto } from '../entities/venta-producto.entity';
+import { EntregaLinea } from '../entities/entrega-linea.entity';
 import { Evento } from '../entities/evento.entity';
 import { EventosService } from '../eventos.service';
 import { MovimientosService } from '../../movimientos/movimientos.service';
@@ -35,6 +36,8 @@ export class VentasEventoService {
   constructor(
     @InjectRepository(VentaProducto)
     private readonly ventaProductoRepository: Repository<VentaProducto>,
+    @InjectRepository(EntregaLinea)
+    private readonly entregaLineaRepository: Repository<EntregaLinea>,
     private readonly eventosService: EventosService,
     private readonly movimientosService: MovimientosService,
     private readonly dataSource: DataSource,
@@ -60,10 +63,37 @@ export class VentasEventoService {
     this.eventosService.assertEventoModificable(evento);
 
     const venta = await this.loadVentaOrFail(eventoId, ventaId);
+    await this.assertVentaSinEntregas(venta);
 
     return this.dataSource.transaction((manager) =>
       this.cascadeDeleteVenta(manager, evento, venta),
     );
+  }
+
+  /**
+   * Blocks deletion when any live EntregaLinea exists for the same
+   * (eventoId, productoId, vendedorId) tuple as this venta.
+   *
+   * Why "any" instead of "would the disponible go negative": the operator
+   * already has a clear next action (delete the entregas first), and a
+   * stricter check keeps the invariant "entregado <= vendido" trivial
+   * to reason about.
+   */
+  private async assertVentaSinEntregas(venta: VentaProducto): Promise<void> {
+    const count = await this.entregaLineaRepository
+      .createQueryBuilder('el')
+      .innerJoin('el.entrega', 'e')
+      .where('e.evento_id = :eventoId', { eventoId: venta.eventoId })
+      .andWhere('e.vendedor_id = :vendedorId', { vendedorId: venta.vendedorId })
+      .andWhere('el.producto_id = :productoId', {
+        productoId: venta.productoId,
+      })
+      .andWhere('el."deletedAt" IS NULL')
+      .andWhere('e."deletedAt" IS NULL')
+      .getCount();
+    if (count > 0) {
+      throw new ConflictException(VENTAS_ERROR_MESSAGES.VENTA_HAS_ENTREGAS);
+    }
   }
 
   // ----- private orchestration -----
@@ -105,8 +135,12 @@ export class VentasEventoService {
     eventoId: string,
     ventaId: string,
   ): Promise<VentaProducto> {
+    // `withDeleted: true` so the soft-deleted check below is reachable —
+    // by default TypeORM filters those out and the second DELETE would
+    // return 404 instead of 409.
     const venta = await this.ventaProductoRepository.findOne({
       where: { id: ventaId },
+      withDeleted: true,
     });
     if (!venta || venta.eventoId !== eventoId) {
       throw new NotFoundException(

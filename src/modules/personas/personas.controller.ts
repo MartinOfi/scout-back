@@ -32,7 +32,7 @@ export class PersonasController {
   constructor(
     private readonly personasService: PersonasService,
     private readonly dashboardService: PersonasDashboardService,
-  ) { }
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar todas las personas' })

@@ -8,6 +8,7 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { Evento } from './entities/evento.entity';
 import { Producto } from './entities/producto.entity';
 import { VentaProducto } from './entities/venta-producto.entity';
+import { Entrega } from './entities/entrega.entity';
 import { CreateEventoDto } from './dtos/create-evento.dto';
 import { UpdateEventoDto } from './dtos/update-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
@@ -38,15 +39,7 @@ import {
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import { APP_TIMEZONE } from '../../common/constants';
 import { EVENTOS_ERROR_MESSAGES, PRODUCTOS_ERROR_MESSAGES } from './constants';
-
-/**
- * Escapes characters that have special meaning in Postgres `LIKE`/`ILIKE`
- * patterns (`%`, `_`, `\`). Without this a caller could pass `vendedor=%`
- * and effectively match every row, bypassing the intent of the filter.
- */
-function escapeLikePattern(input: string): string {
-  return input.replace(/[\\%_]/g, (char) => `\\${char}`);
-}
+import { escapeLikePattern } from '../../common/utils';
 
 @Injectable()
 export class EventosService {
@@ -176,10 +169,31 @@ export class EventosService {
     manager: EntityManager,
     evento: Evento,
   ): Promise<void> {
+    await this.softRemoveEntregasOfEvento(manager, evento.id);
     await this.softRemoveVentaDerivedMovimientos(manager, evento.id);
     await this.softRemoveAllVentasOfEvento(manager, evento.id);
     await this.softRemoveAllProductosOfEvento(manager, evento.id);
     await manager.softRemove(evento);
+  }
+
+  /**
+   * Soft-removes every EntregaLinea, then every Entrega header of the evento.
+   * Children first, then headers, so any future hooks observing the header
+   * delete still see the lines as live just before they go away.
+   */
+  private async softRemoveEntregasOfEvento(
+    manager: EntityManager,
+    eventoId: string,
+  ): Promise<void> {
+    const entregas = await manager.find(Entrega, {
+      where: { eventoId },
+      relations: ['lineas'],
+    });
+    if (entregas.length === 0) return;
+
+    const lineas = entregas.flatMap((e) => e.lineas ?? []);
+    if (lineas.length > 0) await manager.softRemove(lineas);
+    await manager.softRemove(entregas);
   }
 
   private async softRemoveVentaDerivedMovimientos(

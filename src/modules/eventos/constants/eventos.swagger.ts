@@ -98,4 +98,39 @@ export const EVENTOS_SWAGGER = {
     REGISTRAR_SUMMARY: 'Registrar gasto del evento',
     REGISTRAR_RESPONSE_OK: 'Gasto registrado',
   },
+
+  ENTREGAS: {
+    TAG: 'Entregas',
+
+    LIST_SUMMARY: 'Listar entregas de un evento',
+    LIST_RESPONSE_OK: 'Lista de entregas con sus líneas',
+    QUERY_VENDEDOR_DESCRIPTION:
+      'Filtrar entregas por nombre del vendedor (búsqueda parcial, case-insensitive)',
+
+    FIND_ONE_SUMMARY: 'Obtener una entrega por ID',
+    FIND_ONE_RESPONSE_OK: 'Entrega encontrada',
+    FIND_ONE_RESPONSE_NOT_FOUND: 'Entrega no encontrada',
+
+    CREATE_SUMMARY: 'Registrar una entrega multi-producto',
+    CREATE_DESCRIPTION:
+      'Crea una entrega con sus líneas en una única transacción. Valida que el evento esté abierto, que el vendedor tenga ventas del producto en el evento, y que el stock disponible alcance para cada línea.',
+    CREATE_RESPONSE_CREATED: 'Entrega registrada',
+    CREATE_RESPONSE_BAD_REQUEST:
+      'Validación fallida: stock insuficiente, vendedor sin ventas del producto, productos duplicados, evento cerrado u otra restricción de negocio',
+
+    DELETE_SUMMARY: 'Eliminar una entrega (soft delete)',
+    DELETE_DESCRIPTION:
+      'Borra la entrega y sus líneas. Atómico: si algo falla, nada se aplica.',
+    DELETE_RESPONSE_OK: 'Entrega eliminada',
+    DELETE_RESPONSE_NOT_FOUND: 'Entrega no encontrada',
+    DELETE_RESPONSE_BAD_REQUEST: 'El evento está cerrado y no admite cambios',
+    DELETE_RESPONSE_CONFLICT: 'La entrega ya fue eliminada',
+
+    STOCK_SUMMARY: 'Obtener stock disponible para entregar',
+    STOCK_DESCRIPTION:
+      'Devuelve, agrupado por producto y vendedor, las cantidades vendidas, ya entregadas y disponibles para entregar en este evento.',
+    STOCK_RESPONSE_OK: 'Stock disponible por producto/vendedor',
+    STOCK_QUERY_VENDEDOR_DESCRIPTION:
+      'Filtrar stock por nombre del vendedor (búsqueda parcial, case-insensitive)',
+  },
 } as const;

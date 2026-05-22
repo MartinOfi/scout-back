@@ -17,11 +17,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * atomically in a single transaction. Both share `movimientoRelacionadoId`.
  */
 export class CreateTransferenciaDto {
-  @ApiProperty({ format: 'uuid', description: 'Caja origen (donde sale la plata)' })
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Caja origen (donde sale la plata)',
+  })
   @IsUUID()
   cajaOrigenId!: string;
 
-  @ApiProperty({ format: 'uuid', description: 'Caja destino (donde entra la plata)' })
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Caja destino (donde entra la plata)',
+  })
   @IsUUID()
   cajaDestinoId!: string;
 
@@ -37,7 +43,10 @@ export class CreateTransferenciaDto {
   @IsUUID()
   responsableId!: string;
 
-  @ApiPropertyOptional({ example: 'Asignación mensual a fondo de Manada', maxLength: 500 })
+  @ApiPropertyOptional({
+    example: 'Asignación mensual a fondo de Manada',
+    maxLength: 500,
+  })
   @IsString()
   @IsOptional()
   @MaxLength(500)

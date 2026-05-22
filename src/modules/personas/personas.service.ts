@@ -44,7 +44,7 @@ export class PersonasService {
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
     private readonly deletionValidator: DeletionValidatorService,
-  ) { }
+  ) {}
 
   async findAll(): Promise<Persona[]> {
     return this.personaRepository.find({

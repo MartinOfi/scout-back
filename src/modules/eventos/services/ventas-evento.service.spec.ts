@@ -10,6 +10,7 @@ import { VentasEventoService } from './ventas-evento.service';
 import { EventosService } from '../eventos.service';
 import { MovimientosService } from '../../movimientos/movimientos.service';
 import { VentaProducto } from '../entities/venta-producto.entity';
+import { EntregaLinea } from '../entities/entrega-linea.entity';
 import { Evento } from '../entities/evento.entity';
 import { TipoEvento, DestinoGanancia } from '../../../common/enums';
 import { VENTAS_ERROR_MESSAGES } from '../constants';
@@ -17,6 +18,10 @@ import { VENTAS_ERROR_MESSAGES } from '../constants';
 describe('VentasEventoService', () => {
   let service: VentasEventoService;
   let ventaProductoRepository: jest.Mocked<Repository<VentaProducto>>;
+  let entregaLineaQueryBuilder: { getCount: jest.Mock } & Record<
+    string,
+    jest.Mock
+  >;
   let eventosService: jest.Mocked<EventosService>;
   let movimientosService: jest.Mocked<MovimientosService>;
 
@@ -79,6 +84,17 @@ describe('VentasEventoService', () => {
       findOne: jest.fn(),
     };
 
+    entregaLineaQueryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getCount: jest.fn().mockResolvedValue(0),
+    };
+
+    const mockEntregaLineaRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue(entregaLineaQueryBuilder),
+    };
+
     const mockEventosService = {
       findOne: jest.fn(),
       assertEventoModificable: jest.fn(),
@@ -89,8 +105,8 @@ describe('VentasEventoService', () => {
     };
 
     const mockDataSource = {
-      transaction: jest.fn(
-        async (cb: (m: typeof fakeManager) => unknown) => cb(fakeManager),
+      transaction: jest.fn(async (cb: (m: typeof fakeManager) => unknown) =>
+        cb(fakeManager),
       ),
     };
 
@@ -98,6 +114,10 @@ describe('VentasEventoService', () => {
       providers: [
         VentasEventoService,
         { provide: getRepositoryToken(VentaProducto), useValue: mockVentaRepo },
+        {
+          provide: getRepositoryToken(EntregaLinea),
+          useValue: mockEntregaLineaRepo,
+        },
         { provide: EventosService, useValue: mockEventosService },
         { provide: MovimientosService, useValue: mockMovimientosService },
         { provide: DataSource, useValue: mockDataSource },
@@ -240,6 +260,19 @@ describe('VentasEventoService', () => {
       await expect(service.deleteVenta(eventoId, ventaId)).rejects.toThrow(
         VENTAS_ERROR_MESSAGES.VENTA_NOT_FOUND(ventaId),
       );
+    });
+
+    it('throws ConflictException when the venta has live entregas associated', async () => {
+      eventosService.findOne.mockResolvedValue(eventoAbierto as Evento);
+      ventaProductoRepository.findOne.mockResolvedValue(
+        ventaConMovimiento as VentaProducto,
+      );
+      entregaLineaQueryBuilder.getCount.mockResolvedValue(2);
+
+      await expect(service.deleteVenta(eventoId, ventaId)).rejects.toThrow(
+        VENTAS_ERROR_MESSAGES.VENTA_HAS_ENTREGAS,
+      );
+      expect(fakeManager.softRemove).not.toHaveBeenCalled();
     });
   });
 });

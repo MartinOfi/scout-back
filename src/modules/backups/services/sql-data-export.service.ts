@@ -23,9 +23,7 @@ interface ColumnInfoRow {
 export class SqlDataExportService {
   private readonly logger = new Logger(SqlDataExportService.name);
 
-  constructor(
-    @InjectDataSource() private readonly dataSource: DataSource,
-  ) { }
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   async generateDump(): Promise<string> {
     const parts: string[] = [];
@@ -36,7 +34,9 @@ export class SqlDataExportService {
       '-- Only data (INSERTs). Destination database must already have the schema.',
     );
     parts.push('');
-    parts.push('-- To wipe existing data before restoring, uncomment the TRUNCATE below.');
+    parts.push(
+      '-- To wipe existing data before restoring, uncomment the TRUNCATE below.',
+    );
     parts.push(
       `-- TRUNCATE ${EXPORTED_TABLES_IN_FK_ORDER.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE;`,
     );

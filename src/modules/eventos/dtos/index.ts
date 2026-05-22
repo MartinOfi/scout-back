@@ -5,3 +5,6 @@ export * from './delete-venta-response.dto';
 export * from './registrar-gasto-evento.dto';
 export * from './registrar-ingreso-evento.dto';
 export * from './update-evento.dto';
+export * from './create-entrega.dto';
+export * from './entrega-response.dto';
+export * from './stock-entrega-response.dto';
