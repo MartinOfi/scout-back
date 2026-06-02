@@ -62,6 +62,17 @@ export class Evento extends BaseEntity {
   estaCerrado!: boolean;
 
   /**
+   * Whether the event report is publicly viewable without authentication.
+   *
+   * When true, the report is reachable via the public endpoint
+   * (GET :id/reporte/publico) and the shared link works for anonymous
+   * visitors. When false (default), only authenticated users can see it.
+   * Toggled from the app via UpdateEventoDto.
+   */
+  @Column({ name: 'reporte_publico', type: 'boolean', default: false })
+  reportePublico!: boolean;
+
+  /**
    * Incomes, expenses, and sales are tracked via Movimiento entities
    * with eventoId = this.id
    */
