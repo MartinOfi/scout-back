@@ -17,8 +17,10 @@ import {
   ApiParam,
   ApiQuery,
   ApiExtraModels,
+  ApiProperty,
   getSchemaPath,
 } from '@nestjs/swagger';
+import { IsBoolean } from 'class-validator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { EventosService } from './eventos.service';
@@ -46,6 +48,15 @@ import {
   EVENTOS_QUERY_NAMES,
   EVENTOS_SWAGGER,
 } from './constants';
+
+class UpdateReportePublicoDto {
+  @ApiProperty({
+    description: 'Si el reporte del evento es visible públicamente',
+    type: Boolean,
+  })
+  @IsBoolean()
+  reportePublico!: boolean;
+}
 
 const UUID_PARAM_TYPE = { type: String, format: 'uuid' } as const;
 
@@ -476,5 +487,32 @@ export class EventosController {
     @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
   ) {
     return this.eventosService.cerrarEvento(eventoId);
+  }
+
+  // ==================== REPORTE PUBLICO ====================
+
+  @Patch(EVENTOS_ROUTES.REPORTE_PUBLICO_TOGGLE_BY_EVENTO)
+  @ApiOperation({
+    summary: EVENTOS_SWAGGER.REPORTE_PUBLICO_TOGGLE.PATCH_SUMMARY,
+    description: EVENTOS_SWAGGER.REPORTE_PUBLICO_TOGGLE.PATCH_DESCRIPTION,
+  })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: EVENTOS_SWAGGER.REPORTE_PUBLICO_TOGGLE.PATCH_RESPONSE_OK,
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      EVENTOS_SWAGGER.REPORTE_PUBLICO_TOGGLE.PATCH_RESPONSE_NOT_FOUND,
+  })
+  async updateReportePublico(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+    @Body() dto: UpdateReportePublicoDto,
+  ) {
+    return this.eventosService.updateReportePublico(
+      eventoId,
+      dto.reportePublico,
+    );
   }
 }

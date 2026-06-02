@@ -99,6 +99,15 @@ export const EVENTOS_SWAGGER = {
     REGISTRAR_RESPONSE_OK: 'Gasto registrado',
   },
 
+  REPORTE_PUBLICO_TOGGLE: {
+    PATCH_SUMMARY: 'Actualizar visibilidad pública del reporte',
+    PATCH_DESCRIPTION:
+      'Permite habilitar o deshabilitar el acceso público al reporte de un evento, incluso cuando el evento está cerrado.',
+    PATCH_RESPONSE_OK:
+      'Evento actualizado con la nueva visibilidad del reporte',
+    PATCH_RESPONSE_NOT_FOUND: 'Evento no encontrado',
+  },
+
   ENTREGAS: {
     TAG: 'Entregas',
 

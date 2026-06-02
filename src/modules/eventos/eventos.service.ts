@@ -114,6 +114,18 @@ export class EventosService {
     return this.eventoRepository.save({ ...evento, estaCerrado: true });
   }
 
+  /**
+   * Updates only the reportePublico flag — intentionally bypasses
+   * assertEventoModificable so the toggle works on closed events too.
+   */
+  async updateReportePublico(
+    id: string,
+    reportePublico: boolean,
+  ): Promise<Evento> {
+    const evento = await this.findOne(id);
+    return this.eventoRepository.save({ ...evento, reportePublico });
+  }
+
   private validateTipoDestinoGanancia(
     dto: CreateEventoDto | UpdateEventoDto,
     currentEvento?: Evento,
