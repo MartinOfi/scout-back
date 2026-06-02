@@ -15,10 +15,20 @@ import {
   ApiResponse,
   ApiParam,
   ApiQuery,
+  ApiExtraModels,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { EventosService } from './eventos.service';
 import { VentasEventoService } from './services/ventas-evento.service';
+import { ReporteEventoService } from './reporte/reporte-evento.service';
+import {
+  REPORTE_EVENTO_DTOS,
+  ReporteVentaCajaGrupoDto,
+  ReporteVentaCuentasPersonalesDto,
+  ReporteGrupoDto,
+} from './reporte/dtos/reporte-evento.dto';
+import { REPORTE_SWAGGER } from './reporte/reporte.constants';
 import { CreateEventoDto } from './dtos/create-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
 import { CreateVentaProductoDto } from './dtos/create-venta-producto.dto';
@@ -38,11 +48,13 @@ import {
 const UUID_PARAM_TYPE = { type: String, format: 'uuid' } as const;
 
 @ApiTags(EVENTOS_SWAGGER.TAG)
+@ApiExtraModels(...REPORTE_EVENTO_DTOS)
 @Controller(EVENTOS_ROUTE_SEGMENTS.BASE)
 export class EventosController {
   constructor(
     private readonly eventosService: EventosService,
     private readonly ventasEventoService: VentasEventoService,
+    private readonly reporteEventoService: ReporteEventoService,
   ) {}
 
   // ==================== EVENTOS ====================
@@ -269,6 +281,38 @@ export class EventosController {
     @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
   ) {
     return this.eventosService.getKpisEvento(eventoId);
+  }
+
+  @Get(EVENTOS_ROUTES.REPORTE_BY_EVENTO)
+  @ApiOperation({
+    summary: REPORTE_SWAGGER.GET_SUMMARY,
+    description: REPORTE_SWAGGER.GET_DESCRIPTION,
+  })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: REPORTE_SWAGGER.GET_RESPONSE_OK,
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(ReporteVentaCajaGrupoDto) },
+        { $ref: getSchemaPath(ReporteVentaCuentasPersonalesDto) },
+        { $ref: getSchemaPath(ReporteGrupoDto) },
+      ],
+      discriminator: { propertyName: 'variante' },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: REPORTE_SWAGGER.GET_RESPONSE_BAD_REQUEST,
+  })
+  @ApiResponse({
+    status: 404,
+    description: REPORTE_SWAGGER.GET_RESPONSE_NOT_FOUND,
+  })
+  async getReporte(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+  ) {
+    return this.reporteEventoService.getReporte(eventoId);
   }
 
   @Get(EVENTOS_ROUTES.RESUMEN_VENTAS_BY_EVENTO)

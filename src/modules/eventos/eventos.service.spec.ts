@@ -981,6 +981,53 @@ describe('EventosService', () => {
       expect(result.balance).toBe(0);
     });
 
+    it('VENTA: balance = recaudación − egresos (no resta el costo dos veces)', async () => {
+      // Producto con costo nominal: el ingreso registrado guarda la GANANCIA
+      // (precioVenta − precioCosto) × cantidad, no la recaudación bruta.
+      const producto = {
+        id: 'p1',
+        eventoId: 'evento-uuid',
+        precioVenta: 12000,
+        precioCosto: 2500,
+      };
+      const venta = { productoId: 'p1', cantidad: 10 };
+      const ingresoGanancia = {
+        id: 'mov-ing',
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+        monto: (12000 - 2500) * 10, // 95000 = ganancia, ya neta del costo
+        estadoPago: EstadoPago.PAGADO,
+      };
+      const egresoPagado = {
+        id: 'mov-egr',
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_GASTO,
+        monto: 30000, // costo real de insumos
+        estadoPago: EstadoPago.PAGADO,
+      };
+
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        ingresoGanancia,
+        egresoPagado,
+      ] as unknown as Movimiento[]);
+      ventaProductoRepository.find.mockResolvedValue([
+        venta,
+      ] as unknown as VentaProducto[]);
+      productoRepository.find.mockResolvedValue([
+        producto,
+      ] as unknown as Producto[]);
+
+      const result = await service.getKpisEvento('evento-uuid');
+
+      expect(result.totalRecaudado).toBe(120000); // 12000 × 10
+      expect(result.gananciaVentas).toBe(95000); // ingreso (ganancia)
+      expect(result.totalGastado).toBe(30000);
+      // Correcto: recaudación − egresos. NO ganancia − egresos (= 65000, doble resta).
+      expect(result.balance).toBe(90000);
+      expect(result.balance).not.toBe(95000 - 30000);
+    });
+
     it('should throw NotFoundException when evento does not exist', async () => {
       eventoRepository.findOne.mockResolvedValue(null);
 

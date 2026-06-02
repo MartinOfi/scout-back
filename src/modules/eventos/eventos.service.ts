@@ -688,7 +688,7 @@ export class EventosService {
     totalPendienteReembolso: number;
     balance: number;
   }> {
-    await this.findOne(eventoId);
+    const evento = await this.findOne(eventoId);
 
     const [movimientos, ventas, productos] = await Promise.all([
       this.movimientosService.findByRelatedEntity('evento', eventoId),
@@ -720,12 +720,24 @@ export class EventosService {
       .filter((m) => m.estadoPago === EstadoPago.PENDIENTE_REEMBOLSO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
+    // Balance (resultado del evento), evitando la "resta doble":
+    //  - VENTA: el ingreso registrado YA es la ganancia (precioVenta − precioCosto),
+    //    o sea el costo nominal ya está descontado. Si restáramos los egresos reales
+    //    a la ganancia, el costo se restaría dos veces. El neto correcto es
+    //    recaudación bruta − egresos reales.
+    //  - GRUPO: no hay productos; los ingresos son reales (no ganancia neta de costo),
+    //    así que el neto es ingresos − egresos.
+    // En ambos casos se restan SOLO los egresos PAGADOS: los pendientes de reembolso
+    // todavía no impactan el balance (lo harán cuando pasen a PAGADO).
+    const ingresoReal =
+      evento.tipo === TipoEvento.VENTA ? totalRecaudado : gananciaVentas;
+
     return {
       totalRecaudado,
       gananciaVentas,
       totalGastado,
       totalPendienteReembolso,
-      balance: gananciaVentas - totalGastado,
+      balance: ingresoReal - totalGastado,
     };
   }
 
