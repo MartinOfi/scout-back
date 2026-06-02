@@ -45,4 +45,11 @@ export const REPORTE_SWAGGER = {
   GET_RESPONSE_NOT_FOUND: 'Evento no encontrado',
   GET_RESPONSE_BAD_REQUEST:
     'No se pudo resolver la variante (evento de venta sin destinoGanancia)',
+  GET_PUBLIC_SUMMARY: 'Reporte público de un evento (sin autenticación)',
+  GET_PUBLIC_DESCRIPTION:
+    'Misma respuesta que el reporte interno, pero accesible sin login. Solo ' +
+    'devuelve datos si el evento tiene reportePublico = true; de lo contrario ' +
+    'responde 404 (no revela si el evento existe).',
+  GET_PUBLIC_RESPONSE_NOT_FOUND:
+    'El reporte no es público o el evento no existe',
 } as const;
