@@ -100,9 +100,18 @@ export class EventosService {
 
   async update(id: string, dto: UpdateEventoDto): Promise<Evento> {
     const evento = await this.findOne(id);
+    this.assertEventoModificable(evento);
     this.validateTipoDestinoGanancia(dto, evento);
     const updated = this.eventoRepository.merge(evento, dto);
     return this.eventoRepository.save(updated);
+  }
+
+  async cerrarEvento(id: string): Promise<Evento> {
+    const evento = await this.findOne(id);
+    if (evento.estaCerrado) {
+      throw new BadRequestException(EVENTOS_ERROR_MESSAGES.EVENTO_YA_CERRADO);
+    }
+    return this.eventoRepository.save({ ...evento, estaCerrado: true });
   }
 
   private validateTipoDestinoGanancia(
@@ -239,7 +248,8 @@ export class EventosService {
   async createProducto(
     dto: CreateProductoDto & { eventoId: string },
   ): Promise<Producto> {
-    await this.findOne(dto.eventoId); // Validar que el evento existe
+    const evento = await this.findOne(dto.eventoId);
+    this.assertEventoModificable(evento);
 
     const producto = this.productoRepository.create(dto);
     return this.productoRepository.save(producto);
@@ -288,6 +298,9 @@ export class EventosService {
       );
     }
 
+    const evento = await this.findOne(producto.eventoId);
+    this.assertEventoModificable(evento);
+
     // Validar que el evento no tenga movimientos
     const check = await this.deletionValidator.canDeleteEvento(
       producto.eventoId,
@@ -313,6 +326,7 @@ export class EventosService {
 
   async registrarVenta(dto: CreateVentaProductoDto): Promise<VentaProducto> {
     const evento = await this.findOne(dto.eventoId);
+    this.assertEventoModificable(evento);
     const producto = await this.findProductoOfEvento(
       dto.productoId,
       dto.eventoId,
@@ -329,6 +343,7 @@ export class EventosService {
     dto: RegisterVentasLoteDto,
   ): Promise<VentaProducto[]> {
     const evento = await this.findOne(eventoId);
+    this.assertEventoModificable(evento);
     await this.personasService.findOne(dto.vendedorId);
 
     const productosMap = await this.loadProductosMap(eventoId);
@@ -621,6 +636,7 @@ export class EventosService {
     registradoPorId?: string,
   ): Promise<void> {
     const evento = await this.findOne(eventoId);
+    this.assertEventoModificable(evento);
 
     if (evento.tipo !== TipoEvento.GRUPO) {
       throw new BadRequestException(
@@ -657,6 +673,7 @@ export class EventosService {
     registradoPorId?: string,
   ): Promise<void> {
     const evento = await this.findOne(eventoId);
+    this.assertEventoModificable(evento);
     const cajaGrupo = await this.cajasService.findCajaGrupo();
 
     const concepto =
