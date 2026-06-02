@@ -372,6 +372,7 @@ describe('EventosService', () => {
 
       it('should throw BadRequestException when parent evento has movements', async () => {
         productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+        eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
         deletionValidator.canDeleteEvento.mockResolvedValue({
           canDelete: false,
           reason: 'No se puede eliminar: el evento tiene 3 movimiento(s)',
@@ -391,6 +392,7 @@ describe('EventosService', () => {
     describe('cascade deletion', () => {
       it('should soft remove producto without cascade when no ventas exist', async () => {
         productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+        eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
         deletionValidator.canDeleteEvento.mockResolvedValue({
           canDelete: true,
         });
@@ -414,6 +416,7 @@ describe('EventosService', () => {
         const ventas = [mockVenta as VentaProducto];
 
         productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+        eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
         deletionValidator.canDeleteEvento.mockResolvedValue({
           canDelete: true,
         });
@@ -1255,6 +1258,171 @@ describe('EventosService', () => {
           MedioPago.EFECTIVO,
         ),
       ).rejects.toThrow(/solo para eventos de grupo/);
+    });
+  });
+
+  // ==================== GUARD: assertEventoModificable ====================
+
+  describe('update (guard)', () => {
+    it('throws BadRequestException when evento is closed', async () => {
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(
+        service.update('evento-uuid', { nombre: 'Nuevo Nombre' }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.update('evento-uuid', { nombre: 'Nuevo Nombre' }),
+      ).rejects.toThrow(/cerrado/);
+    });
+  });
+
+  describe('createProducto (guard)', () => {
+    it('throws BadRequestException when evento is closed', async () => {
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(
+        service.createProducto({
+          eventoId: 'evento-uuid',
+          nombre: 'Empanada',
+          precioCosto: 500,
+          precioVenta: 1000,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('removeProducto (guard)', () => {
+    it('throws BadRequestException when parent evento is closed', async () => {
+      productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(service.removeProducto('producto-uuid')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('registrarVenta (guard)', () => {
+    it('throws BadRequestException when evento is closed', async () => {
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(
+        service.registrarVenta({
+          eventoId: 'evento-uuid',
+          productoId: 'producto-uuid',
+          vendedorId: 'persona-uuid',
+          cantidad: 5,
+          medioPago: MedioPago.EFECTIVO,
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('registrarVentasLote (guard)', () => {
+    it('throws BadRequestException when evento is closed', async () => {
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(
+        service.registrarVentasLote('evento-uuid', {
+          vendedorId: 'persona-uuid',
+          medioPago: MedioPago.EFECTIVO,
+          items: [{ productoId: 'producto-uuid', cantidad: 1 }],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('registrarIngresoEventoGrupo (guard)', () => {
+    it('throws BadRequestException when evento is closed', async () => {
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEventoGrupo,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(
+        service.registrarIngresoEventoGrupo(
+          'evento-grupo-uuid',
+          1000,
+          'desc',
+          'persona-uuid',
+          MedioPago.EFECTIVO,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('registrarGastoEvento (guard)', () => {
+    it('throws BadRequestException when evento is closed', async () => {
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(
+        service.registrarGastoEvento(
+          'evento-uuid',
+          1000,
+          'desc',
+          'persona-uuid',
+          MedioPago.EFECTIVO,
+          EstadoPago.PAGADO,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ==================== cerrarEvento ====================
+
+  describe('cerrarEvento', () => {
+    it('sets estaCerrado to true and returns updated evento', async () => {
+      const eventoAbierto = { ...mockEvento, estaCerrado: false } as Evento;
+      const eventoCerrado = { ...eventoAbierto, estaCerrado: true } as Evento;
+      eventoRepository.findOne.mockResolvedValue(eventoAbierto);
+      eventoRepository.save.mockResolvedValue(eventoCerrado);
+
+      const result = await service.cerrarEvento('evento-uuid');
+
+      expect(result.estaCerrado).toBe(true);
+      expect(eventoRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ estaCerrado: true }),
+      );
+    });
+
+    it('throws NotFoundException when evento does not exist', async () => {
+      eventoRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.cerrarEvento('non-existent-id')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('throws BadRequestException when evento is already closed', async () => {
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(service.cerrarEvento('evento-uuid')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.cerrarEvento('evento-uuid')).rejects.toThrow(
+        /ya está cerrado/,
+      );
     });
   });
 });

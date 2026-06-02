@@ -11,6 +11,7 @@ export const EVENTOS_ERROR_MESSAGES = {
   EVENTO_NOT_FOUND: (id: string): string => `Evento con ID ${id} no encontrado`,
   EVENTO_CERRADO:
     'El evento está cerrado y no admite modificaciones (incluyendo borrados)',
+  EVENTO_YA_CERRADO: 'El evento ya está cerrado',
   EVENTO_HAS_EXTERNAL_MOVEMENTS: (count: number): string =>
     `No se puede eliminar: el evento tiene ${count} movimiento(s) externo(s) a ventas (ingresos/gastos manuales)`,
   ONLY_FOR_EVENTO_GRUPO: 'Este endpoint es solo para eventos de grupo',

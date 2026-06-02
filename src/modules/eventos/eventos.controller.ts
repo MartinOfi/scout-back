@@ -415,4 +415,22 @@ export class EventosController {
       userId,
     );
   }
+
+  // ==================== CERRAR EVENTO ====================
+
+  @Post(EVENTOS_ROUTES.CERRAR_EVENTO)
+  @ApiOperation({
+    summary: 'Cerrar evento',
+    description:
+      'Cierra el evento volviéndolo inmutable. Una vez cerrado, no se pueden registrar ventas, productos, gastos ni entregas.',
+  })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({ status: 201, description: 'Evento cerrado exitosamente' })
+  @ApiResponse({ status: 400, description: 'El evento ya está cerrado' })
+  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  async cerrarEvento(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+  ) {
+    return this.eventosService.cerrarEvento(eventoId);
+  }
 }
