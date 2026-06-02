@@ -8,6 +8,7 @@ import {
   Param,
   Query,
   ParseUUIDPipe,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -19,6 +20,7 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { EventosService } from './eventos.service';
 import { VentasEventoService } from './services/ventas-evento.service';
 import { ReporteEventoService } from './reporte/reporte-evento.service';
@@ -312,6 +314,48 @@ export class EventosController {
   async getReporte(
     @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
   ) {
+    return this.reporteEventoService.getReporte(eventoId);
+  }
+
+  /**
+   * Public, unauthenticated version of the event report.
+   *
+   * Only serves the report when the event has `reportePublico = true`.
+   * When the flag is off (or the event does not exist) it answers 404 on
+   * purpose: a public visitor must not be able to tell whether an event
+   * exists or why access was denied. Authenticated users keep using the
+   * guarded endpoint above, which works regardless of the flag.
+   */
+  @Public()
+  @Get(EVENTOS_ROUTES.REPORTE_PUBLICO_BY_EVENTO)
+  @ApiOperation({
+    summary: REPORTE_SWAGGER.GET_PUBLIC_SUMMARY,
+    description: REPORTE_SWAGGER.GET_PUBLIC_DESCRIPTION,
+  })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({
+    status: 200,
+    description: REPORTE_SWAGGER.GET_RESPONSE_OK,
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(ReporteVentaCajaGrupoDto) },
+        { $ref: getSchemaPath(ReporteVentaCuentasPersonalesDto) },
+        { $ref: getSchemaPath(ReporteGrupoDto) },
+      ],
+      discriminator: { propertyName: 'variante' },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: REPORTE_SWAGGER.GET_PUBLIC_RESPONSE_NOT_FOUND,
+  })
+  async getReportePublico(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+  ) {
+    const evento = await this.eventosService.findOne(eventoId);
+    if (!evento.reportePublico) {
+      throw new NotFoundException();
+    }
     return this.reporteEventoService.getReporte(eventoId);
   }
 

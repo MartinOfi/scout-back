@@ -2,6 +2,7 @@ import {
   IsString,
   IsEnum,
   IsDate,
+  IsBoolean,
   IsOptional,
   MinLength,
   MaxLength,
@@ -70,4 +71,14 @@ export class UpdateEventoDto {
   @IsOptional()
   @MaxLength(50)
   tipoEvento?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Si el reporte del evento es visible públicamente (sin login) en /eventos/:id/reporte',
+    example: false,
+    type: Boolean,
+  })
+  @IsBoolean()
+  @IsOptional()
+  reportePublico?: boolean;
 }
