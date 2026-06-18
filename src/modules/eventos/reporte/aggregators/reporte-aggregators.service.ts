@@ -7,6 +7,7 @@ import { PersonaType } from '../../../../common/enums';
 import { APP_TIMEZONE } from '../../../../common/constants';
 import {
   ReporteEntregaFueraDiaDto,
+  ReporteGananciaPersonaDto,
   ReporteHorarioFranjaDto,
   ReporteHorariosEntregaDto,
   ReportePorRamaDto,
@@ -50,6 +51,12 @@ interface RawEntregaRow {
   dia: string;
   hora: string;
   porciones: string;
+}
+
+interface RawGananciaPersonaRow {
+  personaId: string;
+  nombre: string;
+  ganancia: string;
 }
 
 /**
@@ -173,6 +180,34 @@ export class ReporteAggregatorsService {
         };
       })
       .sort((a, b) => b.recaudado - a.recaudado);
+  }
+
+  /**
+   * Ganancia (margen) que recibió cada vendedor en su cuenta personal:
+   * Σ (precioVenta − precioCosto) × cantidad por vendedor. Para eventos con
+   * destino cuentas_personales coincide con lo acreditado en su caja personal.
+   */
+  async gananciaPorPersona(
+    eventoId: string,
+  ): Promise<ReporteGananciaPersonaDto[]> {
+    const rows = await this.baseVentasQuery(eventoId)
+      .select('v.vendedor_id', 'personaId')
+      .addSelect('pe.nombre', 'nombre')
+      .addSelect(
+        'SUM(v.cantidad * (pr."precioVenta" - pr."precioCosto"))',
+        'ganancia',
+      )
+      .groupBy('v.vendedor_id')
+      .addGroupBy('pe.nombre')
+      .getRawMany<RawGananciaPersonaRow>();
+
+    return rows
+      .map((r) => ({
+        personaId: r.personaId,
+        nombre: r.nombre,
+        ganancia: Number(r.ganancia),
+      }))
+      .sort((a, b) => b.ganancia - a.ganancia);
   }
 
   /** Cantidad de ventas activas del evento sin movimiento de ingreso asociado. */

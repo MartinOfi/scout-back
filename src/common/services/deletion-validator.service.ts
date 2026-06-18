@@ -202,8 +202,12 @@ export class DeletionValidatorService {
       }
     }
 
+    // Una venta puede referenciar este movimiento como el de margen
+    // (movimientoId) o como el de recupero de costo (movimientoRecuperoId).
+    // Cualquiera de los dos pertenece a la venta y solo debe borrarse desde
+    // ella (que elimina ambos en cascada). El array es un OR en TypeORM.
     const ventaCount = await this.ventaProductoRepository.count({
-      where: { movimientoId: id },
+      where: [{ movimientoId: id }, { movimientoRecuperoId: id }],
     });
     if (ventaCount > 0) {
       return this.blocked(

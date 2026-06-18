@@ -527,6 +527,77 @@ describe('EventosService', () => {
       expect(result.cantidad).toBe(5);
     });
 
+    it('cuentas_personales: genera 2 movimientos (margen a caja personal + recupero a caja grupo) y linkea ambos', async () => {
+      const dto = {
+        eventoId: 'evento-uuid',
+        productoId: 'producto-uuid',
+        vendedorId: 'persona-uuid',
+        cantidad: 5,
+        medioPago: MedioPago.EFECTIVO,
+      };
+
+      // mockEvento = VENTA + CUENTAS_PERSONALES; mockProducto costo 500 / venta 1000
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
+      (movimientosService.createWithManager as jest.Mock)
+        .mockResolvedValueOnce({ id: 'mov-margen-uuid' })
+        .mockResolvedValueOnce({ id: 'mov-recupero-uuid' });
+
+      const result = await service.registrarVenta(dto);
+
+      expect(movimientosService.createWithManager).toHaveBeenCalledTimes(2);
+      const calls = (movimientosService.createWithManager as jest.Mock).mock
+        .calls;
+      // 1er movimiento: margen -> caja personal del vendedor
+      expect(calls[0][1]).toMatchObject({
+        cajaId: 'caja-personal-uuid',
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+        monto: (1000 - 500) * 5,
+      });
+      // 2do movimiento: recupero del costo -> caja grupo
+      expect(cajasService.findCajaGrupo).toHaveBeenCalled();
+      expect(calls[1][1]).toMatchObject({
+        cajaId: 'caja-grupo-uuid',
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+        monto: 500 * 5,
+        estadoPago: EstadoPago.PAGADO,
+      });
+      // La venta queda linkeada a los dos movimientos
+      expect(result.movimientoId).toBe('mov-margen-uuid');
+      expect(result.movimientoRecuperoId).toBe('mov-recupero-uuid');
+    });
+
+    it('caja_grupo (venta): NO genera recupero, solo el movimiento de margen', async () => {
+      const eventoCajaGrupo = {
+        ...mockEvento,
+        id: 'evento-cg-uuid',
+        destinoGanancia: DestinoGanancia.CAJA_GRUPO,
+      };
+      const dto = {
+        eventoId: 'evento-cg-uuid',
+        productoId: 'producto-uuid',
+        vendedorId: 'persona-uuid',
+        cantidad: 5,
+        medioPago: MedioPago.EFECTIVO,
+      };
+
+      eventoRepository.findOne.mockResolvedValue(eventoCajaGrupo as Evento);
+      productoRepository.findOne.mockResolvedValue({
+        ...mockProducto,
+        eventoId: 'evento-cg-uuid',
+      } as Producto);
+
+      const result = await service.registrarVenta(dto);
+
+      expect(movimientosService.createWithManager).toHaveBeenCalledTimes(1);
+      expect(result.movimientoRecuperoId).toBeFalsy();
+    });
+
     it('should throw NotFoundException when producto does not exist', async () => {
       eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
       productoRepository.findOne.mockResolvedValue(null);
@@ -696,6 +767,53 @@ describe('EventosService', () => {
       const firstCallArg = fakeManager.save.mock.calls[0]?.[0];
       expect(Array.isArray(firstCallArg)).toBe(true);
       expect((firstCallArg as unknown[]).length).toBe(2);
+    });
+
+    it('cuentas_personales: un solo recupero compartido por todas las ventas del lote', async () => {
+      const dto = {
+        vendedorId: 'persona-uuid',
+        medioPago: MedioPago.EFECTIVO,
+        items: [
+          { productoId: 'producto-uuid', cantidad: 5 }, // costo 500 / venta 1000
+          { productoId: 'producto-2-uuid', cantidad: 3 }, // costo 400 / venta 800
+        ],
+      };
+
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.find.mockResolvedValue([
+        mockProducto as Producto,
+        mockProducto2 as Producto,
+      ]);
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
+      (movimientosService.createWithManager as jest.Mock)
+        .mockResolvedValueOnce({ id: 'mov-margen-lote' })
+        .mockResolvedValueOnce({ id: 'mov-recupero-lote' });
+
+      const result = await service.registrarVentasLote('evento-uuid', dto);
+
+      // Un movimiento de margen + un movimiento de recupero (no uno por venta)
+      expect(movimientosService.createWithManager).toHaveBeenCalledTimes(2);
+      const calls = (movimientosService.createWithManager as jest.Mock).mock
+        .calls;
+      // margen total = (1000-500)*5 + (800-400)*3 = 2500 + 1200 = 3700
+      expect(calls[0][1]).toMatchObject({
+        cajaId: 'caja-personal-uuid',
+        concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+        monto: 3700,
+      });
+      // costo total = 500*5 + 400*3 = 2500 + 1200 = 3700
+      expect(calls[1][1]).toMatchObject({
+        cajaId: 'caja-grupo-uuid',
+        concepto: ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+        monto: 3700,
+      });
+      // Todas las ventas del lote comparten ambos movimientos
+      result.forEach((venta) => {
+        expect(venta.movimientoId).toBe('mov-margen-lote');
+        expect(venta.movimientoRecuperoId).toBe('mov-recupero-lote');
+      });
     });
   });
 
@@ -1029,6 +1147,62 @@ describe('EventosService', () => {
       // Correcto: recaudación − egresos. NO ganancia − egresos (= 65000, doble resta).
       expect(result.balance).toBe(90000);
       expect(result.balance).not.toBe(95000 - 30000);
+    });
+
+    it('VENTA cuentas_personales: el recupero NO infla gananciaVentas y se reporta en totalRecuperado', async () => {
+      // producto costo 500 / venta 1000, cantidad 10
+      const producto = {
+        id: 'p1',
+        eventoId: 'evento-uuid',
+        precioVenta: 1000,
+        precioCosto: 500,
+      };
+      const venta = { productoId: 'p1', cantidad: 10 };
+      const ingresoMargen = {
+        id: 'mov-margen',
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+        monto: (1000 - 500) * 10, // 5000
+        estadoPago: EstadoPago.PAGADO,
+      };
+      const ingresoRecupero = {
+        id: 'mov-recupero',
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+        monto: 500 * 10, // 5000
+        estadoPago: EstadoPago.PAGADO,
+      };
+      const egresoInventario = {
+        id: 'mov-egr',
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_GASTO,
+        monto: 5000,
+        estadoPago: EstadoPago.PAGADO,
+      };
+
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        ingresoMargen,
+        ingresoRecupero,
+        egresoInventario,
+      ] as unknown as Movimiento[]);
+      ventaProductoRepository.find.mockResolvedValue([
+        venta,
+      ] as unknown as VentaProducto[]);
+      productoRepository.find.mockResolvedValue([
+        producto,
+      ] as unknown as Producto[]);
+
+      const result = await service.getKpisEvento('evento-uuid');
+
+      expect(result.totalRecaudado).toBe(10000); // 1000 × 10
+      // gananciaVentas SOLO el margen, sin el recupero (no doble conteo)
+      expect(result.gananciaVentas).toBe(5000);
+      // figura propia del recupero
+      expect(result.totalRecuperado).toBe(5000);
+      expect(result.totalGastado).toBe(5000);
+      // balance = recaudación − egresos (el recupero no lo altera)
+      expect(result.balance).toBe(5000);
     });
 
     it('should throw NotFoundException when evento does not exist', async () => {

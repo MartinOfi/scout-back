@@ -4,10 +4,7 @@ import { EventosService } from '../../eventos.service';
 import { ReporteEventoStrategy } from './reporte-evento.strategy';
 import { ReporteGrupoDto } from '../dtos/reporte-evento.dto';
 import { ReporteIngresoItemDto } from '../dtos/reporte-bloques.dto';
-import {
-  REPORTE_SEVERIDAD,
-  REPORTE_VARIANTE,
-} from '../reporte.constants';
+import { REPORTE_SEVERIDAD, REPORTE_VARIANTE } from '../reporte.constants';
 import { TipoMovimiento } from '../../../../common/enums';
 
 /**
@@ -43,7 +40,8 @@ export class ReporteGrupoStrategy implements ReporteEventoStrategy {
         responsableNombre: m.responsable?.nombre ?? null,
         medioPago: m.medioPago,
         monto: Number(m.monto),
-        fecha: m.fecha instanceof Date ? m.fecha.toISOString() : String(m.fecha),
+        fecha:
+          m.fecha instanceof Date ? m.fecha.toISOString() : String(m.fecha),
       }))
       .sort((a, b) => b.monto - a.monto);
 
@@ -66,6 +64,7 @@ export class ReporteGrupoStrategy implements ReporteEventoStrategy {
         margen: ingresos > 0 ? netoReal / ingresos : 0,
         unidades: 0,
         pendienteReembolso: kpis.totalPendienteReembolso,
+        recuperoCosto: 0, // eventos GRUPO no tienen productos/costos que recuperar
       },
       egresos: egresosMovs
         .map((m) => ({

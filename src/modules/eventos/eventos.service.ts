@@ -395,6 +395,18 @@ export class EventosService {
     });
 
     savedVenta.movimientoId = movimiento.id;
+
+    if (this.shouldGenerateRecuperoCosto(evento)) {
+      const recupero = await this.crearMovimientoRecuperoVentaInTx(manager, {
+        evento,
+        vendedorId: dto.vendedorId,
+        medioPago: dto.medioPago,
+        monto: this.computeCostoProducto(producto, dto.cantidad),
+        descripcion: this.buildRecuperoDescripcion(producto, evento),
+      });
+      savedVenta.movimientoRecuperoId = recupero.id;
+    }
+
     return manager.save(savedVenta);
   }
 
@@ -433,6 +445,24 @@ export class EventosService {
     for (const venta of savedVentas) {
       venta.movimientoId = movimiento.id;
     }
+
+    if (this.shouldGenerateRecuperoCosto(evento)) {
+      const recupero = await this.crearMovimientoRecuperoVentaInTx(manager, {
+        evento,
+        vendedorId: dto.vendedorId,
+        medioPago: dto.medioPago,
+        monto: this.computeCostoTotalLote(dto.items, productosMap),
+        descripcion: this.buildRecuperoLoteDescripcion(
+          dto.items,
+          productosMap,
+          evento,
+        ),
+      });
+      for (const venta of savedVentas) {
+        venta.movimientoRecuperoId = recupero.id;
+      }
+    }
+
     return manager.save(savedVentas);
   }
 
@@ -484,6 +514,19 @@ export class EventosService {
     return evento.tipo === TipoEvento.VENTA && evento.destinoGanancia !== null;
   }
 
+  /**
+   * The cost-recovery movimiento only applies to VENTA events whose profit
+   * goes to personal accounts. With CAJA_GRUPO the margen already lands in the
+   * caja grupo, so there is nothing to recover; with GRUPO there are no
+   * productos/costos at all.
+   */
+  private shouldGenerateRecuperoCosto(evento: Evento): boolean {
+    return (
+      evento.tipo === TipoEvento.VENTA &&
+      evento.destinoGanancia === DestinoGanancia.CUENTAS_PERSONALES
+    );
+  }
+
   private computeGananciaProducto(
     producto: Producto,
     cantidad: number,
@@ -503,8 +546,37 @@ export class EventosService {
     }, 0);
   }
 
+  private computeCostoProducto(producto: Producto, cantidad: number): number {
+    return Number(producto.precioCosto) * cantidad;
+  }
+
+  private computeCostoTotalLote(
+    items: ReadonlyArray<{ productoId: string; cantidad: number }>,
+    productosMap: ReadonlyMap<string, Producto>,
+  ): number {
+    return items.reduce((sum, item) => {
+      const producto = productosMap.get(item.productoId);
+      if (!producto) return sum;
+      return sum + this.computeCostoProducto(producto, item.cantidad);
+    }, 0);
+  }
+
   private buildVentaDescripcion(producto: Producto, evento: Evento): string {
     return `Venta "${producto.nombre}" - Evento "${evento.nombre}"`;
+  }
+
+  private buildRecuperoDescripcion(producto: Producto, evento: Evento): string {
+    return `Recupero costo "${producto.nombre}" - Evento "${evento.nombre}"`;
+  }
+
+  private joinProductoNombres(
+    items: ReadonlyArray<{ productoId: string }>,
+    productosMap: ReadonlyMap<string, Producto>,
+  ): string {
+    return items
+      .map((item) => productosMap.get(item.productoId)?.nombre ?? '')
+      .filter((nombre) => nombre.length > 0)
+      .join(', ');
   }
 
   private buildVentasLoteDescripcion(
@@ -512,11 +584,15 @@ export class EventosService {
     productosMap: ReadonlyMap<string, Producto>,
     evento: Evento,
   ): string {
-    const nombres = items
-      .map((item) => productosMap.get(item.productoId)?.nombre ?? '')
-      .filter((nombre) => nombre.length > 0)
-      .join(', ');
-    return `Ventas (${nombres}) - Evento "${evento.nombre}"`;
+    return `Ventas (${this.joinProductoNombres(items, productosMap)}) - Evento "${evento.nombre}"`;
+  }
+
+  private buildRecuperoLoteDescripcion(
+    items: ReadonlyArray<{ productoId: string }>,
+    productosMap: ReadonlyMap<string, Producto>,
+    evento: Evento,
+  ): string {
+    return `Recupero costo (${this.joinProductoNombres(items, productosMap)}) - Evento "${evento.nombre}"`;
   }
 
   private async resolveCajaForVenta(
@@ -562,6 +638,36 @@ export class EventosService {
       tipo: TipoMovimiento.INGRESO,
       monto: params.monto,
       concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+      descripcion: params.descripcion,
+      responsableId: params.vendedorId,
+      medioPago: params.medioPago,
+      estadoPago: EstadoPago.PAGADO,
+      eventoId: params.evento.id,
+    });
+  }
+
+  /**
+   * Creates the cost-recovery INGRESO movimiento into the caja grupo, INSIDE an
+   * active transaction. Only call when shouldGenerateRecuperoCosto(evento) is
+   * true (destino cuentas_personales). Mirrors crearMovimientoIngresoVentaInTx
+   * but always targets the caja grupo and uses the recupero concepto.
+   */
+  private async crearMovimientoRecuperoVentaInTx(
+    manager: EntityManager,
+    params: {
+      evento: Evento;
+      vendedorId: string;
+      medioPago: MedioPago;
+      monto: number;
+      descripcion: string;
+    },
+  ): Promise<Movimiento> {
+    const cajaGrupo = await this.cajasService.findCajaGrupo();
+    return this.movimientosService.createWithManager(manager, {
+      cajaId: cajaGrupo.id,
+      tipo: TipoMovimiento.INGRESO,
+      monto: params.monto,
+      concepto: ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
       descripcion: params.descripcion,
       responsableId: params.vendedorId,
       medioPago: params.medioPago,
@@ -713,6 +819,7 @@ export class EventosService {
   async getKpisEvento(eventoId: string): Promise<{
     totalRecaudado: number;
     gananciaVentas: number;
+    totalRecuperado: number;
     totalGastado: number;
     totalPendienteReembolso: number;
     balance: number;
@@ -732,22 +839,38 @@ export class EventosService {
       return sum + (producto ? Number(producto.precioVenta) * v.cantidad : 0);
     }, 0);
 
-    // Ganancia neta de ventas: (precioVenta - precioCosto) × cantidad
-    const gananciaVentas = movimientos
-      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
-      .reduce((sum, m) => sum + Number(m.monto), 0);
-
-    const gastosEvento = movimientos.filter(
-      (m) => m.tipo === TipoMovimiento.EGRESO,
+    // Recupero del costo (solo destino cuentas_personales): INGRESO a la caja
+    // grupo que devuelve el costo de lo vendido. Se reporta aparte y NO debe
+    // contarse como ganancia.
+    const totalRecuperado = this.sumMontos(
+      movimientos,
+      (m) =>
+        m.tipo === TipoMovimiento.INGRESO &&
+        m.concepto === ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
     );
 
-    const totalGastado = gastosEvento
-      .filter((m) => m.estadoPago === EstadoPago.PAGADO)
-      .reduce((sum, m) => sum + Number(m.monto), 0);
+    // Ganancia: ingresos de tipo INGRESO excluyendo el recupero de costo.
+    // Cubre tanto VENTA (EVENTO_VENTA_INGRESO = margen) como GRUPO
+    // (EVENTO_GRUPO_INGRESO = ingreso real); en ambos el recupero queda fuera.
+    const gananciaVentas = this.sumMontos(
+      movimientos,
+      (m) =>
+        m.tipo === TipoMovimiento.INGRESO &&
+        m.concepto !== ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+    );
 
-    const totalPendienteReembolso = gastosEvento
-      .filter((m) => m.estadoPago === EstadoPago.PENDIENTE_REEMBOLSO)
-      .reduce((sum, m) => sum + Number(m.monto), 0);
+    const totalGastado = this.sumMontos(
+      movimientos,
+      (m) =>
+        m.tipo === TipoMovimiento.EGRESO && m.estadoPago === EstadoPago.PAGADO,
+    );
+
+    const totalPendienteReembolso = this.sumMontos(
+      movimientos,
+      (m) =>
+        m.tipo === TipoMovimiento.EGRESO &&
+        m.estadoPago === EstadoPago.PENDIENTE_REEMBOLSO,
+    );
 
     // Balance (resultado del evento), evitando la "resta doble":
     //  - VENTA: el ingreso registrado YA es la ganancia (precioVenta − precioCosto),
@@ -764,10 +887,21 @@ export class EventosService {
     return {
       totalRecaudado,
       gananciaVentas,
+      totalRecuperado,
       totalGastado,
       totalPendienteReembolso,
       balance: ingresoReal - totalGastado,
     };
+  }
+
+  /** Suma el `monto` de los movimientos que cumplen el predicado. */
+  private sumMontos(
+    movimientos: Movimiento[],
+    predicate: (m: Movimiento) => boolean,
+  ): number {
+    return movimientos
+      .filter(predicate)
+      .reduce((sum, m) => sum + Number(m.monto), 0);
   }
 
   async getResumenVentas(

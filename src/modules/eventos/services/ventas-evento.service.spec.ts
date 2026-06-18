@@ -57,6 +57,12 @@ describe('VentasEventoService', () => {
     movimientoId: null,
   };
 
+  const movimientoRecuperoId = 'movimiento-recupero-uuid';
+  const ventaConRecupero: Partial<VentaProducto> = {
+    ...ventaConMovimiento,
+    movimientoRecuperoId,
+  };
+
   // ----- Fake EntityManager that runs the cascade in-memory -----
 
   const buildFakeManager = (
@@ -190,6 +196,7 @@ describe('VentasEventoService', () => {
       expect(result).toEqual({
         ventaId,
         movimientoIdEliminado: null,
+        movimientoRecuperoIdEliminado: null,
         hermanasEliminadas: 0,
       });
     });
@@ -210,8 +217,49 @@ describe('VentasEventoService', () => {
       expect(result).toEqual({
         ventaId,
         movimientoIdEliminado: movimientoId,
+        movimientoRecuperoIdEliminado: null,
         hermanasEliminadas: 0,
       });
+    });
+
+    it('cuentas_personales: la cascada borra el movimiento de margen Y el de recupero', async () => {
+      eventosService.findOne.mockResolvedValue(eventoAbierto as Evento);
+      ventaProductoRepository.findOne.mockResolvedValue(
+        ventaConRecupero as VentaProducto,
+      );
+
+      const result = await service.deleteVenta(eventoId, ventaId);
+
+      expect(movimientosService.softRemoveWithManager).toHaveBeenCalledWith(
+        fakeManager,
+        movimientoId,
+      );
+      expect(movimientosService.softRemoveWithManager).toHaveBeenCalledWith(
+        fakeManager,
+        movimientoRecuperoId,
+      );
+      expect(movimientosService.softRemoveWithManager).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({
+        ventaId,
+        movimientoIdEliminado: movimientoId,
+        movimientoRecuperoIdEliminado: movimientoRecuperoId,
+        hermanasEliminadas: 0,
+      });
+    });
+
+    it('venta legacy sin recupero: borra solo el movimiento de margen', async () => {
+      eventosService.findOne.mockResolvedValue(eventoAbierto as Evento);
+      ventaProductoRepository.findOne.mockResolvedValue(
+        ventaConMovimiento as VentaProducto,
+      );
+
+      await service.deleteVenta(eventoId, ventaId);
+
+      expect(movimientosService.softRemoveWithManager).toHaveBeenCalledTimes(1);
+      expect(movimientosService.softRemoveWithManager).toHaveBeenCalledWith(
+        fakeManager,
+        movimientoId,
+      );
     });
 
     it('cascades to siblings + movimiento when the venta is part of a lote', async () => {
@@ -249,6 +297,7 @@ describe('VentasEventoService', () => {
       expect(result).toEqual({
         ventaId,
         movimientoIdEliminado: movimientoId,
+        movimientoRecuperoIdEliminado: null,
         hermanasEliminadas: 2,
       });
     });

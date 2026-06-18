@@ -126,6 +126,7 @@ describe('Eventos > Delete Venta (e2e)', () => {
     expect(deleteRes.body).toEqual({
       ventaId,
       movimientoIdEliminado: registerRes.body.movimientoId,
+      movimientoRecuperoIdEliminado: null, // caja_grupo: no hay recupero
       hermanasEliminadas: 0,
     });
 
@@ -195,6 +196,78 @@ describe('Eventos > Delete Venta (e2e)', () => {
       .withDeleted()
       .getOne();
     expect(movRow?.deletedAt).not.toBeNull();
+  });
+
+  // ==========================================================================
+  // 2b. cuentas_personales: recupero de costo a la caja grupo
+  // ==========================================================================
+  it('cuentas_personales: registra recupero de costo a la caja grupo y lo borra en cascada', async () => {
+    const evento = await createEventoVenta(dataSource, {
+      destinoGanancia: DestinoGanancia.CUENTAS_PERSONALES,
+    });
+    // producto costo 500 / venta 1000
+    const producto = await createProducto(dataSource, evento.id);
+
+    const registerRes = await request(app.getHttpServer())
+      .post(`${API_PREFIX}/eventos/${evento.id}/ventas`)
+      .send({
+        productoId: producto.id,
+        vendedorId: vendedor.id,
+        cantidad: 4,
+        medioPago: MedioPago.EFECTIVO,
+      })
+      .expect(201);
+
+    const ventaId = registerRes.body.id as string;
+    const movimientoMargen = registerRes.body.movimientoId as string;
+    const movimientoRecupero = registerRes.body.movimientoRecuperoId as string;
+    expect(movimientoMargen).toBeTruthy();
+    expect(movimientoRecupero).toBeTruthy();
+
+    // El recupero es un INGRESO a la caja grupo con el concepto correcto y monto = costo × cantidad
+    const recuperoRow = await dataSource
+      .getRepository(Movimiento)
+      .findOne({ where: { id: movimientoRecupero } });
+    expect(recuperoRow?.cajaId).toBe(cajaGrupo.id);
+    expect(recuperoRow?.tipo).toBe(TipoMovimiento.INGRESO);
+    expect(recuperoRow?.concepto).toBe(
+      ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+    );
+    expect(Number(recuperoRow?.monto)).toBe(500 * 4);
+
+    // KPIs: ganancia = margen (sin recupero); totalRecuperado = costo recuperado
+    const kpis = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/eventos/${evento.id}/kpis`)
+      .expect(200);
+    expect(kpis.body.gananciaVentas).toBe((1000 - 500) * 4); // 2000
+    expect(kpis.body.totalRecuperado).toBe(500 * 4); // 2000
+
+    // Borrar la venta elimina AMBOS movimientos
+    const deleteRes = await request(app.getHttpServer())
+      .delete(`${API_PREFIX}/eventos/${evento.id}/ventas/${ventaId}`)
+      .expect(200);
+    expect(deleteRes.body).toEqual({
+      ventaId,
+      movimientoIdEliminado: movimientoMargen,
+      movimientoRecuperoIdEliminado: movimientoRecupero,
+      hermanasEliminadas: 0,
+    });
+
+    for (const movId of [movimientoMargen, movimientoRecupero]) {
+      const row = await dataSource
+        .getRepository(Movimiento)
+        .createQueryBuilder('m')
+        .where('m.id = :id', { id: movId })
+        .withDeleted()
+        .getOne();
+      expect(row?.deletedAt).not.toBeNull();
+    }
+
+    const kpisAfter = await request(app.getHttpServer())
+      .get(`${API_PREFIX}/eventos/${evento.id}/kpis`)
+      .expect(200);
+    expect(kpisAfter.body.gananciaVentas).toBe(0);
+    expect(kpisAfter.body.totalRecuperado).toBe(0);
   });
 
   // ==========================================================================
@@ -365,6 +438,17 @@ async function cleanupForVentaTests(dataSource: DataSource): Promise<void> {
            SELECT id FROM personas WHERE nombre LIKE $2
          )`,
     [`${E2E_PREFIX}%`, 'E2EVendedor%'],
+  );
+
+  // 2b. cajas personales creadas por getOrCreateCajaPersonal en eventos
+  //     cuentas_personales. Solo las de vendedores de test (su propietario
+  //     matchea el prefijo). Va después de movimientos (FK) y antes de personas.
+  await dataSource.query(
+    `DELETE FROM cajas
+      WHERE propietario_id IN (
+        SELECT id FROM personas WHERE nombre LIKE $1
+      )`,
+    ['E2EVendedor%'],
   );
 
   // 3. productos: solo los de eventos de test

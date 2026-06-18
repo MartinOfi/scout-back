@@ -20,6 +20,7 @@ import { VENTAS_ERROR_MESSAGES } from '../constants';
 export interface DeleteVentaResult {
   ventaId: string;
   movimientoIdEliminado: string | null;
+  movimientoRecuperoIdEliminado: string | null;
   hermanasEliminadas: number;
 }
 
@@ -105,7 +106,7 @@ export class VentasEventoService {
   ): Promise<DeleteVentaResult> {
     if (!venta.movimientoId) {
       await manager.softRemove(venta);
-      return this.buildResult(venta, null, 0);
+      return this.buildResult(venta, null, null, 0);
     }
 
     const hermanas = await this.findLiveSiblings(
@@ -121,12 +122,29 @@ export class VentasEventoService {
       venta.movimientoId,
     );
 
+    // cuentas_personales: each venta also generated a cost-recovery movimiento
+    // into the caja grupo. It is shared by the whole lote (same id on every
+    // sibling), so removing it once here cleans it up for all of them. Without
+    // this the recupero would survive as an orphan, leaving the caja grupo with
+    // income from a venta that no longer exists. Null for caja_grupo / legacy.
+    if (venta.movimientoRecuperoId) {
+      await this.movimientosService.softRemoveWithManager(
+        manager,
+        venta.movimientoRecuperoId,
+      );
+    }
+
     // Recalculate KPIs implicitly: nothing to do here. The transaction will
     // commit and EventosService.getKpisEvento(evento.id) is recomputed on
     // demand from the live rows.
     void evento;
 
-    return this.buildResult(venta, venta.movimientoId, hermanas.length);
+    return this.buildResult(
+      venta,
+      venta.movimientoId,
+      venta.movimientoRecuperoId ?? null,
+      hermanas.length,
+    );
   }
 
   // ----- private loaders -----
@@ -175,11 +193,13 @@ export class VentasEventoService {
   private buildResult(
     venta: VentaProducto,
     movimientoIdEliminado: string | null,
+    movimientoRecuperoIdEliminado: string | null,
     hermanasEliminadas: number,
   ): DeleteVentaResult {
     return {
       ventaId: venta.id,
       movimientoIdEliminado,
+      movimientoRecuperoIdEliminado,
       hermanasEliminadas,
     };
   }

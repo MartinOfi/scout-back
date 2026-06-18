@@ -69,6 +69,25 @@ export class VentaProducto extends BaseEntity {
   movimientoId!: string | null;
 
   /**
+   * Linked cost-recovery Movimiento (INGRESO to the caja grupo), generated only
+   * for VENTA events whose destinoGanancia is CUENTAS_PERSONALES. In that mode
+   * the margen goes to the seller's caja personal (via `movimiento` above) while
+   * the cost is returned to the group via this second movimiento, so the caja
+   * grupo nets to zero over what was actually sold.
+   *
+   * Same N:1 cardinality and lifecycle as `movimiento`: ventas created in a
+   * single registrarVentasLote call share one aggregated recupero movimiento.
+   * Nullable for caja_grupo / grupo events and for rows created before this
+   * column existed. ON DELETE SET NULL mirrors `movimiento`.
+   */
+  @ManyToOne(() => Movimiento, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'movimiento_recupero_id' })
+  movimientoRecupero!: Movimiento | null;
+
+  @Column({ name: 'movimiento_recupero_id', type: 'uuid', nullable: true })
+  movimientoRecuperoId!: string | null;
+
+  /**
    * Profit for this sale = (producto.precioVenta - producto.precioCosto) × cantidad
    * Calculated, not stored
    */

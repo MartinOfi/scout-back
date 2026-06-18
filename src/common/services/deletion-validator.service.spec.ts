@@ -266,7 +266,30 @@ describe('DeletionValidatorService', () => {
         expect(result.reason).toContain('pertenece a una venta');
         expect(result.movementCount).toBe(1);
         expect(ventaProductoRepository.count).toHaveBeenCalledWith({
-          where: { movimientoId: 'mov-uuid' },
+          where: [
+            { movimientoId: 'mov-uuid' },
+            { movimientoRecuperoId: 'mov-uuid' },
+          ],
+        });
+      });
+
+      it('should block when a live venta references the movimiento as recupero (movimientoRecuperoId)', async () => {
+        movimientoRepository.findOne.mockResolvedValue({
+          id: 'mov-recupero-uuid',
+          concepto: ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+          movimientoRelacionadoId: null,
+        } as Movimiento);
+        ventaProductoRepository.count.mockResolvedValue(1);
+
+        const result = await service.canDeleteMovimiento('mov-recupero-uuid');
+
+        expect(result.canDelete).toBe(false);
+        expect(result.reason).toContain('pertenece a una venta');
+        expect(ventaProductoRepository.count).toHaveBeenCalledWith({
+          where: [
+            { movimientoId: 'mov-recupero-uuid' },
+            { movimientoRecuperoId: 'mov-recupero-uuid' },
+          ],
         });
       });
 

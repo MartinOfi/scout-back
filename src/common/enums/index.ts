@@ -94,8 +94,9 @@ export enum ConceptoMovimiento {
   CAMPAMENTO_GASTO = 'campamento_gasto', // Egreso: gasto del campamento
 
   // Eventos de venta
-  EVENTO_VENTA_INGRESO = 'evento_venta_ingreso', // Ingreso: ventas del evento
+  EVENTO_VENTA_INGRESO = 'evento_venta_ingreso', // Ingreso: ganancia (margen) de la venta
   EVENTO_VENTA_GASTO = 'evento_venta_gasto', // Egreso: gastos del evento
+  EVENTO_VENTA_RECUPERO_COSTO = 'evento_venta_recupero_costo', // Ingreso a caja grupo: recupero del costo de lo vendido (solo destino cuentas_personales)
 
   // Eventos de grupo
   EVENTO_GRUPO_INGRESO = 'evento_grupo_ingreso', // Ingreso: recaudación evento
@@ -271,4 +272,5 @@ export enum FiltroMovimientosCampamento {
 export const VENTA_DERIVED_CONCEPTOS: readonly ConceptoMovimiento[] = [
   ConceptoMovimiento.EVENTO_VENTA_INGRESO,
   ConceptoMovimiento.EVENTO_VENTA_GASTO,
+  ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
 ] as const;

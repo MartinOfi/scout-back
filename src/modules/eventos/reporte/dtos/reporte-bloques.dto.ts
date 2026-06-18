@@ -75,6 +75,14 @@ export class ReporteKpisDto {
 
   @ApiProperty({ example: 0, description: 'Egresos pendientes de reembolso' })
   pendienteReembolso!: number;
+
+  @ApiProperty({
+    example: 369180,
+    description:
+      'Costo recuperado por el grupo (solo destino cuentas_personales): ' +
+      'Σ precioCosto × cantidad devuelto a la caja grupo. 0 en otros destinos.',
+  })
+  recuperoCosto!: number;
 }
 
 export class ReporteEgresoDto {

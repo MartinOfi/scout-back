@@ -89,6 +89,7 @@ export class ReporteVentaBuilder {
         margen: recaudacionBruta > 0 ? netoReal / recaudacionBruta : 0,
         unidades,
         pendienteReembolso: kpisRaw.totalPendienteReembolso,
+        recuperoCosto: kpisRaw.totalRecuperado,
       },
       egresos: egresosDetalle,
       integridad,
