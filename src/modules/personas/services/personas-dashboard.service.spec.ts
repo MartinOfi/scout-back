@@ -419,7 +419,7 @@ describe('PersonasDashboardService', () => {
       ]);
     });
 
-    it('should limit movements to last 5', async () => {
+    it('should return all movements (no limit), most recent first', async () => {
       const movements = Array.from({ length: 10 }, (_, i) => ({
         ...mockMovimiento,
         id: `mov-${i}`,
@@ -437,7 +437,8 @@ describe('PersonasDashboardService', () => {
 
       const result = await service.getDashboard('persona-1');
 
-      expect(result.ultimosMovimientos).toHaveLength(5);
+      expect(result.ultimosMovimientos).toHaveLength(10);
+      expect(result.ultimosMovimientos[0].id).toBe('mov-0');
     });
 
     it('should calculate total debt correctly', async () => {

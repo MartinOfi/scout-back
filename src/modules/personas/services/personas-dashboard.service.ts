@@ -157,17 +157,17 @@ export class PersonasDashboardService {
       0,
     );
 
-    // 9. Map movements (last 5)
-    const ultimosMovimientos: MovimientoDashboardDto[] = movimientos
-      .slice(0, 5)
-      .map((m) => ({
+    // 9. Map movements (full history of the persona, most recent first)
+    const ultimosMovimientos: MovimientoDashboardDto[] = movimientos.map(
+      (m) => ({
         id: m.id,
         fecha: m.fecha.toISOString(),
         tipo: m.tipo,
         concepto: m.descripcion ?? String(m.concepto),
         monto: Number(m.monto),
         medioPago: m.medioPago,
-      }));
+      }),
+    );
 
     // 10. Build documentacion personal (Protagonista only)
     const documentacionPersonal =
