@@ -10,6 +10,7 @@ import { CajasService } from '../../cajas/cajas.service';
 import { InscripcionesService } from '../../inscripciones/inscripciones.service';
 import { CuotasService } from '../../cuotas/cuotas.service';
 import { MovimientosService } from '../../movimientos/movimientos.service';
+import { Movimiento } from '../../movimientos/entities/movimiento.entity';
 import {
   PersonaDashboardDto,
   InscripcionDashboardItemDto,
@@ -17,7 +18,19 @@ import {
   MovimientoDashboardDto,
   AutorizacionesInscripcionDto,
 } from '../dtos/persona-dashboard.dto';
-import { PersonaType, TipoInscripcion } from '../../../common/enums';
+import {
+  PersonaType,
+  TipoInscripcion,
+  ConceptoMovimiento,
+} from '../../../common/enums';
+
+/**
+ * Conceptos que NO se muestran en "últimos movimientos" del dashboard de persona:
+ * son contabilidad interna del grupo, no actividad financiera de la persona.
+ */
+const CONCEPTOS_OCULTOS_DASHBOARD: ReadonlySet<ConceptoMovimiento> = new Set([
+  ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+]);
 
 @Injectable()
 export class PersonasDashboardService {
@@ -50,12 +63,30 @@ export class PersonasDashboardService {
       await this.cajasService.getOrCreateCajaPersonal(personaId);
 
     // 3. Parallel data fetching
-    const [saldo, inscripciones, cuotas, movimientos] = await Promise.all([
+    //
+    // A persona's movements live in two places: payments (inscripciones, cuotas,
+    // recupero de ventas) are recorded in the caja grupo with responsableId =
+    // persona, while uso de saldo personal / ajustes / ganancia de ventas land in
+    // the caja personal. Querying only the caja personal misses most activity, so
+    // we merge both sources keyed by responsable and by caja personal.
+    const [
+      saldo,
+      inscripciones,
+      cuotas,
+      movimientosResponsable,
+      movimientosCaja,
+    ] = await Promise.all([
       this.movimientosService.calcularSaldo(cajaPersonal.id),
       this.inscripcionesService.findByPersona(personaId),
       this.cuotasService.findByPersona(personaId),
+      this.movimientosService.findByResponsable(personaId),
       this.movimientosService.findByCaja(cajaPersonal.id),
     ]);
+
+    const movimientos = this.mergeMovimientosByFecha(
+      movimientosResponsable,
+      movimientosCaja,
+    );
 
     const currentYear = new Date().getFullYear();
 
@@ -193,5 +224,32 @@ export class PersonasDashboardService {
       },
       ultimosMovimientos,
     };
+  }
+
+  /**
+   * Merges movement lists from multiple sources, removing duplicates by id
+   * (a movement can be both in the caja personal and have the persona as
+   * responsable) and ordering by fecha desc, then createdAt desc as tiebreaker.
+   */
+  private mergeMovimientosByFecha(...listas: Movimiento[][]): Movimiento[] {
+    const porId = new Map<string, Movimiento>();
+    for (const lista of listas) {
+      for (const movimiento of lista) {
+        if (CONCEPTOS_OCULTOS_DASHBOARD.has(movimiento.concepto)) {
+          continue;
+        }
+        if (!porId.has(movimiento.id)) {
+          porId.set(movimiento.id, movimiento);
+        }
+      }
+    }
+
+    return [...porId.values()].sort((a, b) => {
+      const fechaDiff = b.fecha.getTime() - a.fecha.getTime();
+      if (fechaDiff !== 0) {
+        return fechaDiff;
+      }
+      return (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0);
+    });
   }
 }

@@ -133,6 +133,7 @@ describe('PersonasDashboardService', () => {
           provide: MovimientosService,
           useValue: {
             findByCaja: jest.fn(),
+            findByResponsable: jest.fn(),
             calcularSaldo: jest.fn(),
           },
         },
@@ -145,6 +146,10 @@ describe('PersonasDashboardService', () => {
     inscripcionesService = module.get(InscripcionesService);
     cuotasService = module.get(CuotasService);
     movimientosService = module.get(MovimientosService);
+
+    // Default: persona has no movements where they are responsable.
+    // Tests that exercise this source override it explicitly.
+    movimientosService.findByResponsable.mockResolvedValue([]);
   });
 
   describe('getDashboard', () => {
@@ -272,6 +277,146 @@ describe('PersonasDashboardService', () => {
       // Should include 2026 (current), exclude 2025 (no debt)
       expect(result.cuotas.items).toHaveLength(1);
       expect(result.cuotas.items[0].ano).toBe(2026);
+    });
+
+    it('should include movements where persona is responsable even if they live in another caja (e.g. inscription paid into caja grupo)', async () => {
+      // Reproduces the dashboard bug: inscription/cuota payments are recorded in
+      // the caja grupo with responsableId = persona, NOT in the personal caja.
+      const movEnCajaGrupo = {
+        id: 'mov-grupo-1',
+        fecha: new Date('2026-03-21'),
+        createdAt: new Date('2026-03-21'),
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA,
+        descripcion: 'Pago inscripción scout_argentina 2026',
+        monto: 23000,
+        medioPago: MedioPago.EFECTIVO,
+      };
+
+      personasService.findOne.mockResolvedValue(mockProtagonista as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+      inscripcionesService.findByPersona.mockResolvedValue([]);
+      cuotasService.findByPersona.mockResolvedValue([]);
+      // Personal caja is empty (typical protagonista paying cash/transfer).
+      movimientosService.findByCaja.mockResolvedValue([]);
+      movimientosService.findByResponsable.mockResolvedValue([
+        movEnCajaGrupo,
+      ] as any);
+
+      const result = await service.getDashboard('persona-1');
+
+      expect(result.ultimosMovimientos).toHaveLength(1);
+      expect(result.ultimosMovimientos[0].id).toBe('mov-grupo-1');
+    });
+
+    it('should exclude recupero de costo movements (internal group accounting, not relevant to the persona)', async () => {
+      const recuperoCosto = {
+        id: 'mov-recupero',
+        fecha: new Date('2026-04-01'),
+        createdAt: new Date('2026-04-01'),
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+        monto: 1500,
+        medioPago: MedioPago.EFECTIVO,
+      };
+      const ventaIngreso = {
+        id: 'mov-venta',
+        fecha: new Date('2026-04-01'),
+        createdAt: new Date('2026-04-01'),
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+        monto: 500,
+        medioPago: MedioPago.EFECTIVO,
+      };
+
+      personasService.findOne.mockResolvedValue(mockProtagonista as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+      inscripcionesService.findByPersona.mockResolvedValue([]);
+      cuotasService.findByPersona.mockResolvedValue([]);
+      movimientosService.findByCaja.mockResolvedValue([ventaIngreso] as any);
+      movimientosService.findByResponsable.mockResolvedValue([
+        recuperoCosto,
+        ventaIngreso,
+      ] as any);
+
+      const result = await service.getDashboard('persona-1');
+
+      expect(result.ultimosMovimientos.map((m) => m.id)).toEqual(['mov-venta']);
+    });
+
+    it('should deduplicate movements present in both responsable and personal caja sources', async () => {
+      // uso_saldo_personal egresos live in the personal caja AND have
+      // responsableId = persona, so they appear in both queries.
+      const movCompartido = {
+        id: 'mov-shared',
+        fecha: new Date('2026-03-15'),
+        createdAt: new Date('2026-03-15'),
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.USO_SALDO_PERSONAL,
+        descripcion: 'Uso de saldo personal',
+        monto: 1000,
+        medioPago: MedioPago.SALDO_PERSONAL,
+      };
+
+      personasService.findOne.mockResolvedValue(mockProtagonista as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+      inscripcionesService.findByPersona.mockResolvedValue([]);
+      cuotasService.findByPersona.mockResolvedValue([]);
+      movimientosService.findByCaja.mockResolvedValue([movCompartido] as any);
+      movimientosService.findByResponsable.mockResolvedValue([
+        movCompartido,
+      ] as any);
+
+      const result = await service.getDashboard('persona-1');
+
+      expect(result.ultimosMovimientos).toHaveLength(1);
+    });
+
+    it('should order merged movements by fecha descending', async () => {
+      const movViejo = {
+        id: 'mov-viejo',
+        fecha: new Date('2026-01-10'),
+        createdAt: new Date('2026-01-10'),
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA,
+        monto: 5000,
+        medioPago: MedioPago.EFECTIVO,
+      };
+      const movNuevo = {
+        id: 'mov-nuevo',
+        fecha: new Date('2026-05-01'),
+        createdAt: new Date('2026-05-01'),
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.USO_SALDO_PERSONAL,
+        monto: 1000,
+        medioPago: MedioPago.SALDO_PERSONAL,
+      };
+
+      personasService.findOne.mockResolvedValue(mockProtagonista as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+      inscripcionesService.findByPersona.mockResolvedValue([]);
+      cuotasService.findByPersona.mockResolvedValue([]);
+      movimientosService.findByCaja.mockResolvedValue([movNuevo] as any);
+      movimientosService.findByResponsable.mockResolvedValue([movViejo] as any);
+
+      const result = await service.getDashboard('persona-1');
+
+      expect(result.ultimosMovimientos.map((m) => m.id)).toEqual([
+        'mov-nuevo',
+        'mov-viejo',
+      ]);
     });
 
     it('should limit movements to last 5', async () => {
