@@ -5,7 +5,6 @@ import {
   CargoEducador,
   TipoInscripcion,
   EstadoInscripcion,
-  EstadoCuota,
   TipoMovimiento,
   MedioPago,
   PersonaType,
@@ -145,13 +144,13 @@ export class InscripcionesDashboardDto {
 }
 
 /**
- * Item de cuota para dashboard
+ * Item de campamento para dashboard
  */
-export class CuotaDashboardItemDto {
+export class CampamentoDashboardItemDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
-  @ApiProperty({ example: 'Enero 2026' })
+  @ApiProperty({ example: 'Campamento de Primavera' })
   nombre!: string;
 
   @ApiProperty({ example: 2026 })
@@ -166,14 +165,16 @@ export class CuotaDashboardItemDto {
   @ApiProperty({ type: Number })
   saldoPendiente!: number;
 
-  @ApiProperty({ enum: EstadoCuota })
-  estado!: EstadoCuota;
+  @ApiProperty({
+    description: 'Indica si entregó la autorización del campamento',
+  })
+  autorizacionEntregada!: boolean;
 }
 
 /**
- * Resumen de cuotas
+ * Resumen de campamentos
  */
-export class CuotasResumenDto {
+export class CampamentosResumenDto {
   @ApiProperty({ type: Number, example: 3000 })
   total!: number;
 
@@ -182,14 +183,14 @@ export class CuotasResumenDto {
 }
 
 /**
- * Cuotas para dashboard
+ * Campamentos para dashboard
  */
-export class CuotasDashboardDto {
-  @ApiProperty({ type: CuotasResumenDto })
-  resumen!: CuotasResumenDto;
+export class CampamentosDashboardDto {
+  @ApiProperty({ type: CampamentosResumenDto })
+  resumen!: CampamentosResumenDto;
 
-  @ApiProperty({ type: [CuotaDashboardItemDto] })
-  items!: CuotaDashboardItemDto[];
+  @ApiProperty({ type: [CampamentoDashboardItemDto] })
+  items!: CampamentoDashboardItemDto[];
 }
 
 /**
@@ -203,7 +204,7 @@ export class DeudaTotalDto {
   inscripciones!: number;
 
   @ApiProperty({ type: Number, example: 3000 })
-  cuotas!: number;
+  campamentos!: number;
 }
 
 /**
@@ -245,8 +246,8 @@ export class PersonaDashboardDto {
   @ApiProperty({ type: InscripcionesDashboardDto })
   inscripciones!: InscripcionesDashboardDto;
 
-  @ApiProperty({ type: CuotasDashboardDto })
-  cuotas!: CuotasDashboardDto;
+  @ApiProperty({ type: CampamentosDashboardDto })
+  campamentos!: CampamentosDashboardDto;
 
   @ApiProperty({ type: DeudaTotalDto })
   deudaTotal!: DeudaTotalDto;

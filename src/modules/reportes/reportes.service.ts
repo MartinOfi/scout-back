@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Protagonista } from '../personas/entities/persona.entity';
+import {
+  Protagonista,
+  Educador,
+  Persona,
+} from '../personas/entities/persona.entity';
 import { CampamentoParticipante } from '../campamentos/entities/campamento-participante.entity';
 import { Movimiento } from '../movimientos/entities/movimiento.entity';
 import { Inscripcion } from '../inscripciones/entities/inscripcion.entity';
@@ -10,7 +14,9 @@ import {
   TipoMovimiento,
   TipoInscripcion,
   EstadoCuota,
+  PersonaType,
 } from '../../common/enums';
+import { esMayorDeEdad } from '../../common/utils';
 import { DeudaQueryDto } from './dtos/deuda-query.dto';
 import {
   PersonaDeudaDto,
@@ -21,11 +27,16 @@ import {
   DocInscripcionDto,
 } from './dtos/deuda-consolidada.dto';
 
+/** Etiqueta de "rama" usada para agrupar a los educadores en el reporte. */
+const RAMA_EDUCADORES = 'Educadores';
+
 @Injectable()
 export class ReportesService {
   constructor(
     @InjectRepository(Protagonista)
     private readonly protagonistaRepository: Repository<Protagonista>,
+    @InjectRepository(Educador)
+    private readonly educadorRepository: Repository<Educador>,
     @InjectRepository(CampamentoParticipante)
     private readonly participanteRepository: Repository<CampamentoParticipante>,
     @InjectRepository(Movimiento)
@@ -37,10 +48,10 @@ export class ReportesService {
   ) {}
 
   async getDeudas(query: DeudaQueryDto): Promise<PersonaDeudaDto[]> {
-    const protagonistas = await this.loadProtagonistas(query);
-    if (!protagonistas.length) return [];
+    const personas = await this.loadPersonas(query);
+    if (!personas.length) return [];
 
-    const personaIds = protagonistas.map((p) => p.id);
+    const personaIds = personas.map((p) => p.id);
 
     const [participaciones, inscripciones, cuotas] = await Promise.all([
       this.loadParticipaciones(personaIds, query.ano),
@@ -53,7 +64,7 @@ export class ReportesService {
       this.loadInscripcionPayments(inscripciones),
     ]);
 
-    return protagonistas
+    return personas
       .map((p) =>
         this.buildPersonaDeuda(
           p,
@@ -67,6 +78,19 @@ export class ReportesService {
       .filter((d): d is PersonaDeudaDto => d !== null);
   }
 
+  /**
+   * Carga protagonistas y educadores que pueden tener deuda. Los educadores se
+   * incluyen junto a los protagonistas; al filtrar por rama solo se devuelven
+   * los educadores que tengan esa rama asignada.
+   */
+  private async loadPersonas(query: DeudaQueryDto): Promise<Persona[]> {
+    const [protagonistas, educadores] = await Promise.all([
+      this.loadProtagonistas(query),
+      this.loadEducadores(query),
+    ]);
+    return [...protagonistas, ...educadores];
+  }
+
   private async loadProtagonistas(
     query: DeudaQueryDto,
   ): Promise<Protagonista[]> {
@@ -76,6 +100,18 @@ export class ReportesService {
 
     if (query.rama) {
       qb.andWhere('p.rama = :rama', { rama: query.rama });
+    }
+
+    return qb.getMany();
+  }
+
+  private async loadEducadores(query: DeudaQueryDto): Promise<Educador[]> {
+    const qb = this.educadorRepository
+      .createQueryBuilder('e')
+      .where('e.deletedAt IS NULL');
+
+    if (query.rama) {
+      qb.andWhere('e.rama = :rama', { rama: query.rama });
     }
 
     return qb.getMany();
@@ -164,13 +200,17 @@ export class ReportesService {
   }
 
   private buildPersonaDeuda(
-    persona: Protagonista,
+    persona: Persona,
     allParticipaciones: CampamentoParticipante[],
     campPayments: Movimiento[],
     allInscripciones: Inscripcion[],
     inscPayments: Movimiento[],
     allCuotas: Cuota[],
   ): PersonaDeudaDto | null {
+    const esEducador = persona.tipo === PersonaType.EDUCADOR;
+    const rama = esEducador ? null : (persona as Protagonista).rama;
+    const mayorDeEdad = esMayorDeEdad(persona.tipo, rama);
+
     const campamentos = this.buildCampamentosDeuda(
       persona.id,
       allParticipaciones,
@@ -189,10 +229,16 @@ export class ReportesService {
       TipoInscripcion.SCOUT_ARGENTINA,
     );
     const cuotas = this.buildCuotasDeuda(persona.id, allCuotas);
-    const documentacionPersonal = this.buildDocPersonal(persona);
+    // Los educadores no tienen documentación personal en el modelo (null). Los
+    // protagonistas (incluidos Rovers) sí: solo se exime el DNI de los padres a
+    // los Rovers (ver buildDocPersonal).
+    const documentacionPersonal = esEducador
+      ? null
+      : this.buildDocPersonal(persona as Protagonista, mayorDeEdad);
     const documentacionInscripcion = this.buildDocInscripcion(
       persona.id,
       allInscripciones,
+      mayorDeEdad,
     );
 
     const deudaTotal =
@@ -201,11 +247,15 @@ export class ReportesService {
       inscripcionesScout.reduce((s, i) => s + i.saldo, 0) +
       cuotas.reduce((s, c) => s + c.saldo, 0);
 
+    const hasDocPersonalDeuda =
+      documentacionPersonal !== null &&
+      (!documentacionPersonal.dni ||
+        !documentacionPersonal.partidaNacimiento ||
+        !documentacionPersonal.dniPadres ||
+        !documentacionPersonal.carnetObraSocial);
+
     const hasDocDeuda =
-      !documentacionPersonal.dni ||
-      !documentacionPersonal.partidaNacimiento ||
-      !documentacionPersonal.dniPadres ||
-      !documentacionPersonal.carnetObraSocial ||
+      hasDocPersonalDeuda ||
       documentacionInscripcion.length > 0 ||
       campamentos.some((c) => !c.autorizacionEntregada);
 
@@ -214,7 +264,8 @@ export class ReportesService {
     return {
       personaId: persona.id,
       nombre: persona.nombre,
-      rama: persona.rama,
+      rama: esEducador ? RAMA_EDUCADORES : (rama ?? ''),
+      esMayorDeEdad: mayorDeEdad,
       deudaTotal,
       campamentos,
       inscripcionesGrupo,
@@ -303,11 +354,15 @@ export class ReportesService {
       }));
   }
 
-  private buildDocPersonal(persona: Protagonista): DocumentacionPersonalDto {
+  private buildDocPersonal(
+    persona: Protagonista,
+    mayorDeEdad: boolean,
+  ): DocumentacionPersonalDto {
     return {
       dni: persona.dni,
       partidaNacimiento: persona.partidaNacimiento,
-      dniPadres: persona.dniPadres,
+      // Los mayores de edad (Rovers) no entregan el DNI de los padres.
+      dniPadres: mayorDeEdad ? true : persona.dniPadres,
       carnetObraSocial: persona.carnetObraSocial,
     };
   }
@@ -315,26 +370,32 @@ export class ReportesService {
   private buildDocInscripcion(
     personaId: string,
     inscripciones: Inscripcion[],
+    exentoPapeles: boolean,
   ): DocInscripcionDto[] {
     return inscripciones
       .filter(
         (i) =>
           i.personaId === personaId &&
-          i.tipo === TipoInscripcion.SCOUT_ARGENTINA &&
-          (!i.declaracionDeSalud ||
-            !i.autorizacionDeImagen ||
-            !i.salidasCercanas ||
-            !i.autorizacionIngreso ||
-            !i.certificadoAptitudFisica),
+          i.tipo === TipoInscripcion.SCOUT_ARGENTINA,
       )
       .map((i) => ({
         inscripcionId: i.id,
         ano: i.ano,
         declaracionDeSalud: i.declaracionDeSalud,
-        autorizacionDeImagen: i.autorizacionDeImagen,
-        salidasCercanas: i.salidasCercanas,
-        autorizacionIngreso: i.autorizacionIngreso,
+        // Imagen, ingreso y salidas cercanas no se exigen a mayores de edad:
+        // se reportan como entregados para que no generen deuda.
+        autorizacionDeImagen: exentoPapeles ? true : i.autorizacionDeImagen,
+        salidasCercanas: exentoPapeles ? true : i.salidasCercanas,
+        autorizacionIngreso: exentoPapeles ? true : i.autorizacionIngreso,
         certificadoAptitudFisica: i.certificadoAptitudFisica,
-      }));
+      }))
+      .filter(
+        (d) =>
+          !d.declaracionDeSalud ||
+          !d.autorizacionDeImagen ||
+          !d.salidasCercanas ||
+          !d.autorizacionIngreso ||
+          !d.certificadoAptitudFisica,
+      );
   }
 }

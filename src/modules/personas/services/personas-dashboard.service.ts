@@ -5,24 +5,32 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { PersonasService } from '../personas.service';
 import { CajasService } from '../../cajas/cajas.service';
 import { InscripcionesService } from '../../inscripciones/inscripciones.service';
-import { CuotasService } from '../../cuotas/cuotas.service';
 import { MovimientosService } from '../../movimientos/movimientos.service';
 import { Movimiento } from '../../movimientos/entities/movimiento.entity';
+import { CampamentoParticipante } from '../../campamentos/entities/campamento-participante.entity';
+import { Persona, Protagonista, Educador } from '../entities/persona.entity';
+import { InscripcionResponseDto } from '../../inscripciones/dtos/inscripcion-response.dto';
 import {
   PersonaDashboardDto,
   InscripcionDashboardItemDto,
-  CuotaDashboardItemDto,
+  CampamentoDashboardItemDto,
+  DocumentacionPersonalDto,
   MovimientoDashboardDto,
   AutorizacionesInscripcionDto,
 } from '../dtos/persona-dashboard.dto';
 import {
   PersonaType,
+  Rama,
   TipoInscripcion,
+  TipoMovimiento,
   ConceptoMovimiento,
 } from '../../../common/enums';
+import { esMayorDeEdad } from '../../../common/utils';
 
 /**
  * Conceptos que NO se muestran en "últimos movimientos" del dashboard de persona:
@@ -41,10 +49,10 @@ export class PersonasDashboardService {
     private readonly cajasService: CajasService,
     @Inject(forwardRef(() => InscripcionesService))
     private readonly inscripcionesService: InscripcionesService,
-    @Inject(forwardRef(() => CuotasService))
-    private readonly cuotasService: CuotasService,
     @Inject(forwardRef(() => MovimientosService))
     private readonly movimientosService: MovimientosService,
+    @InjectRepository(CampamentoParticipante)
+    private readonly participanteRepository: Repository<CampamentoParticipante>,
   ) {}
 
   async getDashboard(personaId: string): Promise<PersonaDashboardDto> {
@@ -72,13 +80,13 @@ export class PersonasDashboardService {
     const [
       saldo,
       inscripciones,
-      cuotas,
+      participaciones,
       movimientosResponsable,
       movimientosCaja,
     ] = await Promise.all([
       this.movimientosService.calcularSaldo(cajaPersonal.id),
       this.inscripcionesService.findByPersona(personaId),
-      this.cuotasService.findByPersona(personaId),
+      this.loadParticipaciones(personaId),
       this.movimientosService.findByResponsable(personaId),
       this.movimientosService.findByCaja(cajaPersonal.id),
     ]);
@@ -89,113 +97,43 @@ export class PersonasDashboardService {
     );
 
     const currentYear = new Date().getFullYear();
+    const rama = this.getRama(persona);
+    const mayorDeEdad = esMayorDeEdad(persona.tipo, rama);
 
-    // 4. Filter inscriptions: current year + past with debt
-    const filteredInscripciones = inscripciones.filter(
-      (i) => i.ano === currentYear || i.saldoPendiente > 0,
+    const inscripcionItems = this.buildInscripcionItems(
+      inscripciones,
+      currentYear,
+      mayorDeEdad,
+    );
+    const campamentoItems = this.buildCampamentoItems(
+      participaciones,
+      movimientosResponsable,
+      currentYear,
+    );
+    const documentacionPersonal = this.buildDocumentacionPersonal(
+      persona,
+      mayorDeEdad,
     );
 
-    // 5. Filter cuotas: current year + past with debt
-    const filteredCuotas = cuotas.filter((c) => {
-      const saldoPendiente = c.montoTotal - c.montoPagado;
-      return c.ano === currentYear || saldoPendiente > 0;
-    });
-
-    // 6. Map inscriptions to dashboard items
-    const inscripcionItems: InscripcionDashboardItemDto[] =
-      filteredInscripciones.map((i) => {
-        const item: InscripcionDashboardItemDto = {
-          id: i.id,
-          tipo: i.tipo,
-          ano: i.ano,
-          montoTotal: i.montoTotal,
-          montoBonificado: i.montoBonificado,
-          montoPagado: i.montoPagado,
-          saldoPendiente: i.saldoPendiente,
-          estado: i.estado,
-        };
-
-        // Only include autorizaciones for SCOUT_ARGENTINA
-        if (i.tipo === TipoInscripcion.SCOUT_ARGENTINA) {
-          const autorizaciones: AutorizacionesInscripcionDto = {
-            declaracionDeSalud: i.declaracionDeSalud,
-            autorizacionDeImagen: i.autorizacionDeImagen,
-            salidasCercanas: i.salidasCercanas,
-            autorizacionIngreso: i.autorizacionIngreso,
-            certificadoAptitudFisica: i.certificadoAptitudFisica,
-            completas:
-              i.declaracionDeSalud &&
-              i.autorizacionDeImagen &&
-              i.salidasCercanas &&
-              i.autorizacionIngreso &&
-              i.certificadoAptitudFisica,
-          };
-          item.autorizaciones = autorizaciones;
-        }
-
-        return item;
-      });
-
-    // 7. Map cuotas to dashboard items
-    const cuotaItems: CuotaDashboardItemDto[] = filteredCuotas.map((c) => ({
-      id: c.id,
-      nombre: c.nombre,
-      ano: c.ano,
-      montoTotal: Number(c.montoTotal),
-      montoPagado: Number(c.montoPagado),
-      saldoPendiente: Number(c.montoTotal) - Number(c.montoPagado),
-      estado: c.estado,
-    }));
-
-    // 8. Calculate debt totals
     const deudaInscripciones = inscripcionItems.reduce(
       (sum, i) => sum + i.saldoPendiente,
       0,
     );
-    const deudaCuotas = cuotaItems.reduce(
-      (sum, c) => sum + c.saldoPendiente,
+    const deudaCampamentos = campamentoItems.reduce(
+      (sum, c) => sum + Math.max(c.saldoPendiente, 0),
       0,
     );
 
-    // 9. Map movements (full history of the persona, most recent first)
-    const ultimosMovimientos: MovimientoDashboardDto[] = movimientos.map(
-      (m) => ({
-        id: m.id,
-        fecha: m.fecha.toISOString(),
-        tipo: m.tipo,
-        concepto: m.descripcion ?? String(m.concepto),
-        monto: Number(m.monto),
-        medioPago: m.medioPago,
-      }),
-    );
-
-    // 10. Build documentacion personal (Protagonista only)
-    const documentacionPersonal =
-      persona.tipo === PersonaType.PROTAGONISTA
-        ? {
-            partidaNacimiento: (persona as any).partidaNacimiento ?? false,
-            dni: (persona as any).dni ?? false,
-            dniPadres: (persona as any).dniPadres ?? false,
-            carnetObraSocial: (persona as any).carnetObraSocial ?? false,
-            completa:
-              ((persona as any).partidaNacimiento ?? false) &&
-              ((persona as any).dni ?? false) &&
-              ((persona as any).dniPadres ?? false) &&
-              ((persona as any).carnetObraSocial ?? false),
-          }
-        : null;
-
-    // 11. Assemble response
     return {
       persona: {
         id: persona.id,
         nombre: persona.nombre,
         tipo: persona.tipo,
         estado: persona.estado,
-        rama: (persona as any).rama ?? null,
+        rama,
         cargo:
           persona.tipo === PersonaType.EDUCADOR
-            ? (persona as any).cargo
+            ? (persona as Educador).cargo
             : undefined,
       },
       cuentaPersonal: {
@@ -210,20 +148,171 @@ export class PersonasDashboardService {
         },
         items: inscripcionItems,
       },
-      cuotas: {
+      campamentos: {
         resumen: {
-          total: deudaCuotas,
-          cantidad: cuotaItems.filter((c) => c.saldoPendiente > 0).length,
+          total: deudaCampamentos,
+          cantidad: campamentoItems.filter((c) => c.saldoPendiente > 0).length,
         },
-        items: cuotaItems,
+        items: campamentoItems,
       },
       deudaTotal: {
-        total: deudaInscripciones + deudaCuotas,
+        total: deudaInscripciones + deudaCampamentos,
         inscripciones: deudaInscripciones,
-        cuotas: deudaCuotas,
+        campamentos: deudaCampamentos,
       },
-      ultimosMovimientos,
+      ultimosMovimientos: this.buildMovimientos(movimientos),
     };
+  }
+
+  /** Rama de la persona (null para externos o tipos sin rama). */
+  private getRama(persona: Persona): Rama | null {
+    if (persona.tipo === PersonaType.PROTAGONISTA) {
+      return (persona as Protagonista).rama;
+    }
+    if (persona.tipo === PersonaType.EDUCADOR) {
+      return (persona as Educador).rama;
+    }
+    return null;
+  }
+
+  /**
+   * Inscripciones del año actual + años pasados con deuda. Para mayores de edad
+   * se reportan imagen/ingreso/salidas como entregadas (no generan deuda).
+   */
+  private buildInscripcionItems(
+    inscripciones: InscripcionResponseDto[],
+    currentYear: number,
+    mayorDeEdad: boolean,
+  ): InscripcionDashboardItemDto[] {
+    return inscripciones
+      .filter((i) => i.ano === currentYear || i.saldoPendiente > 0)
+      .map((i) => {
+        const item: InscripcionDashboardItemDto = {
+          id: i.id,
+          tipo: i.tipo,
+          ano: i.ano,
+          montoTotal: i.montoTotal,
+          montoBonificado: i.montoBonificado,
+          montoPagado: i.montoPagado,
+          saldoPendiente: i.saldoPendiente,
+          estado: i.estado,
+        };
+
+        if (i.tipo === TipoInscripcion.SCOUT_ARGENTINA) {
+          item.autorizaciones = this.buildAutorizaciones(i, mayorDeEdad);
+        }
+
+        return item;
+      });
+  }
+
+  private buildAutorizaciones(
+    i: InscripcionResponseDto,
+    mayorDeEdad: boolean,
+  ): AutorizacionesInscripcionDto {
+    const autorizacionDeImagen = mayorDeEdad ? true : i.autorizacionDeImagen;
+    const salidasCercanas = mayorDeEdad ? true : i.salidasCercanas;
+    const autorizacionIngreso = mayorDeEdad ? true : i.autorizacionIngreso;
+
+    return {
+      declaracionDeSalud: i.declaracionDeSalud,
+      autorizacionDeImagen,
+      salidasCercanas,
+      autorizacionIngreso,
+      certificadoAptitudFisica: i.certificadoAptitudFisica,
+      completas:
+        i.declaracionDeSalud &&
+        autorizacionDeImagen &&
+        salidasCercanas &&
+        autorizacionIngreso &&
+        i.certificadoAptitudFisica,
+    };
+  }
+
+  /**
+   * Campamentos del año actual + años pasados con deuda. montoPagado se calcula
+   * desde los pagos donde la persona es responsable.
+   */
+  private buildCampamentoItems(
+    participaciones: CampamentoParticipante[],
+    movimientosResponsable: Movimiento[],
+    currentYear: number,
+  ): CampamentoDashboardItemDto[] {
+    return participaciones
+      .map((cp) => {
+        const montoPagado = movimientosResponsable
+          .filter(
+            (m) =>
+              m.campamentoId === cp.campamentoId &&
+              m.tipo === TipoMovimiento.INGRESO,
+          )
+          .reduce((sum, m) => sum + Number(m.monto), 0);
+        const montoTotal = Number(cp.campamento.costoPorPersona);
+
+        return {
+          id: cp.campamentoId,
+          nombre: cp.campamento.nombre,
+          ano: new Date(cp.campamento.fechaInicio).getFullYear(),
+          montoTotal,
+          montoPagado,
+          saldoPendiente: montoTotal - montoPagado,
+          autorizacionEntregada: cp.autorizacionEntregada,
+        };
+      })
+      .filter((c) => c.ano === currentYear || c.saldoPendiente > 0);
+  }
+
+  /**
+   * Documentación personal (solo Protagonista). Los Rovers (mayores de edad) no
+   * entregan el DNI de los padres: se considera entregado.
+   */
+  private buildDocumentacionPersonal(
+    persona: Persona,
+    mayorDeEdad: boolean,
+  ): DocumentacionPersonalDto | null {
+    if (persona.tipo !== PersonaType.PROTAGONISTA) {
+      return null;
+    }
+
+    const p = persona as Protagonista;
+    const dniPadres = mayorDeEdad ? true : p.dniPadres;
+
+    return {
+      partidaNacimiento: p.partidaNacimiento,
+      dni: p.dni,
+      dniPadres,
+      carnetObraSocial: p.carnetObraSocial,
+      completa: p.partidaNacimiento && p.dni && dniPadres && p.carnetObraSocial,
+    };
+  }
+
+  private buildMovimientos(
+    movimientos: Movimiento[],
+  ): MovimientoDashboardDto[] {
+    return movimientos.map((m) => ({
+      id: m.id,
+      fecha: m.fecha.toISOString(),
+      tipo: m.tipo,
+      concepto: m.descripcion ?? String(m.concepto),
+      monto: Number(m.monto),
+      medioPago: m.medioPago,
+    }));
+  }
+
+  /**
+   * Carga las participaciones de campamento de la persona, con el campamento
+   * relacionado, para poder calcular su deuda y el estado de autorización.
+   */
+  private async loadParticipaciones(
+    personaId: string,
+  ): Promise<CampamentoParticipante[]> {
+    return this.participanteRepository
+      .createQueryBuilder('cp')
+      .innerJoinAndSelect('cp.campamento', 'c')
+      .where('cp.personaId = :personaId', { personaId })
+      .andWhere('cp.deletedAt IS NULL')
+      .andWhere('c.deletedAt IS NULL')
+      .getMany();
   }
 
   /**

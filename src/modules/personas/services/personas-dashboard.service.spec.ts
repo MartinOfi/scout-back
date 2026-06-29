@@ -1,19 +1,19 @@
 // src/modules/personas/services/personas-dashboard.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { PersonasDashboardService } from './personas-dashboard.service';
 import { PersonasService } from '../personas.service';
 import { CajasService } from '../../cajas/cajas.service';
 import { InscripcionesService } from '../../inscripciones/inscripciones.service';
-import { CuotasService } from '../../cuotas/cuotas.service';
 import { MovimientosService } from '../../movimientos/movimientos.service';
+import { CampamentoParticipante } from '../../campamentos/entities/campamento-participante.entity';
 import {
   PersonaType,
   EstadoPersona,
   Rama,
   TipoInscripcion,
   EstadoInscripcion,
-  EstadoCuota,
   TipoMovimiento,
   MedioPago,
   ConceptoMovimiento,
@@ -25,8 +25,13 @@ describe('PersonasDashboardService', () => {
   let personasService: jest.Mocked<PersonasService>;
   let cajasService: jest.Mocked<CajasService>;
   let inscripcionesService: jest.Mocked<InscripcionesService>;
-  let cuotasService: jest.Mocked<CuotasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
+  let participacionesQb: { getMany: jest.Mock } & Record<string, jest.Mock>;
+
+  /** Sets the participaciones returned by the (mocked) repository query builder. */
+  const setParticipaciones = (list: unknown[]): void => {
+    participacionesQb.getMany.mockResolvedValue(list);
+  };
 
   const mockProtagonista = {
     id: 'persona-1',
@@ -80,14 +85,16 @@ describe('PersonasDashboardService', () => {
     certificadoAptitudFisica: false,
   };
 
-  const mockCuota2026 = {
-    id: 'cuota-1',
+  const mockParticipacion2026 = {
+    campamentoId: 'camp-1',
     personaId: 'persona-1',
-    nombre: 'Cuota Marzo 2026',
-    ano: 2026,
-    montoTotal: 2000,
-    montoPagado: 0,
-    estado: EstadoCuota.PENDIENTE,
+    autorizacionEntregada: false,
+    campamento: {
+      id: 'camp-1',
+      nombre: 'Campamento Primavera',
+      costoPorPersona: 8000,
+      fechaInicio: new Date('2026-09-20'),
+    },
   };
 
   const mockMovimiento = {
@@ -101,6 +108,13 @@ describe('PersonasDashboardService', () => {
   };
 
   beforeEach(async () => {
+    participacionesQb = {
+      innerJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PersonasDashboardService,
@@ -124,17 +138,17 @@ describe('PersonasDashboardService', () => {
           },
         },
         {
-          provide: CuotasService,
-          useValue: {
-            findByPersona: jest.fn(),
-          },
-        },
-        {
           provide: MovimientosService,
           useValue: {
             findByCaja: jest.fn(),
             findByResponsable: jest.fn(),
             calcularSaldo: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(CampamentoParticipante),
+          useValue: {
+            createQueryBuilder: jest.fn(() => participacionesQb),
           },
         },
       ],
@@ -144,7 +158,6 @@ describe('PersonasDashboardService', () => {
     personasService = module.get(PersonasService);
     cajasService = module.get(CajasService);
     inscripcionesService = module.get(InscripcionesService);
-    cuotasService = module.get(CuotasService);
     movimientosService = module.get(MovimientosService);
 
     // Default: persona has no movements where they are responsable.
@@ -162,7 +175,7 @@ describe('PersonasDashboardService', () => {
       inscripcionesService.findByPersona.mockResolvedValue([
         mockInscripcion2026,
       ] as any);
-      cuotasService.findByPersona.mockResolvedValue([mockCuota2026] as any);
+      setParticipaciones([mockParticipacion2026]);
       movimientosService.findByCaja.mockResolvedValue([mockMovimiento] as any);
 
       const result = await service.getDashboard('persona-1');
@@ -173,7 +186,7 @@ describe('PersonasDashboardService', () => {
       expect(result.documentacionPersonal).toBeDefined();
       expect(result.documentacionPersonal?.completa).toBe(false);
       expect(result.inscripciones.items).toHaveLength(1);
-      expect(result.cuotas.items).toHaveLength(1);
+      expect(result.campamentos.items).toHaveLength(1);
       expect(result.ultimosMovimientos).toHaveLength(1);
     });
 
@@ -184,7 +197,6 @@ describe('PersonasDashboardService', () => {
       );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue([]);
 
       const result = await service.getDashboard('persona-2');
@@ -239,7 +251,6 @@ describe('PersonasDashboardService', () => {
         inscripcion2025SinDeuda,
         inscripcion2024ConDeuda,
       ] as any);
-      cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue([]);
 
       const result = await service.getDashboard('persona-1');
@@ -251,13 +262,17 @@ describe('PersonasDashboardService', () => {
       expect(result.inscripciones.items.map((i) => i.ano)).not.toContain(2025);
     });
 
-    it('should filter cuotas to current year + past years with debt', async () => {
-      const cuota2025SinDeuda = {
-        ...mockCuota2026,
-        id: 'cuota-2025',
-        ano: 2025,
-        montoPagado: 2000,
-        estado: EstadoCuota.PAGADO,
+    it('should filter campamentos to current year + past years with debt', async () => {
+      const participacion2025Pagada = {
+        campamentoId: 'camp-2025',
+        personaId: 'persona-1',
+        autorizacionEntregada: true,
+        campamento: {
+          id: 'camp-2025',
+          nombre: 'Campamento Invierno',
+          costoPorPersona: 6000,
+          fechaInicio: new Date('2025-07-15'),
+        },
       };
 
       personasService.findOne.mockResolvedValue(mockProtagonista as any);
@@ -266,17 +281,26 @@ describe('PersonasDashboardService', () => {
       );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([
-        mockCuota2026,
-        cuota2025SinDeuda,
-      ] as any);
       movimientosService.findByCaja.mockResolvedValue([]);
+      // Past camp is fully paid -> excluded; current-year camp has no payment -> included.
+      movimientosService.findByResponsable.mockResolvedValue([
+        {
+          id: 'pago-camp-2025',
+          fecha: new Date('2025-07-01'),
+          createdAt: new Date('2025-07-01'),
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+          campamentoId: 'camp-2025',
+          monto: 6000,
+          medioPago: MedioPago.EFECTIVO,
+        },
+      ] as any);
+      setParticipaciones([mockParticipacion2026, participacion2025Pagada]);
 
       const result = await service.getDashboard('persona-1');
 
-      // Should include 2026 (current), exclude 2025 (no debt)
-      expect(result.cuotas.items).toHaveLength(1);
-      expect(result.cuotas.items[0].ano).toBe(2026);
+      expect(result.campamentos.items).toHaveLength(1);
+      expect(result.campamentos.items[0].ano).toBe(2026);
     });
 
     it('should include movements where persona is responsable even if they live in another caja (e.g. inscription paid into caja grupo)', async () => {
@@ -299,7 +323,6 @@ describe('PersonasDashboardService', () => {
       );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([]);
       // Personal caja is empty (typical protagonista paying cash/transfer).
       movimientosService.findByCaja.mockResolvedValue([]);
       movimientosService.findByResponsable.mockResolvedValue([
@@ -338,7 +361,6 @@ describe('PersonasDashboardService', () => {
       );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue([ventaIngreso] as any);
       movimientosService.findByResponsable.mockResolvedValue([
         recuperoCosto,
@@ -370,7 +392,6 @@ describe('PersonasDashboardService', () => {
       );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue([movCompartido] as any);
       movimientosService.findByResponsable.mockResolvedValue([
         movCompartido,
@@ -407,7 +428,6 @@ describe('PersonasDashboardService', () => {
       );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue([movNuevo] as any);
       movimientosService.findByResponsable.mockResolvedValue([movViejo] as any);
 
@@ -432,7 +452,6 @@ describe('PersonasDashboardService', () => {
       );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue(movements as any);
 
       const result = await service.getDashboard('persona-1');
@@ -441,7 +460,7 @@ describe('PersonasDashboardService', () => {
       expect(result.ultimosMovimientos[0].id).toBe('mov-0');
     });
 
-    it('should calculate total debt correctly', async () => {
+    it('should calculate total debt correctly (inscripciones + campamentos)', async () => {
       personasService.findOne.mockResolvedValue(mockProtagonista as any);
       cajasService.getOrCreateCajaPersonal.mockResolvedValue(
         mockCajaPersonal as any,
@@ -450,15 +469,15 @@ describe('PersonasDashboardService', () => {
       inscripcionesService.findByPersona.mockResolvedValue([
         mockInscripcion2026,
       ] as any);
-      cuotasService.findByPersona.mockResolvedValue([mockCuota2026] as any);
+      setParticipaciones([mockParticipacion2026]);
       movimientosService.findByCaja.mockResolvedValue([]);
 
       const result = await service.getDashboard('persona-1');
 
-      // Inscripcion: 5000, Cuota: 2000
+      // Inscripcion: 5000, Campamento: 8000 (sin pagos)
       expect(result.deudaTotal.inscripciones).toBe(5000);
-      expect(result.deudaTotal.cuotas).toBe(2000);
-      expect(result.deudaTotal.total).toBe(7000);
+      expect(result.deudaTotal.campamentos).toBe(8000);
+      expect(result.deudaTotal.total).toBe(13000);
     });
 
     it('should mark documentation as complete when all docs are present', async () => {
@@ -476,7 +495,6 @@ describe('PersonasDashboardService', () => {
       );
       movimientosService.calcularSaldo.mockResolvedValue(0);
       inscripcionesService.findByPersona.mockResolvedValue([]);
-      cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue([]);
 
       const result = await service.getDashboard('persona-1');
@@ -500,7 +518,6 @@ describe('PersonasDashboardService', () => {
         mockInscripcion2026,
         inscripcionGrupo,
       ] as any);
-      cuotasService.findByPersona.mockResolvedValue([]);
       movimientosService.findByCaja.mockResolvedValue([]);
 
       const result = await service.getDashboard('persona-1');
@@ -514,6 +531,39 @@ describe('PersonasDashboardService', () => {
 
       expect(scoutArgentina?.autorizaciones).toBeDefined();
       expect(grupo?.autorizaciones).toBeUndefined();
+    });
+
+    it('should exempt Rovers from imagen, ingreso y salidas cercanas autorizaciones', async () => {
+      const rover = {
+        ...mockProtagonista,
+        rama: Rama.ROVERS,
+      };
+      const inscripcionSinPapeles = {
+        ...mockInscripcion2026,
+        autorizacionDeImagen: false,
+        autorizacionIngreso: false,
+        salidasCercanas: false,
+        declaracionDeSalud: true,
+        certificadoAptitudFisica: true,
+      };
+
+      personasService.findOne.mockResolvedValue(rover as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+      inscripcionesService.findByPersona.mockResolvedValue([
+        inscripcionSinPapeles,
+      ] as any);
+      movimientosService.findByCaja.mockResolvedValue([]);
+
+      const result = await service.getDashboard('persona-1');
+
+      const autorizaciones = result.inscripciones.items[0].autorizaciones;
+      expect(autorizaciones?.autorizacionDeImagen).toBe(true);
+      expect(autorizaciones?.autorizacionIngreso).toBe(true);
+      expect(autorizaciones?.salidasCercanas).toBe(true);
+      expect(autorizaciones?.completas).toBe(true);
     });
   });
 });

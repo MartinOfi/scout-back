@@ -113,6 +113,12 @@ export class PersonaDeudaDto {
   @ApiProperty()
   rama!: string;
 
+  @ApiProperty({
+    description:
+      'Mayor de edad (Educador o Rovers): no entrega DNI de los padres',
+  })
+  esMayorDeEdad!: boolean;
+
   @ApiProperty()
   deudaTotal!: number;
 
@@ -128,8 +134,12 @@ export class PersonaDeudaDto {
   @ApiProperty({ type: [CuotaDeudaDto] })
   cuotas!: CuotaDeudaDto[];
 
-  @ApiProperty()
-  documentacionPersonal!: DocumentacionPersonalDto;
+  @ApiProperty({
+    type: DocumentacionPersonalDto,
+    nullable: true,
+    description: 'null para educadores (no tienen documentación personal)',
+  })
+  documentacionPersonal!: DocumentacionPersonalDto | null;
 
   @ApiPropertyOptional({ type: [DocInscripcionDto] })
   documentacionInscripcion!: DocInscripcionDto[];
