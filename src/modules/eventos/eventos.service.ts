@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import { Evento } from './entities/evento.entity';
 import { Producto } from './entities/producto.entity';
 import { VentaProducto } from './entities/venta-producto.entity';
@@ -12,6 +12,7 @@ import { Entrega } from './entities/entrega.entity';
 import { CreateEventoDto } from './dtos/create-evento.dto';
 import { UpdateEventoDto } from './dtos/update-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
+import { UpdateProductoDto } from './dtos/update-producto.dto';
 import { CreateVentaProductoDto } from './dtos/create-venta-producto.dto';
 import { RegisterVentasLoteDto } from './dtos/register-ventas-lote.dto';
 import { PersonasService } from '../personas/personas.service';
@@ -112,6 +113,159 @@ export class EventosService {
       throw new BadRequestException(EVENTOS_ERROR_MESSAGES.EVENTO_YA_CERRADO);
     }
     return this.eventoRepository.save({ ...evento, estaCerrado: true });
+  }
+
+  /**
+   * Enables movimientos for a VENTA event (irreversible false → true).
+   *
+   * Pre-conditions:
+   *   - The event is of type VENTA.
+   *   - The event is modificable (not cerrado).
+   *   - Movimientos are not already habilitados.
+   *   - Every producto has a precioCosto (precioVenta is always NOT NULL).
+   *
+   * On success it flips the flag and back-fills the movimientos of the ventas
+   * already loaded (which until now had no movimiento): ONE ingreso movimiento
+   * per vendedor (sum of their ganancias), plus — for destino cuentas_personales
+   * — ONE recupero movimiento per vendedor. Back-filled movimientos use
+   * medioPago efectivo because the original ventas never persisted it.
+   */
+  async habilitarMovimientos(id: string): Promise<Evento> {
+    const evento = await this.findOne(id);
+
+    if (evento.tipo !== TipoEvento.VENTA) {
+      throw new BadRequestException(
+        EVENTOS_ERROR_MESSAGES.MOVIMIENTOS_SOLO_PARA_VENTA,
+      );
+    }
+    this.assertEventoModificable(evento);
+    if (evento.movimientosHabilitados) {
+      throw new BadRequestException(
+        EVENTOS_ERROR_MESSAGES.MOVIMIENTOS_YA_HABILITADOS,
+      );
+    }
+    this.assertProductosTienenCosto(evento);
+
+    return this.dataSource.transaction((manager) =>
+      this.persistHabilitarMovimientos(manager, evento),
+    );
+  }
+
+  private assertProductosTienenCosto(evento: Evento): void {
+    const productos = evento.productos ?? [];
+    if (productos.length === 0) {
+      throw new BadRequestException(
+        EVENTOS_ERROR_MESSAGES.SIN_PRODUCTOS_PARA_HABILITAR,
+      );
+    }
+    const sinCosto = productos.filter(
+      (p) => p.precioCosto === null || Number(p.precioCosto) <= 0,
+    );
+    if (sinCosto.length > 0) {
+      const nombres = sinCosto.map((p) => p.nombre).join(', ');
+      throw new BadRequestException(
+        EVENTOS_ERROR_MESSAGES.PRODUCTOS_SIN_COSTO(nombres),
+      );
+    }
+  }
+
+  private async persistHabilitarMovimientos(
+    manager: EntityManager,
+    evento: Evento,
+  ): Promise<Evento> {
+    // Flip atómico: solo pasa de false → true. Si otra ejecución concurrente
+    // ya lo habilitó, affected === 0 y abortamos sin duplicar movimientos.
+    const result = await manager.update(
+      Evento,
+      { id: evento.id, movimientosHabilitados: false },
+      { movimientosHabilitados: true },
+    );
+    if (!result.affected) {
+      throw new BadRequestException(
+        EVENTOS_ERROR_MESSAGES.MOVIMIENTOS_YA_HABILITADOS,
+      );
+    }
+
+    const ventasSinMovimiento = await manager.find(VentaProducto, {
+      where: { eventoId: evento.id, movimientoId: IsNull() },
+      relations: ['producto'],
+    });
+
+    const ventasPorVendedor = this.groupVentasByVendedor(ventasSinMovimiento);
+    for (const [vendedorId, ventas] of ventasPorVendedor) {
+      await this.backfillMovimientosVendedor(manager, {
+        evento,
+        vendedorId,
+        ventas,
+      });
+    }
+
+    return { ...evento, movimientosHabilitados: true };
+  }
+
+  private groupVentasByVendedor(
+    ventas: ReadonlyArray<VentaProducto>,
+  ): Map<string, VentaProducto[]> {
+    const grouped = new Map<string, VentaProducto[]>();
+    for (const venta of ventas) {
+      const current = grouped.get(venta.vendedorId) ?? [];
+      current.push(venta);
+      grouped.set(venta.vendedorId, current);
+    }
+    return grouped;
+  }
+
+  /**
+   * Back-fills the income (and optional recupero) movimiento for all the
+   * ventas of a single vendedor, then links them. Reuses the same in-tx
+   * creators and ganancia/costo helpers as the live-sale path.
+   */
+  private async backfillMovimientosVendedor(
+    manager: EntityManager,
+    params: {
+      evento: Evento;
+      vendedorId: string;
+      ventas: VentaProducto[];
+    },
+  ): Promise<void> {
+    const { evento, vendedorId, ventas } = params;
+    const items = ventas.map((v) => ({
+      productoId: v.productoId,
+      cantidad: v.cantidad,
+    }));
+    const productosMap = new Map<string, Producto>(
+      ventas.filter((v) => v.producto).map((v) => [v.productoId, v.producto]),
+    );
+
+    const movimiento = await this.crearMovimientoIngresoVentaInTx(manager, {
+      evento,
+      vendedorId,
+      medioPago: MedioPago.EFECTIVO,
+      monto: this.computeGananciaTotalLote(items, productosMap),
+      descripcion: this.buildVentasLoteDescripcion(items, productosMap, evento),
+    });
+    for (const venta of ventas) {
+      venta.movimientoId = movimiento.id;
+    }
+
+    if (this.shouldGenerateRecuperoCosto(evento)) {
+      const recupero = await this.crearMovimientoRecuperoVentaInTx(manager, {
+        evento,
+        vendedorId,
+        medioPago: MedioPago.EFECTIVO,
+        monto: this.computeCostoTotalLote(items, productosMap),
+        descripcion: this.buildRecuperoLoteDescripcion(
+          items,
+          productosMap,
+          evento,
+        ),
+      });
+      for (const venta of ventas) {
+        venta.movimientoRecuperoId = recupero.id;
+      }
+    }
+
+    await manager.save(ventas);
   }
 
   /**
@@ -265,6 +419,42 @@ export class EventosService {
 
     const producto = this.productoRepository.create(dto);
     return this.productoRepository.save(producto);
+  }
+
+  /**
+   * Updates a producto. Used mainly to fill in the precioCosto once it is
+   * known (the producto may have been created with only precioVenta).
+   * Blocked when the evento is cerrado.
+   */
+  async updateProducto(id: string, dto: UpdateProductoDto): Promise<Producto> {
+    const producto = await this.productoRepository.findOne({ where: { id } });
+    if (!producto) {
+      throw new NotFoundException(
+        PRODUCTOS_ERROR_MESSAGES.PRODUCTO_NOT_FOUND(id),
+      );
+    }
+
+    const evento = await this.findOne(producto.eventoId);
+    this.assertEventoModificable(evento);
+    this.assertPreciosEditables(evento, dto);
+
+    return this.productoRepository.save({ ...producto, ...dto });
+  }
+
+  /**
+   * Once movimientos are habilitados the income movimientos are already
+   * computed from the current prices, so editing precioCosto/precioVenta would
+   * desync the stored movimientos. Prices are frozen at that point; only
+   * non-price fields (e.g. nombre) may still change.
+   */
+  private assertPreciosEditables(evento: Evento, dto: UpdateProductoDto): void {
+    const cambiaPrecios =
+      dto.precioCosto !== undefined || dto.precioVenta !== undefined;
+    if (evento.movimientosHabilitados && cambiaPrecios) {
+      throw new BadRequestException(
+        PRODUCTOS_ERROR_MESSAGES.CANNOT_EDIT_PRICES_WITH_MOVIMIENTOS,
+      );
+    }
   }
 
   async findProductosByEvento(eventoId: string): Promise<Producto[]> {
@@ -511,7 +701,11 @@ export class EventosService {
   }
 
   private shouldGenerateMovimientoIngreso(evento: Evento): boolean {
-    return evento.tipo === TipoEvento.VENTA && evento.destinoGanancia !== null;
+    return (
+      evento.tipo === TipoEvento.VENTA &&
+      evento.destinoGanancia !== null &&
+      evento.movimientosHabilitados
+    );
   }
 
   /**

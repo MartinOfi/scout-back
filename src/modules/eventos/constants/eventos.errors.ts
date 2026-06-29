@@ -19,6 +19,14 @@ export const EVENTOS_ERROR_MESSAGES = {
     'Los eventos de venta requieren especificar un destino de ganancia',
   GRUPO_CANNOT_HAVE_DESTINO_GANANCIA:
     'Los eventos de grupo no pueden tener destino de ganancia',
+  MOVIMIENTOS_SOLO_PARA_VENTA:
+    'Solo los eventos de venta pueden habilitar movimientos',
+  MOVIMIENTOS_YA_HABILITADOS:
+    'Los movimientos de este evento ya están habilitados',
+  SIN_PRODUCTOS_PARA_HABILITAR:
+    'No se pueden habilitar los movimientos: el evento no tiene productos cargados',
+  PRODUCTOS_SIN_COSTO: (nombres: string): string =>
+    `No se pueden habilitar los movimientos: los siguientes productos no tienen precio de costo cargado: ${nombres}`,
 } as const;
 
 export const PRODUCTOS_ERROR_MESSAGES = {
@@ -29,6 +37,8 @@ export const PRODUCTOS_ERROR_MESSAGES = {
     `Producto con ID ${id} no encontrado en este evento`,
   CANNOT_DELETE_WITH_MOVEMENTS:
     'No se puede eliminar: el evento tiene movimientos asociados',
+  CANNOT_EDIT_PRICES_WITH_MOVIMIENTOS:
+    'No se pueden modificar los precios: el evento ya tiene los movimientos habilitados. Los precios quedan congelados una vez habilitados.',
 } as const;
 
 export const VENTAS_ERROR_MESSAGES = {

@@ -1,5 +1,6 @@
 export * from './create-evento.dto';
 export * from './create-producto.dto';
+export * from './update-producto.dto';
 export * from './create-venta-producto.dto';
 export * from './delete-venta-response.dto';
 export * from './registrar-gasto-evento.dto';

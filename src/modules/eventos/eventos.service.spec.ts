@@ -35,6 +35,7 @@ describe('EventosService', () => {
   let fakeManager: {
     create: jest.Mock;
     save: jest.Mock;
+    update: jest.Mock;
     find: jest.Mock;
     findOne: jest.Mock;
     softRemove: jest.Mock;
@@ -53,6 +54,8 @@ describe('EventosService', () => {
     destinoGanancia: DestinoGanancia.CUENTAS_PERSONALES,
     fecha: new Date('2024-06-15'),
     productos: [],
+    // Existing venta events are migrated to true, so ventas generate movimientos.
+    movimientosHabilitados: true,
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null,
@@ -154,7 +157,13 @@ describe('EventosService', () => {
      */
     fakeManager = {
       create: jest.fn((_entity: unknown, payload: unknown) => payload),
-      save: jest.fn((entity: unknown) => Promise.resolve(entity)),
+      // Supports both save(entity) and save(Target, payload) overloads:
+      // the latter is used by habilitarMovimientos to update the evento flag.
+      save: jest.fn((entityOrTarget: unknown, payload?: unknown) =>
+        Promise.resolve(payload !== undefined ? payload : entityOrTarget),
+      ),
+      // habilitarMovimientos hace un UPDATE condicional atómico del flag.
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
       softRemove: jest.fn().mockResolvedValue(undefined),
@@ -499,6 +508,88 @@ describe('EventosService', () => {
         NotFoundException,
       );
     });
+
+    it('crea un producto SIN precio de costo (solo precio de venta)', async () => {
+      const dto = {
+        eventoId: 'evento-uuid',
+        nombre: 'Sin costo aún',
+        precioVenta: 1200,
+      };
+      const created = { ...dto, precioCosto: null, id: 'p-uuid' };
+
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.create.mockReturnValue(created as unknown as Producto);
+      productoRepository.save.mockResolvedValue(created as unknown as Producto);
+
+      const result = await service.createProducto(dto);
+
+      expect(result.precioCosto).toBeNull();
+    });
+  });
+
+  describe('updateProducto', () => {
+    it('actualiza el precio de costo de un producto existente (movimientos deshabilitados)', async () => {
+      const producto = { ...mockProducto, precioCosto: null } as Producto;
+      productoRepository.findOne.mockResolvedValue(producto);
+      // El costo se carga ANTES de habilitar, así que el evento está deshabilitado.
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        movimientosHabilitados: false,
+      } as Evento);
+      productoRepository.save.mockImplementation((p) =>
+        Promise.resolve(p as Producto),
+      );
+
+      const result = await service.updateProducto('producto-uuid', {
+        precioCosto: 500,
+      });
+
+      expect(result.precioCosto).toBe(500);
+    });
+
+    it('lanza NotFoundException si el producto no existe', async () => {
+      productoRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.updateProducto('no-existe', { precioCosto: 1 }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('lanza BadRequest si el evento está cerrado', async () => {
+      productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEvento,
+        estaCerrado: true,
+      } as Evento);
+
+      await expect(
+        service.updateProducto('producto-uuid', { precioCosto: 1 }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('lanza BadRequest al editar precios con movimientos habilitados', async () => {
+      productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+      // mockEvento tiene movimientosHabilitados: true
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+
+      await expect(
+        service.updateProducto('producto-uuid', { precioCosto: 999 }),
+      ).rejects.toThrow(/precios/i);
+    });
+
+    it('permite editar el nombre con movimientos habilitados (no toca precios)', async () => {
+      productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+      eventoRepository.findOne.mockResolvedValue(mockEvento as Evento);
+      productoRepository.save.mockImplementation((p) =>
+        Promise.resolve(p as Producto),
+      );
+
+      const result = await service.updateProducto('producto-uuid', {
+        nombre: 'Nuevo nombre',
+      });
+
+      expect(result.nombre).toBe('Nuevo nombre');
+    });
   });
 
   describe('registrarVenta', () => {
@@ -640,6 +731,33 @@ describe('EventosService', () => {
       await expect(service.registrarVenta(dto)).rejects.toThrow(
         /no pertenece a este evento/,
       );
+    });
+
+    it('movimientos deshabilitados: guarda la venta SIN generar movimiento', async () => {
+      const eventoSinMovimientos = {
+        ...mockEvento,
+        movimientosHabilitados: false,
+      };
+      const dto = {
+        eventoId: 'evento-uuid',
+        productoId: 'producto-uuid',
+        vendedorId: 'persona-uuid',
+        cantidad: 5,
+        medioPago: MedioPago.EFECTIVO,
+      };
+
+      eventoRepository.findOne.mockResolvedValue(
+        eventoSinMovimientos as Evento,
+      );
+      productoRepository.findOne.mockResolvedValue(mockProducto as Producto);
+
+      const result = await service.registrarVenta(dto);
+
+      expect(movimientosService.createWithManager).not.toHaveBeenCalled();
+      expect(result.movimientoId).toBeFalsy();
+      expect(result.movimientoRecuperoId).toBeFalsy();
+      // La venta igual se persiste.
+      expect(result.cantidad).toBe(5);
     });
   });
 
@@ -814,6 +932,248 @@ describe('EventosService', () => {
         expect(venta.movimientoId).toBe('mov-margen-lote');
         expect(venta.movimientoRecuperoId).toBe('mov-recupero-lote');
       });
+    });
+
+    it('movimientos deshabilitados: guarda el lote SIN generar movimientos', async () => {
+      const eventoSinMovimientos = {
+        ...mockEvento,
+        movimientosHabilitados: false,
+      };
+      const dto = {
+        vendedorId: 'persona-uuid',
+        medioPago: MedioPago.EFECTIVO,
+        items: [{ productoId: 'producto-uuid', cantidad: 5 }],
+      };
+
+      eventoRepository.findOne.mockResolvedValue(
+        eventoSinMovimientos as Evento,
+      );
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+
+      await service.registrarVentasLote('evento-uuid', dto);
+
+      expect(movimientosService.createWithManager).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('habilitarMovimientos', () => {
+    const productoSinCosto: Partial<Producto> = {
+      id: 'producto-sin-costo-uuid',
+      eventoId: 'evento-uuid',
+      nombre: 'Pancho',
+      precioCosto: null,
+      precioVenta: 700,
+    };
+
+    const ventaA: Partial<VentaProducto> = {
+      id: 'venta-a',
+      eventoId: 'evento-uuid',
+      productoId: 'producto-uuid',
+      vendedorId: 'vendedor-1',
+      cantidad: 4,
+      movimientoId: null,
+      producto: mockProducto as Producto,
+    };
+    const ventaB: Partial<VentaProducto> = {
+      id: 'venta-b',
+      eventoId: 'evento-uuid',
+      productoId: 'producto-uuid',
+      vendedorId: 'vendedor-1',
+      cantidad: 6,
+      movimientoId: null,
+      producto: mockProducto as Producto,
+    };
+    const ventaC: Partial<VentaProducto> = {
+      id: 'venta-c',
+      eventoId: 'evento-uuid',
+      productoId: 'producto-uuid',
+      vendedorId: 'vendedor-2',
+      cantidad: 2,
+      movimientoId: null,
+      producto: mockProducto as Producto,
+    };
+
+    function eventoDeshabilitado(overrides: Partial<Evento> = {}): Evento {
+      return {
+        ...mockEvento,
+        movimientosHabilitados: false,
+        productos: [mockProducto as Producto],
+        ...overrides,
+      } as Evento;
+    }
+
+    it('lanza BadRequest si el evento no es de tipo venta', async () => {
+      eventoRepository.findOne.mockResolvedValue({
+        ...mockEventoGrupo,
+        movimientosHabilitados: false,
+      } as Evento);
+
+      await expect(
+        service.habilitarMovimientos('evento-grupo-uuid'),
+      ).rejects.toThrow(/solo los eventos de venta/i);
+    });
+
+    it('lanza BadRequest si el evento está cerrado', async () => {
+      eventoRepository.findOne.mockResolvedValue(
+        eventoDeshabilitado({ estaCerrado: true }),
+      );
+
+      await expect(service.habilitarMovimientos('evento-uuid')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('lanza BadRequest si los movimientos ya están habilitados', async () => {
+      eventoRepository.findOne.mockResolvedValue(
+        eventoDeshabilitado({ movimientosHabilitados: true }),
+      );
+
+      await expect(service.habilitarMovimientos('evento-uuid')).rejects.toThrow(
+        /ya están habilitados/i,
+      );
+    });
+
+    it('lanza BadRequest listando los productos sin costo', async () => {
+      eventoRepository.findOne.mockResolvedValue(
+        eventoDeshabilitado({
+          productos: [mockProducto as Producto, productoSinCosto as Producto],
+        }),
+      );
+
+      await expect(service.habilitarMovimientos('evento-uuid')).rejects.toThrow(
+        /Pancho/,
+      );
+      expect(movimientosService.createWithManager).not.toHaveBeenCalled();
+    });
+
+    it('habilita y genera UN movimiento de ingreso por vendedor (cuentas_personales)', async () => {
+      // mockEvento = CUENTAS_PERSONALES; mockProducto costo 500 / venta 1000
+      eventoRepository.findOne.mockResolvedValue(eventoDeshabilitado());
+      fakeManager.find.mockResolvedValue([ventaA, ventaB, ventaC]);
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
+      (movimientosService.createWithManager as jest.Mock).mockImplementation(
+        (_m, dto: { concepto: ConceptoMovimiento; responsableId: string }) =>
+          Promise.resolve({
+            id: `${dto.concepto}-${dto.responsableId}`,
+          }),
+      );
+
+      const result = await service.habilitarMovimientos('evento-uuid');
+
+      expect(result.movimientosHabilitados).toBe(true);
+
+      const ingresoCalls = (
+        movimientosService.createWithManager as jest.Mock
+      ).mock.calls.filter(
+        (c) => c[1].concepto === ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+      );
+      // Un ingreso por vendedor (vendedor-1 y vendedor-2) = 2
+      expect(ingresoCalls).toHaveLength(2);
+
+      const vendedor1Call = ingresoCalls.find(
+        (c) => c[1].responsableId === 'vendedor-1',
+      );
+      // ganancia vendedor-1 = (1000-500)*(4+6) = 5000
+      expect(vendedor1Call[1]).toMatchObject({
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+        monto: 5000,
+        medioPago: MedioPago.EFECTIVO,
+      });
+      const vendedor2Call = ingresoCalls.find(
+        (c) => c[1].responsableId === 'vendedor-2',
+      );
+      // ganancia vendedor-2 = (1000-500)*2 = 1000
+      expect(vendedor2Call[1]).toMatchObject({ monto: 1000 });
+    });
+
+    it('cuentas_personales: además genera UN recupero por vendedor', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoDeshabilitado());
+      fakeManager.find.mockResolvedValue([ventaA, ventaB, ventaC]);
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
+      (movimientosService.createWithManager as jest.Mock).mockResolvedValue({
+        id: 'mov-uuid',
+      });
+
+      await service.habilitarMovimientos('evento-uuid');
+
+      const recuperoCalls = (
+        movimientosService.createWithManager as jest.Mock
+      ).mock.calls.filter(
+        (c) => c[1].concepto === ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+      );
+      // Un recupero por vendedor = 2
+      expect(recuperoCalls).toHaveLength(2);
+      const recVendedor1 = recuperoCalls.find(
+        (c) => c[1].responsableId === 'vendedor-1',
+      );
+      // costo vendedor-1 = 500*(4+6) = 5000
+      expect(recVendedor1[1]).toMatchObject({
+        cajaId: 'caja-grupo-uuid',
+        monto: 5000,
+      });
+    });
+
+    it('caja_grupo: NO genera recupero, solo el ingreso por vendedor', async () => {
+      eventoRepository.findOne.mockResolvedValue(
+        eventoDeshabilitado({ destinoGanancia: DestinoGanancia.CAJA_GRUPO }),
+      );
+      fakeManager.find.mockResolvedValue([ventaA]);
+      (movimientosService.createWithManager as jest.Mock).mockResolvedValue({
+        id: 'mov-uuid',
+      });
+
+      await service.habilitarMovimientos('evento-uuid');
+
+      const calls = (movimientosService.createWithManager as jest.Mock).mock
+        .calls;
+      expect(
+        calls.every(
+          (c) =>
+            c[1].concepto !== ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
+        ),
+      ).toBe(true);
+      expect(calls).toHaveLength(1);
+    });
+
+    it('no genera movimientos para ventas que ya tienen movimientoId', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoDeshabilitado());
+      // El find por movimientoId IS NULL no devuelve ninguna venta.
+      fakeManager.find.mockResolvedValue([]);
+
+      const result = await service.habilitarMovimientos('evento-uuid');
+
+      expect(result.movimientosHabilitados).toBe(true);
+      expect(movimientosService.createWithManager).not.toHaveBeenCalled();
+    });
+
+    it('hace un flip atómico del flag (UPDATE condicional false → true)', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoDeshabilitado());
+      fakeManager.find.mockResolvedValue([]);
+
+      await service.habilitarMovimientos('evento-uuid');
+
+      expect(fakeManager.update).toHaveBeenCalledWith(
+        Evento,
+        { id: 'evento-uuid', movimientosHabilitados: false },
+        { movimientosHabilitados: true },
+      );
+    });
+
+    it('aborta si una ejecución concurrente ya habilitó (affected === 0)', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoDeshabilitado());
+      fakeManager.find.mockResolvedValue([ventaA]);
+      fakeManager.update.mockResolvedValueOnce({ affected: 0 });
+
+      await expect(service.habilitarMovimientos('evento-uuid')).rejects.toThrow(
+        /ya están habilitados/i,
+      );
+      // No se generan movimientos si perdió la carrera.
+      expect(movimientosService.createWithManager).not.toHaveBeenCalled();
     });
   });
 
