@@ -27,10 +27,14 @@ export class Producto extends BaseEntity {
   nombre!: string;
 
   /**
-   * Cost price (what the group paid for it)
+   * Cost price (what the group paid for it).
+   *
+   * Nullable: a producto can be created with only precioVenta when costs are
+   * not yet decided. The cost is filled in later (via updateProducto) and is
+   * required before the event's movimientos can be habilitado.
    */
-  @Column('decimal', { precision: 10, scale: 2 })
-  precioCosto!: number;
+  @Column('decimal', { precision: 10, scale: 2, nullable: true })
+  precioCosto!: number | null;
 
   /**
    * Sale price (what customers pay)

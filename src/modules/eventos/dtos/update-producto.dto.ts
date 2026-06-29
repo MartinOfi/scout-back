@@ -2,38 +2,34 @@ import {
   IsString,
   IsNumber,
   IsOptional,
-  IsUUID,
   IsPositive,
   MinLength,
   MaxLength,
 } from 'class-validator';
-import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
-export class CreateProductoDto {
+/**
+ * DTO for updating a producto (PATCH /eventos/productos/:productoId).
+ *
+ * Every field is optional so callers can patch just the cost once it is
+ * known. precioCosto and precioVenta keep the same positive/decimal rules
+ * as creation when present.
+ */
+export class UpdateProductoDto {
   @ApiPropertyOptional({
-    description:
-      'ID del evento al que pertenece el producto (se toma de la URL cuando se usa POST /eventos/:id/productos)',
-    example: '550e8400-e29b-41d4-a716-446655440000',
-    format: 'uuid',
-  })
-  @IsUUID()
-  @IsOptional()
-  eventoId?: string;
-
-  @ApiProperty({
     description: 'Nombre del producto',
     example: 'Empanada de carne',
     minLength: 2,
     maxLength: 100,
   })
+  @IsOptional()
   @IsString()
   @MinLength(2)
   @MaxLength(100)
-  nombre!: string;
+  nombre?: string;
 
   @ApiPropertyOptional({
-    description:
-      'Precio de costo del producto. Opcional: se puede crear el producto sin costo y cargarlo más tarde (requerido antes de habilitar movimientos).',
+    description: 'Precio de costo del producto',
     example: 150.0,
     minimum: 0.01,
   })
@@ -42,12 +38,13 @@ export class CreateProductoDto {
   @IsPositive()
   precioCosto?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Precio de venta del producto',
     example: 300.0,
     minimum: 0.01,
   })
+  @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
-  precioVenta!: number;
+  precioVenta?: number;
 }

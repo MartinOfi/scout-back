@@ -35,6 +35,7 @@ import {
 import { REPORTE_SWAGGER } from './reporte/reporte.constants';
 import { CreateEventoDto } from './dtos/create-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
+import { UpdateProductoDto } from './dtos/update-producto.dto';
 import { CreateVentaProductoDto } from './dtos/create-venta-producto.dto';
 import { DeleteVentaResponseDto } from './dtos/delete-venta-response.dto';
 import { RegistrarGastoEventoDto } from './dtos/registrar-gasto-evento.dto';
@@ -178,6 +179,22 @@ export class EventosController {
     @Body() dto: CreateProductoDto,
   ) {
     return this.eventosService.createProducto({ ...dto, eventoId });
+  }
+
+  @Patch(EVENTOS_ROUTES.PRODUCTO_BY_ID)
+  @ApiOperation({
+    summary: 'Actualizar producto',
+    description:
+      'Actualiza un producto. Útil para cargar el precio de costo cuando se creó solo con precio de venta.',
+  })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.PRODUCTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({ status: 200, description: 'Producto actualizado' })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado' })
+  async updateProducto(
+    @Param(EVENTOS_PARAM_NAMES.PRODUCTO_ID, ParseUUIDPipe) productoId: string,
+    @Body() dto: UpdateProductoDto,
+  ) {
+    return this.eventosService.updateProducto(productoId, dto);
   }
 
   @Delete(EVENTOS_ROUTES.PRODUCTO_BY_ID)
@@ -487,6 +504,28 @@ export class EventosController {
     @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
   ) {
     return this.eventosService.cerrarEvento(eventoId);
+  }
+
+  // ==================== HABILITAR MOVIMIENTOS ====================
+
+  @Post(EVENTOS_ROUTES.HABILITAR_MOVIMIENTOS_BY_EVENTO)
+  @ApiOperation({
+    summary: 'Habilitar movimientos del evento de venta',
+    description:
+      'Habilita la generación de movimientos (acción irreversible). Valida que todos los productos tengan precio de costo y genera retroactivamente los movimientos de las ventas ya cargadas (uno por vendedor).',
+  })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({ status: 201, description: 'Movimientos habilitados' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'El evento no es de venta, ya tiene movimientos habilitados, está cerrado o hay productos sin costo',
+  })
+  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  async habilitarMovimientos(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+  ) {
+    return this.eventosService.habilitarMovimientos(eventoId);
   }
 
   // ==================== REPORTE PUBLICO ====================

@@ -73,6 +73,20 @@ export class Evento extends BaseEntity {
   reportePublico!: boolean;
 
   /**
+   * Whether sales of this VENTA event generate income movimientos.
+   *
+   * Starts false: ventas and entregas can be loaded without producing
+   * movimientos (useful when product costs are not yet known, since the
+   * margin would otherwise be 100% of the sale price). Once all productos
+   * have both precioVenta and precioCosto, it can be flipped to true via
+   * the "habilitar movimientos" endpoint, which back-fills the movimientos
+   * for the ventas already loaded. The flag is IRREVERSIBLE (true cannot go
+   * back to false) and only meaningful for TipoEvento.VENTA events.
+   */
+  @Column({ name: 'movimientos_habilitados', type: 'boolean', default: false })
+  movimientosHabilitados!: boolean;
+
+  /**
    * Incomes, expenses, and sales are tracked via Movimiento entities
    * with eventoId = this.id
    */
