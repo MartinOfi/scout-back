@@ -68,8 +68,19 @@ export class ParticipantePagoDto {
   @ApiPropertyOptional({ enum: Rama, nullable: true })
   rama!: Rama | null;
 
-  @ApiProperty({ type: Number, example: 25000 })
-  costoPorPersona!: number;
+  @ApiProperty({
+    type: Number,
+    example: 25000,
+    description: 'Snapshot copiado al agregar al participante',
+  })
+  montoAsignado!: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 0,
+    description: 'Monto cubierto por el fondo solidario',
+  })
+  montoBonificado!: number;
 
   @ApiProperty({ type: Number, example: 16000 })
   totalPagado!: number;

@@ -291,8 +291,10 @@ export class CampamentosService {
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
     return {
-      totalEsperado:
-        campamento.participantes.length * Number(campamento.costoPorPersona),
+      totalEsperado: campamento.participantes.reduce(
+        (sum, p) => sum + Number(p.montoAsignado),
+        0,
+      ),
       totalRecaudado,
       totalGastado,
       totalPendienteReembolso,
@@ -309,7 +311,8 @@ export class CampamentosService {
     {
       participanteId: string;
       participanteNombre: string;
-      costoPorPersona: number;
+      montoAsignado: number;
+      montoBonificado: number;
       totalPagado: number;
       saldoPendiente: number;
       pagos: { fecha: Date; monto: number; medioPago: string }[];
@@ -353,21 +356,25 @@ export class CampamentosService {
       pagosPorParticipante.set(pago.responsableId, current);
     }
 
-    const costoPorPersona = Number(campamento.costoPorPersona);
-
     // Construir respuesta con todos los participantes
     return campamento.participantes.map((cp) => {
       const datosPago = pagosPorParticipante.get(cp.personaId) || {
         totalPagado: 0,
         pagos: [],
       };
+      const montoAsignado = Number(cp.montoAsignado);
+      const montoBonificado = Number(cp.montoBonificado);
 
       return {
         participanteId: cp.personaId,
         participanteNombre: cp.persona.nombre,
-        costoPorPersona,
+        montoAsignado,
+        montoBonificado,
         totalPagado: datosPago.totalPagado,
-        saldoPendiente: costoPorPersona - datosPago.totalPagado,
+        saldoPendiente: Math.max(
+          0,
+          montoAsignado - datosPago.totalPagado - montoBonificado,
+        ),
         pagos: datosPago.pagos.sort(
           (a, b) => b.fecha.getTime() - a.fecha.getTime(),
         ),
@@ -410,7 +417,6 @@ export class CampamentosService {
     const participantesDto = this.buildParticipantesDto(
       campamento.participantes,
       pagosPorParticipante,
-      costoPorPersona,
     );
 
     // 6. Calculate KPIs (always use all movements for accurate KPIs)
@@ -541,7 +547,6 @@ export class CampamentosService {
       string,
       { totalPagado: number; pagos: PagoParticipanteDto[] }
     >,
-    costoPorPersona: number,
   ): ParticipantePagoDto[] {
     return participantes.map((cp) => {
       const datosPago = pagosPorParticipante.get(cp.personaId) ?? {
@@ -549,11 +554,16 @@ export class CampamentosService {
         pagos: [],
       };
 
-      const saldoPendiente = costoPorPersona - datosPago.totalPagado;
+      const montoAsignado = Number(cp.montoAsignado);
+      const montoBonificado = Number(cp.montoBonificado);
+      const saldoPendiente = Math.max(
+        0,
+        montoAsignado - datosPago.totalPagado - montoBonificado,
+      );
       const estadoPago = this.determineEstadoPago(
         datosPago.totalPagado,
-        costoPorPersona,
-        0,
+        montoAsignado,
+        montoBonificado,
       );
 
       const rama =
@@ -564,7 +574,8 @@ export class CampamentosService {
         nombre: cp.persona.nombre,
         tipo: cp.persona.tipo,
         rama: rama as ParticipantePagoDto['rama'],
-        costoPorPersona,
+        montoAsignado,
+        montoBonificado,
         totalPagado: datosPago.totalPagado,
         saldoPendiente,
         estadoPago,
@@ -743,7 +754,8 @@ export class CampamentosService {
 
   /**
    * Calcula el total de deuda de todos los campamentos
-   * Suma de (costoPorPersona - totalPagado) para cada participante con deuda
+   * Suma de (montoAsignado - montoBonificado - totalPagado) para cada
+   * participante con deuda
    */
   async getTotalDeudaCampamentos(): Promise<{
     total: number;
@@ -752,11 +764,11 @@ export class CampamentosService {
     const result = await this.campamentoRepository
       .createQueryBuilder('c')
       .select(
-        `SUM(GREATEST(0, c."costoPorPersona" - COALESCE(pagos.total_pagado, 0)))`,
+        `SUM(GREATEST(0, cp."montoAsignado" - cp."montoBonificado" - COALESCE(pagos.total_pagado, 0)))`,
         'total',
       )
       .addSelect(
-        `COUNT(CASE WHEN c."costoPorPersona" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END)`,
+        `COUNT(CASE WHEN cp."montoAsignado" - cp."montoBonificado" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END)`,
         'cantidad',
       )
       .innerJoin('c.participantes', 'cp')
@@ -780,6 +792,7 @@ export class CampamentosService {
         'pagos.responsable_id = p.id AND pagos.campamento_id = c.id',
       )
       .where('c.deletedAt IS NULL')
+      .andWhere('cp."deletedAt" IS NULL')
       .getRawOne<{ total: string | null; cantidad: string }>();
 
     return {

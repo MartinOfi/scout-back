@@ -350,10 +350,10 @@ export class CajasService {
       ),
       deuda_camp AS (
         SELECT
-          COALESCE(SUM(GREATEST(0, c."costoPorPersona" - COALESCE(pagos.total_pagado, 0))), 0) AS total,
-          COUNT(CASE WHEN c."costoPorPersona" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END) AS cantidad
+          COALESCE(SUM(GREATEST(0, cp."montoAsignado" - cp."montoBonificado" - COALESCE(pagos.total_pagado, 0))), 0) AS total,
+          COUNT(CASE WHEN cp."montoAsignado" - cp."montoBonificado" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END) AS cantidad
         FROM campamentos c
-        INNER JOIN campamento_participante cp ON cp.campamento_id = c.id
+        INNER JOIN campamento_participante cp ON cp.campamento_id = c.id AND cp."deletedAt" IS NULL
         LEFT JOIN (
           SELECT responsable_id, campamento_id, SUM(monto) AS total_pagado
           FROM movimientos

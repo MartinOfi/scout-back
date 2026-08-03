@@ -680,6 +680,30 @@ describe('CajasService', () => {
       expect(deudaInscrBlock).toContain("concepto != 'bonificacion_recibida'");
     });
 
+    it('el CTE deuda_camp usa montoAsignado/montoBonificado por participante y excluye soft-deleted', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [],
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+        },
+      ]);
+
+      await service.getConsolidadoSaldos();
+
+      const sql = (dataSource.query as jest.Mock).mock.calls[0][0] as string;
+      const deudaCampBlock = sql.slice(
+        sql.indexOf('deuda_camp AS'),
+        sql.indexOf('bonif_otorgadas AS'),
+      );
+      expect(deudaCampBlock).toContain('cp."montoAsignado"');
+      expect(deudaCampBlock).toContain('cp."montoBonificado"');
+      expect(deudaCampBlock).not.toContain('c."costoPorPersona"');
+      expect(deudaCampBlock).toContain('cp."deletedAt" IS NULL');
+    });
+
     it('should handle empty cajas gracefully', async () => {
       dataSource.query.mockResolvedValue([
         {

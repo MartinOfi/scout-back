@@ -70,7 +70,8 @@ export class CampamentosController {
         properties: {
           participanteId: { type: 'string', format: 'uuid' },
           participanteNombre: { type: 'string' },
-          costoPorPersona: { type: 'number' },
+          montoAsignado: { type: 'number' },
+          montoBonificado: { type: 'number' },
           totalPagado: { type: 'number' },
           saldoPendiente: { type: 'number' },
           pagos: {
