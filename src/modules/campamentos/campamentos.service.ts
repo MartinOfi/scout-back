@@ -553,6 +553,7 @@ export class CampamentosService {
       const estadoPago = this.determineEstadoPago(
         datosPago.totalPagado,
         costoPorPersona,
+        0,
       );
 
       const rama =
@@ -580,15 +581,20 @@ export class CampamentosService {
    */
   private determineEstadoPago(
     totalPagado: number,
-    costoPorPersona: number,
+    montoAsignado: number,
+    montoBonificado: number,
   ): EstadoPagoCampamento {
-    if (totalPagado === 0) {
-      return EstadoPagoCampamento.PENDIENTE;
+    if (montoAsignado === 0) {
+      return EstadoPagoCampamento.EXENTO;
     }
-    if (totalPagado >= costoPorPersona) {
+    const cubierto = totalPagado + montoBonificado;
+    if (cubierto >= montoAsignado) {
       return EstadoPagoCampamento.PAGADO;
     }
-    return EstadoPagoCampamento.PARCIAL;
+    if (cubierto > 0) {
+      return EstadoPagoCampamento.PARCIAL;
+    }
+    return EstadoPagoCampamento.PENDIENTE;
   }
 
   /**

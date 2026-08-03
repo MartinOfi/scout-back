@@ -220,6 +220,8 @@ export enum EstadoPagoCampamento {
   PENDIENTE = 'pendiente',
   PARCIAL = 'parcial',
   PAGADO = 'pagado',
+  /** Monto asignado 0: no se espera pago (típicamente educadores) */
+  EXENTO = 'exento',
 }
 
 // ============================================================================

@@ -396,6 +396,39 @@ describe('CampamentosService', () => {
     });
   });
 
+  describe('determineEstadoPago', () => {
+    const determinar = (
+      pagado: number,
+      asignado: number,
+      bonificado = 0,
+    ): EstadoPagoCampamento =>
+      (
+        service as unknown as {
+          determineEstadoPago: (
+            p: number,
+            a: number,
+            b: number,
+          ) => EstadoPagoCampamento;
+        }
+      ).determineEstadoPago(pagado, asignado, bonificado);
+
+    it('EXENTO cuando el monto asignado es 0', () => {
+      expect(determinar(0, 0)).toBe(EstadoPagoCampamento.EXENTO);
+    });
+    it('PAGADO cuando la bonificación cubre todo', () => {
+      expect(determinar(0, 10000, 10000)).toBe(EstadoPagoCampamento.PAGADO);
+    });
+    it('PAGADO cuando pago y bonificación suman el total', () => {
+      expect(determinar(5000, 10000, 5000)).toBe(EstadoPagoCampamento.PAGADO);
+    });
+    it('PARCIAL cuando sólo hay bonificación parcial', () => {
+      expect(determinar(0, 10000, 5000)).toBe(EstadoPagoCampamento.PARCIAL);
+    });
+    it('PENDIENTE sin pagos ni bonificación', () => {
+      expect(determinar(0, 50000)).toBe(EstadoPagoCampamento.PENDIENTE);
+    });
+  });
+
   describe('removeParticipante', () => {
     it('should soft-delete the junction record and return updated campamento', async () => {
       campamentoParticipanteRepository.findOne.mockResolvedValue(
