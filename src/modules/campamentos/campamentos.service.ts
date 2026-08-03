@@ -420,11 +420,7 @@ export class CampamentosService {
     );
 
     // 6. Calculate KPIs (always use all movements for accurate KPIs)
-    const kpis = this.calculateKpis(
-      participantesDto,
-      todosMovimientos,
-      costoPorPersona,
-    );
+    const kpis = this.calculateKpis(participantesDto, todosMovimientos);
 
     // 6b. Apply participant filters after KPI calculation (KPIs always reflect full camp)
     const participantesFiltrados = this.filterParticipantes(
@@ -616,10 +612,16 @@ export class CampamentosService {
   private calculateKpis(
     participantes: ParticipantePagoDto[],
     movimientos: Movimiento[],
-    costoPorPersona: number,
   ): CampamentoKpisDto {
     const cantidadParticipantes = participantes.length;
-    const totalARecaudar = costoPorPersona * cantidadParticipantes;
+    const totalARecaudar = participantes.reduce(
+      (sum, p) => sum + p.montoAsignado,
+      0,
+    );
+    const totalBonificado = participantes.reduce(
+      (sum, p) => sum + p.montoBonificado,
+      0,
+    );
 
     const totalRecaudado = movimientos
       .filter((m) => m.tipo === TipoMovimiento.INGRESO)
@@ -639,29 +641,26 @@ export class CampamentosService {
       .filter((m) => m.estadoPago === EstadoPago.PENDIENTE_REEMBOLSO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
-    const participantesPagadosCompleto = participantes.filter(
-      (p) => p.estadoPago === EstadoPagoCampamento.PAGADO,
-    ).length;
-
-    const participantesPagadosParcial = participantes.filter(
-      (p) => p.estadoPago === EstadoPagoCampamento.PARCIAL,
-    ).length;
-
-    const participantesPendientes = participantes.filter(
-      (p) => p.estadoPago === EstadoPagoCampamento.PENDIENTE,
-    ).length;
+    const contarPorEstado = (estado: EstadoPagoCampamento): number =>
+      participantes.filter((p) => p.estadoPago === estado).length;
 
     return {
       totalARecaudar,
       totalRecaudado,
+      totalBonificado,
       totalGastado,
       totalPendienteReembolso,
       balance: totalRecaudado - totalGastado,
-      deudaTotal: totalARecaudar - totalRecaudado,
+      deudaTotal: participantes.reduce((sum, p) => sum + p.saldoPendiente, 0),
       cantidadParticipantes,
-      participantesPagadosCompleto,
-      participantesPagadosParcial,
-      participantesPendientes,
+      participantesPagadosCompleto: contarPorEstado(
+        EstadoPagoCampamento.PAGADO,
+      ),
+      participantesPagadosParcial: contarPorEstado(
+        EstadoPagoCampamento.PARCIAL,
+      ),
+      participantesPendientes: contarPorEstado(EstadoPagoCampamento.PENDIENTE),
+      participantesExentos: contarPorEstado(EstadoPagoCampamento.EXENTO),
     };
   }
 

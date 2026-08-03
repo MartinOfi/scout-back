@@ -153,6 +153,13 @@ export class CampamentoKpisDto {
 
   @ApiProperty({
     type: Number,
+    example: 15000,
+    description: 'Suma de montoBonificado de todos los participantes',
+  })
+  totalBonificado!: number;
+
+  @ApiProperty({
+    type: Number,
     example: 45000,
     description:
       'Egresos CAMPAMENTO_GASTO con estadoPago=PAGADO. Impacta directamente en la caja del grupo.',
@@ -205,6 +212,12 @@ export class CampamentoKpisDto {
     description: 'Participantes sin pago',
   })
   participantesPendientes!: number;
+
+  @ApiProperty({
+    example: 2,
+    description: 'Participantes con montoAsignado 0 (típicamente educadores)',
+  })
+  participantesExentos!: number;
 }
 
 /**

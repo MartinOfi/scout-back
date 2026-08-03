@@ -22,6 +22,11 @@ import {
 } from '../../common/enums';
 import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
+import { Movimiento } from '../movimientos/entities/movimiento.entity';
+import {
+  ParticipantePagoDto,
+  CampamentoKpisDto,
+} from './dtos/campamento-detalle.dto';
 
 describe('CampamentosService', () => {
   let service: CampamentosService;
@@ -704,6 +709,57 @@ describe('CampamentosService', () => {
         relations: ['participantes', 'participantes.persona'],
         order: { fechaInicio: 'DESC' },
       });
+    });
+  });
+
+  describe('calculateKpis', () => {
+    it('calcula KPIs con exentos y bonificados', () => {
+      const participantes: ParticipantePagoDto[] = [
+        {
+          montoAsignado: 50000,
+          montoBonificado: 0,
+          totalPagado: 50000,
+          saldoPendiente: 0,
+          estadoPago: EstadoPagoCampamento.PAGADO,
+        } as ParticipantePagoDto,
+        {
+          montoAsignado: 50000,
+          montoBonificado: 0,
+          totalPagado: 0,
+          saldoPendiente: 50000,
+          estadoPago: EstadoPagoCampamento.PENDIENTE,
+        } as ParticipantePagoDto,
+        {
+          montoAsignado: 0,
+          montoBonificado: 0,
+          totalPagado: 0,
+          saldoPendiente: 0,
+          estadoPago: EstadoPagoCampamento.EXENTO,
+        } as ParticipantePagoDto,
+        {
+          montoAsignado: 10000,
+          montoBonificado: 5000,
+          totalPagado: 5000,
+          saldoPendiente: 0,
+          estadoPago: EstadoPagoCampamento.PAGADO,
+        } as ParticipantePagoDto,
+      ];
+
+      const kpis = (
+        service as unknown as {
+          calculateKpis: (
+            p: ParticipantePagoDto[],
+            m: Movimiento[],
+          ) => CampamentoKpisDto;
+        }
+      ).calculateKpis(participantes, []);
+
+      expect(kpis.totalARecaudar).toBe(110000);
+      expect(kpis.totalBonificado).toBe(5000);
+      expect(kpis.participantesExentos).toBe(1);
+      expect(kpis.participantesPagadosCompleto).toBe(2);
+      expect(kpis.participantesPendientes).toBe(1);
+      expect(kpis.deudaTotal).toBe(50000);
     });
   });
 
