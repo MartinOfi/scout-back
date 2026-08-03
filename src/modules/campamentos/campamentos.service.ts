@@ -27,6 +27,7 @@ import {
   EstadoPagoCampamento,
   FiltroMovimientosCampamento,
   Rama,
+  PersonaType,
 } from '../../common/enums';
 import {
   CampamentoDetalleDto,
@@ -88,12 +89,21 @@ export class CampamentosService {
     return this.campamentoRepository.save(campamento);
   }
 
+  private resolverMontoAsignado(
+    campamento: Campamento,
+    tipoPersona: PersonaType,
+  ): number {
+    return tipoPersona === PersonaType.EDUCADOR
+      ? Number(campamento.costoEducadores)
+      : Number(campamento.costoPorPersona);
+  }
+
   async addParticipante(
     id: string,
     dto: AddParticipanteDto,
   ): Promise<Campamento> {
-    await this.findOne(id);
-    await this.personasService.findOne(dto.personaId);
+    const campamento = await this.findOne(id);
+    const persona = await this.personasService.findOne(dto.personaId);
 
     const existing = await this.campamentoParticipanteRepository.findOne({
       where: {
@@ -109,11 +119,15 @@ export class CampamentosService {
       );
     }
 
+    const montoAsignado = this.resolverMontoAsignado(campamento, persona.tipo);
+
     await this.campamentoParticipanteRepository.save(
       this.campamentoParticipanteRepository.create({
         campamentoId: id,
         personaId: dto.personaId,
         autorizacionEntregada: dto.autorizacionEntregada ?? false,
+        montoAsignado,
+        montoBonificado: 0,
       }),
     );
 

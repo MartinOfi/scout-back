@@ -18,6 +18,7 @@ import {
   ConceptoMovimiento,
   EstadoPagoCampamento,
   FiltroMovimientosCampamento,
+  PersonaType,
 } from '../../common/enums';
 import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
@@ -341,6 +342,57 @@ describe('CampamentosService', () => {
           personaId: 'persona-uuid',
         }),
       ).rejects.toThrow(/ya está inscrita/);
+    });
+  });
+
+  describe('addParticipante — monto asignado', () => {
+    const campamentoConCostos = {
+      id: 'campamento-id',
+      costoPorPersona: 50000,
+      costoEducadores: 10000,
+      participantes: [],
+    } as unknown as Campamento;
+
+    beforeEach(() => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(campamentoConCostos);
+      campamentoParticipanteRepository.findOne.mockResolvedValue(null);
+      campamentoParticipanteRepository.create.mockImplementation(
+        (cp) => cp as CampamentoParticipante,
+      );
+      campamentoParticipanteRepository.save.mockImplementation((cp) =>
+        Promise.resolve(cp as CampamentoParticipante),
+      );
+    });
+
+    it('asigna costoPorPersona a un protagonista', async () => {
+      personasService.findOne.mockResolvedValue({
+        id: 'persona-id',
+        tipo: PersonaType.PROTAGONISTA,
+      } as never);
+
+      await service.addParticipante('campamento-id', {
+        personaId: 'persona-id',
+      });
+
+      const created = (campamentoParticipanteRepository.create as jest.Mock)
+        .mock.calls[0][0];
+      expect(created.montoAsignado).toBe(50000);
+      expect(created.montoBonificado).toBe(0);
+    });
+
+    it('asigna costoEducadores a un educador', async () => {
+      personasService.findOne.mockResolvedValue({
+        id: 'educador-id',
+        tipo: PersonaType.EDUCADOR,
+      } as never);
+
+      await service.addParticipante('campamento-id', {
+        personaId: 'educador-id',
+      });
+
+      const created = (campamentoParticipanteRepository.create as jest.Mock)
+        .mock.calls[0][0];
+      expect(created.montoAsignado).toBe(10000);
     });
   });
 
