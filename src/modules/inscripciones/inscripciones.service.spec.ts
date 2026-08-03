@@ -7,6 +7,7 @@ import { Inscripcion } from './entities/inscripcion.entity';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
+import { BonificacionesService } from '../bonificaciones/bonificaciones.service';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import {
   TipoInscripcion,
@@ -23,6 +24,7 @@ describe('InscripcionesService', () => {
   let personasService: jest.Mocked<PersonasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
   let pagosService: jest.Mocked<PagosService>;
+  let bonificacionesService: jest.Mocked<BonificacionesService>;
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
   let dataSource: jest.Mocked<DataSource>;
 
@@ -48,6 +50,7 @@ describe('InscripcionesService', () => {
     ({
       create: jest.fn().mockImplementation((_, data) => data),
       save: jest.fn().mockImplementation((entity) => Promise.resolve(entity)),
+      update: jest.fn().mockResolvedValue(undefined),
       findOne: repository.findOne,
     }) as unknown as jest.Mocked<EntityManager>;
 
@@ -109,6 +112,18 @@ describe('InscripcionesService', () => {
           useValue: mockDataSource,
         },
         {
+          provide: BonificacionesService,
+          useValue: {
+            otorgarConManager: jest.fn().mockResolvedValue({
+              movimientoEgresoId: 'egreso-nuevo',
+              movimientoIngresoId: 'ingreso-nuevo',
+              monto: 0,
+              saldoFondoRestante: 0,
+            }),
+            revertirConManager: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
           provide: DeletionValidatorService,
           useValue: {
             canDeleteInscripcion: jest
@@ -124,6 +139,7 @@ describe('InscripcionesService', () => {
     personasService = module.get(PersonasService);
     movimientosService = module.get(MovimientosService);
     pagosService = module.get(PagosService);
+    bonificacionesService = module.get(BonificacionesService);
     deletionValidator = module.get(DeletionValidatorService);
     dataSource = module.get(DataSource);
   });
@@ -754,6 +770,105 @@ describe('InscripcionesService', () => {
       ).rejects.toThrow(
         'Usá PATCH /inscripciones/:id/bonificacion para modificar el monto bonificado',
       );
+    });
+  });
+
+  describe('bonificar', () => {
+    it('otorga la bonificación contra el fondo solidario y guarda el monto en la inscripción', async () => {
+      const inscripcion = {
+        ...mockInscripcion,
+        id: 'inscripcion-uuid',
+        personaId: 'persona-uuid',
+        tipo: TipoInscripcion.GRUPO,
+        ano: 2026,
+        montoTotal: 50000,
+        montoBonificado: 0,
+      };
+      repository.findOne.mockResolvedValue(inscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      await service.bonificar('inscripcion-uuid', 10000);
+
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          personaId: 'persona-uuid',
+          monto: 10000,
+          inscripcionId: 'inscripcion-uuid',
+        }),
+      );
+      expect(bonificacionesService.revertirConManager).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un monto que excede el total', async () => {
+      const inscripcion = {
+        ...mockInscripcion,
+        montoTotal: 50000,
+        montoBonificado: 0,
+      };
+      repository.findOne.mockResolvedValue(inscripcion as Inscripcion);
+
+      await expect(
+        service.bonificar('inscripcion-uuid', 60000),
+      ).rejects.toThrow('El monto bonificado no puede exceder el monto total');
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('al ajustar, revierte la bonificación previa antes de crear la nueva', async () => {
+      const inscripcion = {
+        ...mockInscripcion,
+        id: 'inscripcion-uuid',
+        personaId: 'persona-uuid',
+        montoTotal: 50000,
+        montoBonificado: 10000,
+      };
+      repository.findOne.mockResolvedValue(inscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'egreso-previo',
+          concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+          tipo: TipoMovimiento.EGRESO,
+          responsableId: 'persona-uuid',
+        },
+      ] as never);
+
+      await service.bonificar('inscripcion-uuid', 20000);
+
+      expect(bonificacionesService.revertirConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'egreso-previo',
+      );
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ monto: 20000 }),
+      );
+    });
+
+    it('quitarBonificacion revierte la bonificación existente sin crear una nueva', async () => {
+      const inscripcion = {
+        ...mockInscripcion,
+        id: 'inscripcion-uuid',
+        personaId: 'persona-uuid',
+        montoTotal: 50000,
+        montoBonificado: 10000,
+      };
+      repository.findOne.mockResolvedValue(inscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'egreso-previo',
+          concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+          tipo: TipoMovimiento.EGRESO,
+          responsableId: 'persona-uuid',
+        },
+      ] as never);
+
+      await service.quitarBonificacion('inscripcion-uuid');
+
+      expect(bonificacionesService.revertirConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'egreso-previo',
+      );
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
     });
   });
 

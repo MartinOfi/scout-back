@@ -6,6 +6,7 @@ import { InscripcionesController } from './inscripciones.controller';
 import { PersonasModule } from '../personas/personas.module';
 import { MovimientosModule } from '../movimientos/movimientos.module';
 import { PagosModule } from '../pagos/pagos.module';
+import { BonificacionesModule } from '../bonificaciones/bonificaciones.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { PagosModule } from '../pagos/pagos.module';
     forwardRef(() => PersonasModule),
     forwardRef(() => MovimientosModule),
     forwardRef(() => PagosModule),
+    forwardRef(() => BonificacionesModule),
   ],
   controllers: [InscripcionesController],
   providers: [InscripcionesService],

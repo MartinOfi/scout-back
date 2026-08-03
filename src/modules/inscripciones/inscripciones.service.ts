@@ -23,6 +23,7 @@ import {
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
+import { BonificacionesService } from '../bonificaciones/bonificaciones.service';
 import {
   EstadoInscripcion,
   TipoInscripcion,
@@ -46,6 +47,8 @@ export class InscripcionesService {
     private readonly movimientosService: MovimientosService,
     @Inject(forwardRef(() => PagosService))
     private readonly pagosService: PagosService,
+    @Inject(forwardRef(() => BonificacionesService))
+    private readonly bonificacionesService: BonificacionesService,
     private readonly dataSource: DataSource,
     private readonly deletionValidator: DeletionValidatorService,
   ) {}
@@ -497,6 +500,69 @@ export class InscripcionesService {
 
     await this.inscripcionRepository.save(inscripcion);
     return this.toResponseDto(inscripcion);
+  }
+
+  private async findEgresoBonificacion(
+    inscripcionId: string,
+  ): Promise<string | null> {
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'inscripcion',
+      inscripcionId,
+    );
+    const egreso = movimientos.find(
+      (m) =>
+        m.tipo === TipoMovimiento.EGRESO &&
+        m.concepto === ConceptoMovimiento.BONIFICACION_OTORGADA,
+    );
+    return egreso?.id ?? null;
+  }
+
+  /**
+   * Fija el monto bonificado. Recibe el TOTAL deseado, no un delta: si ya
+   * había una bonificación, se revierte y se crea de nuevo en la misma
+   * transacción — la validación de saldo de otorgarConManager corre
+   * después, así que queda automáticamente sobre el neto (ver
+   * BonificacionesService.otorgarConManager).
+   */
+  async bonificar(
+    id: string,
+    monto: number,
+    registradoPorId?: string,
+  ): Promise<InscripcionResponseDto> {
+    const inscripcion = await this.findOneEntity(id);
+
+    if (monto > Number(inscripcion.montoTotal)) {
+      throw new BadRequestException(
+        'El monto bonificado no puede exceder el monto total',
+      );
+    }
+
+    const egresoPrevioId = await this.findEgresoBonificacion(id);
+
+    await this.dataSource.transaction(async (manager) => {
+      if (egresoPrevioId) {
+        await this.bonificacionesService.revertirConManager(
+          manager,
+          egresoPrevioId,
+        );
+      }
+      if (monto > 0) {
+        await this.bonificacionesService.otorgarConManager(manager, {
+          personaId: inscripcion.personaId,
+          monto,
+          inscripcionId: inscripcion.id,
+          descripcion: `Bonificación inscripción ${inscripcion.tipo} ${inscripcion.ano}`,
+          registradoPorId,
+        });
+      }
+      await manager.update(Inscripcion, id, { montoBonificado: monto });
+    });
+
+    return this.findOne(id);
+  }
+
+  async quitarBonificacion(id: string): Promise<InscripcionResponseDto> {
+    return this.bonificar(id, 0);
   }
 
   async remove(id: string): Promise<void> {
