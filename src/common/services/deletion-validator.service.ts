@@ -35,6 +35,8 @@ const LINKED_PAIR_CONCEPTOS: readonly ConceptoMovimiento[] = [
   ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
   ConceptoMovimiento.USO_SALDO_PERSONAL,
   ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
+  ConceptoMovimiento.BONIFICACION_OTORGADA,
+  ConceptoMovimiento.BONIFICACION_RECIBIDA,
 ] as const;
 
 const INSCRIPCION_CUOTA_CONCEPTOS: readonly ConceptoMovimiento[] = [

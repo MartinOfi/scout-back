@@ -125,6 +125,17 @@ export enum ConceptoMovimiento {
 
   // Uso de saldo personal
   USO_SALDO_PERSONAL = 'uso_saldo_personal', // Egreso desde caja personal para pago
+
+  // Bonificaciones (fondo solidario)
+  /** Egreso del fondo solidario: ayuda otorgada a una persona */
+  BONIFICACION_OTORGADA = 'bonificacion_otorgada',
+  /**
+   * Ingreso a la caja grupo: contraparte de la bonificación otorgada.
+   * Conserva inscripcionId/campamentoId para trazabilidad, pero DEBE
+   * excluirse explícitamente de todo cálculo de "cuánto pagó esta persona"
+   * — si no, cuenta doble contra montoBonificado.
+   */
+  BONIFICACION_RECIBIDA = 'bonificacion_recibida',
 }
 
 /**

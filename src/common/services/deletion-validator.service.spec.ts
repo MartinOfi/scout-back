@@ -312,6 +312,8 @@ describe('DeletionValidatorService', () => {
         ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
         ConceptoMovimiento.USO_SALDO_PERSONAL,
         ConceptoMovimiento.TRANSFERENCIA_SALDO_PERSONAL,
+        ConceptoMovimiento.BONIFICACION_OTORGADA,
+        ConceptoMovimiento.BONIFICACION_RECIBIDA,
       ])(
         'should block for concepto %s when sibling is alive',
         async (concepto) => {
