@@ -239,6 +239,15 @@ export class CajasService {
       }
     }
 
+    if (dto.tipo === CajaType.FONDO_SOLIDARIO) {
+      const existente = await this.cajaRepository.findOne({
+        where: { tipo: CajaType.FONDO_SOLIDARIO },
+      });
+      if (existente) {
+        throw new BadRequestException('Ya existe una caja de fondo solidario');
+      }
+    }
+
     if (dto.tipo === CajaType.PERSONAL && !dto.propietarioId) {
       throw new BadRequestException(
         'Las cajas personales requieren un propietario',

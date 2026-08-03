@@ -448,6 +448,23 @@ describe('CajasService', () => {
         /ya tiene una caja personal/,
       );
     });
+
+    it('rechaza crear una segunda caja de fondo solidario', async () => {
+      const dto = {
+        tipo: CajaType.FONDO_SOLIDARIO,
+        nombre: 'Fondo Solidario',
+      };
+
+      cajaRepository.findOne.mockResolvedValue({
+        id: 'fondo-existente',
+        tipo: CajaType.FONDO_SOLIDARIO,
+      } as Caja);
+
+      await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(dto)).rejects.toThrow(
+        /Ya existe una caja de fondo solidario/,
+      );
+    });
   });
 
   describe('getOrCreateCajaPersonal', () => {
