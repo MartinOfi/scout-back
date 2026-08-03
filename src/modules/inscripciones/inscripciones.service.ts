@@ -81,9 +81,15 @@ export class InscripcionesService {
       concepto: m.concepto,
     }));
 
-    // Calculate montoPagado only from INGRESO movements (money that entered the group)
+    // Calculate montoPagado only from real INGRESO movements — excluye
+    // BONIFICACION_RECIBIDA, que ya se cuenta vía montoBonificado (C1: sin
+    // este filtro se cuenta dos veces y el saldoPendiente colapsa a 0).
     const montoPagado = movimientos
-      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
+      .filter(
+        (m) =>
+          m.tipo === TipoMovimiento.INGRESO &&
+          m.concepto !== ConceptoMovimiento.BONIFICACION_RECIBIDA,
+      )
       .reduce((sum, m) => sum + Number(m.monto), 0);
     const montoTotal = Number(inscripcion.montoTotal);
     const montoBonificado = Number(inscripcion.montoBonificado);
@@ -434,7 +440,11 @@ export class InscripcionesService {
     );
 
     return movimientos
-      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
+      .filter(
+        (m) =>
+          m.tipo === TipoMovimiento.INGRESO &&
+          m.concepto !== ConceptoMovimiento.BONIFICACION_RECIBIDA,
+      )
       .reduce((sum, m) => sum + Number(m.monto), 0);
   }
 
@@ -604,6 +614,9 @@ export class InscripcionesService {
             .where('m."deletedAt" IS NULL')
             .andWhere('m.tipo = :ingreso', { ingreso: 'ingreso' })
             .andWhere('m.inscripcion_id IS NOT NULL')
+            .andWhere('m.concepto != :concepto', {
+              concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+            })
             .groupBy('m.inscripcion_id'),
         'pagos',
         'pagos.inscripcion_id = i.id',

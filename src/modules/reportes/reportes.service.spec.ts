@@ -6,7 +6,13 @@ import { CampamentoParticipante } from '../campamentos/entities/campamento-parti
 import { Movimiento } from '../movimientos/entities/movimiento.entity';
 import { Inscripcion } from '../inscripciones/entities/inscripcion.entity';
 import { Cuota } from '../cuotas/entities/cuota.entity';
-import { PersonaType, TipoInscripcion, Rama } from '../../common/enums';
+import {
+  PersonaType,
+  TipoInscripcion,
+  Rama,
+  TipoMovimiento,
+  ConceptoMovimiento,
+} from '../../common/enums';
 
 /**
  * Datos que devuelve cada repositorio mockeado en una corrida de getDeudas.
@@ -17,15 +23,32 @@ interface SetupData {
   inscripciones?: unknown[];
   participaciones?: unknown[];
   cuotas?: unknown[];
+  movimientos?: unknown[];
 }
 
-/** Query builder encadenable cuyo getMany resuelve un valor fijo. */
+/**
+ * Query builder encadenable. `getMany` resuelve el valor fijo dado, salvo
+ * por un `andWhere('... concepto != :concepto', { concepto })`, que se
+ * simula de verdad filtrando el array — es la única cláusula que estos
+ * tests necesitan verificar de punta a punta (C1: bonificacion_recibida no
+ * cuenta como pago).
+ */
 function makeRepo(getManyValue: unknown[]) {
+  let data = getManyValue;
   const qb = {
     where: jest.fn().mockReturnThis(),
-    andWhere: jest.fn().mockReturnThis(),
+    andWhere: jest
+      .fn()
+      .mockImplementation((clause: string, params?: { concepto?: string }) => {
+        if (clause.includes('concepto !=') && params?.concepto) {
+          data = data.filter(
+            (m) => (m as { concepto?: string }).concepto !== params.concepto,
+          );
+        }
+        return qb;
+      }),
     innerJoinAndSelect: jest.fn().mockReturnThis(),
-    getMany: jest.fn().mockResolvedValue(getManyValue),
+    getMany: jest.fn().mockImplementation(() => Promise.resolve(data)),
   };
   return { createQueryBuilder: jest.fn(() => qb) };
 }
@@ -47,7 +70,10 @@ async function buildService(data: SetupData): Promise<ReportesService> {
         useValue: makeRepo(data.participaciones ?? []),
       },
       // movimientoRepository solo se usa para pagos: vacío => saldo completo.
-      { provide: getRepositoryToken(Movimiento), useValue: makeRepo([]) },
+      {
+        provide: getRepositoryToken(Movimiento),
+        useValue: makeRepo(data.movimientos ?? []),
+      },
       {
         provide: getRepositoryToken(Inscripcion),
         useValue: makeRepo(data.inscripciones ?? []),
@@ -234,5 +260,54 @@ describe('ReportesService', () => {
     expect(result[0].documentacionInscripcion[0].autorizacionDeImagen).toBe(
       false,
     );
+  });
+
+  it('C1: una inscripción bonificada sigue apareciendo en el reporte de deudores si tiene saldo real', async () => {
+    // Inscripción $50.000, bonificación $10.000 (ingreso bonificacion_recibida
+    // en la caja grupo, no un pago real), sin pagos reales.
+    // saldo correcto = 50.000 - 10.000 - 0 = 40.000 > 0 → debe seguir en el reporte.
+    const service = await buildService({
+      protagonistas: [
+        {
+          id: 'p-bonif',
+          nombre: 'Gema',
+          tipo: PersonaType.PROTAGONISTA,
+          rama: Rama.MANADA,
+          dni: true,
+          partidaNacimiento: true,
+          dniPadres: true,
+          carnetObraSocial: true,
+        },
+      ],
+      inscripciones: [
+        {
+          id: 'i-bonif',
+          personaId: 'p-bonif',
+          tipo: TipoInscripcion.GRUPO,
+          ano: 2026,
+          montoTotal: 50000,
+          montoBonificado: 10000,
+          declaracionDeSalud: false,
+          autorizacionDeImagen: false,
+          salidasCercanas: false,
+          autorizacionIngreso: false,
+          certificadoAptitudFisica: false,
+        },
+      ],
+      movimientos: [
+        {
+          inscripcionId: 'i-bonif',
+          monto: 10000,
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        },
+      ],
+    });
+
+    const result = await service.getDeudas({});
+
+    const persona = result.find((d) => d.nombre === 'Gema');
+    expect(persona).toBeDefined();
+    expect(persona!.deudaTotal).toBe(40000);
   });
 });

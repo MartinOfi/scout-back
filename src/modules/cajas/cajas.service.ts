@@ -337,6 +337,7 @@ export class CajasService {
           SELECT inscripcion_id, SUM(monto) AS total_pagado
           FROM movimientos
           WHERE "deletedAt" IS NULL AND tipo = 'ingreso' AND inscripcion_id IS NOT NULL
+            AND concepto != 'bonificacion_recibida'
           GROUP BY inscripcion_id
         ) p ON p.inscripcion_id = i.id
         WHERE i."deletedAt" IS NULL

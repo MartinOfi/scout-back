@@ -15,6 +15,7 @@ import {
   TipoInscripcion,
   EstadoCuota,
   PersonaType,
+  ConceptoMovimiento,
 } from '../../common/enums';
 import { esMayorDeEdad } from '../../common/utils';
 import { DeudaQueryDto } from './dtos/deuda-query.dto';
@@ -179,6 +180,9 @@ export class ReportesService {
       .where('m.inscripcionId IN (:...inscIds)', { inscIds })
       .andWhere('m.tipo = :tipo', { tipo: TipoMovimiento.INGRESO })
       .andWhere('m.deletedAt IS NULL')
+      .andWhere('m.concepto != :concepto', {
+        concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+      })
       .getMany();
   }
 

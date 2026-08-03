@@ -148,6 +148,63 @@ describe('InscripcionesService', () => {
     expect(service).toBeDefined();
   });
 
+  it('C1: bonificar NO se cuenta como pago — saldoPendiente refleja sólo pagos reales', () => {
+    // Inscripción de $50.000, un INGRESO real de $5.000 (concepto inscripcion_grupo)
+    // y un INGRESO de bonificación de $10.000 (concepto bonificacion_recibida).
+    const movimientos = [
+      {
+        id: 'm1',
+        monto: 5000,
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
+        medioPago: MedioPago.EFECTIVO,
+        fecha: new Date(),
+        descripcion: null,
+      },
+      {
+        id: 'm2',
+        monto: 10000,
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        medioPago: MedioPago.EFECTIVO,
+        fecha: new Date(),
+        descripcion: null,
+      },
+    ];
+    const inscripcion = {
+      id: 'inscripcion-id',
+      personaId: 'persona-id',
+      tipo: TipoInscripcion.GRUPO,
+      ano: 2026,
+      montoTotal: 50000,
+      montoBonificado: 10000,
+      declaracionDeSalud: false,
+      autorizacionDeImagen: false,
+      salidasCercanas: false,
+      autorizacionIngreso: false,
+      certificadoAptitudFisica: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      persona: undefined,
+    } as never;
+
+    const dto = (
+      service as unknown as {
+        toResponseDtoWithMovimientos: (
+          i: unknown,
+          m: unknown,
+        ) => { montoPagado: number; saldoPendiente: number };
+      }
+    ).toResponseDtoWithMovimientos(inscripcion, movimientos);
+
+    // Sin el filtro de C1: montoPagado = 5000+10000=15000 (mal, cuenta la
+    // bonificación dos veces: una en montoBonificado y otra en montoPagado).
+    // Corregido: montoPagado excluye BONIFICACION_RECIBIDA → 5000,
+    // saldoPendiente = 50000 - 10000 - 5000 = 35000.
+    expect(dto.montoPagado).toBe(5000);
+    expect(dto.saldoPendiente).toBe(35000);
+  });
+
   describe('findAll', () => {
     it('should return all inscriptions with calculated fields', async () => {
       const inscripciones = [mockInscripcion as Inscripcion];
@@ -608,6 +665,21 @@ describe('InscripcionesService', () => {
 
       expect(result).toBe(0);
     });
+
+    it('C1: excludes BONIFICACION_RECIBIDA from the sum', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 5000 },
+        {
+          tipo: TipoMovimiento.INGRESO,
+          monto: 10000,
+          concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        },
+      ] as any);
+
+      const result = await service.getMontoPagado('inscripcion-uuid');
+
+      expect(result).toBe(5000);
+    });
   });
 
   describe('getEstado', () => {
@@ -1056,15 +1128,28 @@ describe('InscripcionesService', () => {
     const buildQueryBuilderMock = (
       rawResult: { total: string | null; cantidad: string } | null,
     ) => {
+      const subQb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+      };
       const qb = {
         select: jest.fn().mockReturnThis(),
         addSelect: jest.fn().mockReturnThis(),
-        leftJoin: jest.fn().mockReturnThis(),
+        leftJoin: jest
+          .fn()
+          .mockImplementation((cb: (subQb: unknown) => unknown) => {
+            cb(subQb);
+            return qb;
+          }),
         where: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue(rawResult),
       };
       repository.createQueryBuilder.mockReturnValue(qb as any);
-      return qb;
+      return { qb, subQb };
     };
 
     it('should return total and cantidad from a single aggregation query', async () => {
@@ -1099,6 +1184,19 @@ describe('InscripcionesService', () => {
 
       expect(movimientosService.findByRelatedEntity).not.toHaveBeenCalled();
       expect(repository.find).not.toHaveBeenCalled();
+    });
+
+    it('C1: excluye bonificacion_recibida de la subquery de pagos', async () => {
+      const { subQb } = buildQueryBuilderMock({ total: '0', cantidad: '0' });
+
+      await service.getTotalDeudaInscripciones();
+
+      expect(subQb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('concepto'),
+        expect.objectContaining({
+          concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        }),
+      );
     });
   });
 });

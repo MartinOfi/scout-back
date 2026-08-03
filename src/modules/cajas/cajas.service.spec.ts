@@ -659,6 +659,27 @@ describe('CajasService', () => {
       expect(dataSource.query).toHaveBeenCalledTimes(1);
     });
 
+    it('C1: la subquery de pagos del CTE deuda_inscr excluye bonificacion_recibida', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [],
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+        },
+      ]);
+
+      await service.getConsolidadoSaldos();
+
+      const sql = (dataSource.query as jest.Mock).mock.calls[0][0] as string;
+      const deudaInscrBlock = sql.slice(
+        sql.indexOf('deuda_inscr AS'),
+        sql.indexOf('deuda_cuotas AS'),
+      );
+      expect(deudaInscrBlock).toContain("concepto != 'bonificacion_recibida'");
+    });
+
     it('should handle empty cajas gracefully', async () => {
       dataSource.query.mockResolvedValue([
         {
