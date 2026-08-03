@@ -39,16 +39,6 @@ export class CreateInscripcionDto {
   @IsPositive()
   montoTotal!: number;
 
-  @ApiPropertyOptional({
-    example: 5000.0,
-    minimum: 0,
-    description: 'Monto bonificado (default: 0)',
-  })
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @IsOptional()
-  montoBonificado?: number;
-
   // =========================================================================
   // Documentación y autorizaciones
   // =========================================================================

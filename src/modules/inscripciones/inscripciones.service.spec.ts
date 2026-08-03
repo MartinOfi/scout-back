@@ -430,22 +430,7 @@ describe('InscripcionesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw if montoBonificado exceeds montoTotal', async () => {
-      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne.mockResolvedValue(null);
-
-      await expect(
-        service.registrarInscripcion({
-          personaId: 'persona-uuid',
-          tipo: TipoInscripcion.GRUPO,
-          ano: 2026,
-          montoTotal: 10000,
-          montoBonificado: 15000,
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should set montoBonificado to 0 when not provided', async () => {
+    it('siempre crea con montoBonificado 0, ignorando cualquier valor en el dto (ya no forma parte de CreateInscripcionDto)', async () => {
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
       repository.findOne.mockResolvedValueOnce(null);
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
@@ -468,7 +453,8 @@ describe('InscripcionesService', () => {
         tipo: TipoInscripcion.GRUPO,
         ano: 2026,
         montoTotal: 10000,
-      });
+        montoBonificado: 999,
+      } as never);
 
       expect(capturedCreateData).toEqual(
         expect.objectContaining({ montoBonificado: 0 }),
@@ -695,34 +681,21 @@ describe('InscripcionesService', () => {
       expect(result.estado).toBe(EstadoInscripcion.PENDIENTE);
     });
 
-    it('should update montoBonificado on any inscription type', async () => {
+    it('rechaza montoBonificado en el update — hay que usar PATCH /inscripciones/:id/bonificacion', async () => {
       const existingInscripcion = {
         ...mockInscripcion,
         tipo: TipoInscripcion.GRUPO,
         montoTotal: 10000,
       };
       repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
-      repository.save.mockResolvedValue({
-        ...existingInscripcion,
-        montoBonificado: 5000,
-      } as Inscripcion);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
-
-      const result = await service.update('inscripcion-uuid', {
-        montoBonificado: 5000,
-      });
-
-      expect(result.montoBonificado).toBe(5000);
-      expect(result.saldoPendiente).toBe(5000); // 10000 - 5000 bonificado
-    });
-
-    it('should throw if montoBonificado exceeds montoTotal', async () => {
-      const existingInscripcion = { ...mockInscripcion, montoTotal: 10000 };
-      repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
 
       await expect(
-        service.update('inscripcion-uuid', { montoBonificado: 15000 }),
-      ).rejects.toThrow(BadRequestException);
+        service.update('inscripcion-uuid', {
+          montoBonificado: 5000,
+        } as never),
+      ).rejects.toThrow(
+        'Usá PATCH /inscripciones/:id/bonificacion para modificar el monto bonificado',
+      );
     });
 
     it('should throw NotFoundException if inscription not found', async () => {
@@ -768,24 +741,19 @@ describe('InscripcionesService', () => {
       expect(result.declaracionDeSalud).toBe(true);
     });
 
-    it('should allow updating montoBonificado on GRUPO inscription', async () => {
+    it('rechaza montoBonificado en el update incluso en inscripciones GRUPO', async () => {
       const grupoInscripcion = {
         ...mockInscripcion,
         tipo: TipoInscripcion.GRUPO,
         montoTotal: 10000,
       };
       repository.findOne.mockResolvedValue(grupoInscripcion as Inscripcion);
-      repository.save.mockResolvedValue({
-        ...grupoInscripcion,
-        montoBonificado: 3000,
-      } as Inscripcion);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
-      const result = await service.update('inscripcion-uuid', {
-        montoBonificado: 3000,
-      });
-
-      expect(result.montoBonificado).toBe(3000);
+      await expect(
+        service.update('inscripcion-uuid', { montoBonificado: 3000 } as never),
+      ).rejects.toThrow(
+        'Usá PATCH /inscripciones/:id/bonificacion para modificar el monto bonificado',
+      );
     });
   });
 

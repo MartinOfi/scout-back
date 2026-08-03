@@ -360,13 +360,6 @@ export class InscripcionesService {
       );
     }
 
-    const montoBonificado = dto.montoBonificado ?? 0;
-    if (montoBonificado > dto.montoTotal) {
-      throw new BadRequestException(
-        'El monto bonificado no puede exceder el monto total',
-      );
-    }
-
     const montoPagado = dto.montoPagado ?? 0;
     const montoConSaldoPersonal = dto.montoConSaldoPersonal ?? 0;
     const montoTotalPago = montoPagado + montoConSaldoPersonal;
@@ -381,7 +374,7 @@ export class InscripcionesService {
         tipo: dto.tipo,
         ano: dto.ano,
         montoTotal: dto.montoTotal,
-        montoBonificado,
+        montoBonificado: 0,
         // Autorizaciones: solo se guardan para SCOUT_ARGENTINA, siempre false para GRUPO
         declaracionDeSalud: esScoutArgentina
           ? (dto.declaracionDeSalud ?? false)
@@ -461,13 +454,9 @@ export class InscripcionesService {
   ): Promise<InscripcionResponseDto> {
     const inscripcion = await this.findOneEntity(id);
 
-    // Validar que montoBonificado no exceda montoTotal si se actualiza
-    if (
-      dto.montoBonificado !== undefined &&
-      dto.montoBonificado > Number(inscripcion.montoTotal)
-    ) {
+    if ('montoBonificado' in dto) {
       throw new BadRequestException(
-        'El monto bonificado no puede exceder el monto total',
+        'Usá PATCH /inscripciones/:id/bonificacion para modificar el monto bonificado',
       );
     }
 
@@ -488,9 +477,6 @@ export class InscripcionesService {
     }
 
     // Actualizar solo los campos proporcionados
-    if (dto.montoBonificado !== undefined) {
-      inscripcion.montoBonificado = dto.montoBonificado;
-    }
     if (esScoutArgentina) {
       if (dto.declaracionDeSalud !== undefined) {
         inscripcion.declaracionDeSalud = dto.declaracionDeSalud;
