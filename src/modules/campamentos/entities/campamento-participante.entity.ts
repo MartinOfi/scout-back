@@ -23,4 +23,19 @@ export class CampamentoParticipante extends BaseEntity {
 
   @Column({ name: 'autorizacion_entregada', default: false })
   autorizacionEntregada!: boolean;
+
+  /**
+   * Monto que este participante debe pagar. Snapshot copiado al agregarlo:
+   * costoEducadores si es educador, costoPorPersona si no. Deliberadamente
+   * un snapshot: editar el costo del campamento después no reescribe esto.
+   */
+  @Column('decimal', { precision: 10, scale: 2 })
+  montoAsignado!: number;
+
+  /**
+   * Monto cubierto por el fondo solidario. Se modifica sólo vía
+   * BonificacionesService, nunca directo.
+   */
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
+  montoBonificado!: number;
 }
