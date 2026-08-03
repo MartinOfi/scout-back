@@ -64,6 +64,11 @@ export enum CajaType {
   RAMA_CAMINANTES = 'rama_caminantes',
   RAMA_ROVERS = 'rama_rovers',
   PERSONAL = 'personal',
+  /**
+   * Caja que financia las bonificaciones. Su plata NO es parte de la caja
+   * grupo: sólo entra a la caja grupo en el momento de otorgar una bonificación.
+   */
+  FONDO_SOLIDARIO = 'fondo_solidario',
 }
 
 /**
