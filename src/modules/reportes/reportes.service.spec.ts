@@ -45,6 +45,11 @@ function makeRepo(getManyValue: unknown[]) {
             (m) => (m as { concepto?: string }).concepto !== params.concepto,
           );
         }
+        if (clause.includes('concepto =') && params?.concepto) {
+          data = data.filter(
+            (m) => (m as { concepto?: string }).concepto === params.concepto,
+          );
+        }
         return qb;
       }),
     innerJoinAndSelect: jest.fn().mockReturnThis(),
@@ -309,5 +314,124 @@ describe('ReportesService', () => {
     const persona = result.find((d) => d.nombre === 'Gema');
     expect(persona).toBeDefined();
     expect(persona!.deudaTotal).toBe(40000);
+  });
+
+  it('un educador exento (montoAsignado 0) no aparece en la deuda de campamentos', async () => {
+    // El campamento en sí cuesta 50000 por persona, pero este participante
+    // es un educador exento: su propio montoAsignado (snapshot) es 0. Con la
+    // fórmula vieja (costoPorPersona uniforme del campamento) aparecería
+    // debiendo 50000 — exactamente lo opuesto de EXENTO.
+    const service = await buildService({
+      educadores: [
+        {
+          id: 'edu-exento',
+          nombre: 'Rosa',
+          tipo: PersonaType.EDUCADOR,
+          rama: null,
+        },
+      ],
+      participaciones: [
+        {
+          campamentoId: 'camp-1',
+          personaId: 'edu-exento',
+          autorizacionEntregada: true,
+          montoAsignado: 0,
+          montoBonificado: 0,
+          campamento: {
+            nombre: 'Campamento Verano',
+            fechaInicio: new Date('2026-01-15'),
+            costoPorPersona: 50000,
+          },
+        },
+      ],
+    });
+
+    const result = await service.getDeudas({});
+
+    expect(result.some((d) => d.personaId === 'edu-exento')).toBe(false);
+  });
+
+  it('un educador bonificado no aparece si la bonificación cubre todo el monto asignado', async () => {
+    const service = await buildService({
+      educadores: [
+        {
+          id: 'edu-bonif-total',
+          nombre: 'Tito',
+          tipo: PersonaType.EDUCADOR,
+          rama: null,
+        },
+      ],
+      participaciones: [
+        {
+          campamentoId: 'camp-1',
+          personaId: 'edu-bonif-total',
+          autorizacionEntregada: true,
+          montoAsignado: 10000,
+          montoBonificado: 10000,
+          campamento: {
+            nombre: 'Campamento Verano',
+            fechaInicio: new Date('2026-01-15'),
+            costoPorPersona: 50000,
+          },
+        },
+      ],
+    });
+
+    const result = await service.getDeudas({});
+
+    expect(result.some((d) => d.personaId === 'edu-bonif-total')).toBe(false);
+  });
+
+  it('la bonificación recibida no cuenta como pago real de campamento (mismo bug que C1)', async () => {
+    const service = await buildService({
+      protagonistas: [
+        {
+          id: 'p-camp-bonif',
+          nombre: 'Nico',
+          tipo: PersonaType.PROTAGONISTA,
+          rama: Rama.UNIDAD,
+          dni: true,
+          partidaNacimiento: true,
+          dniPadres: true,
+          carnetObraSocial: true,
+        },
+      ],
+      participaciones: [
+        {
+          campamentoId: 'camp-1',
+          personaId: 'p-camp-bonif',
+          autorizacionEntregada: true,
+          montoAsignado: 50000,
+          montoBonificado: 0,
+          campamento: {
+            nombre: 'Campamento Verano',
+            fechaInicio: new Date('2026-01-15'),
+          },
+        },
+      ],
+      movimientos: [
+        {
+          campamentoId: 'camp-1',
+          responsableId: 'p-camp-bonif',
+          monto: 10000,
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+        },
+        {
+          campamentoId: 'camp-1',
+          responsableId: 'p-camp-bonif',
+          monto: 10000,
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        },
+      ],
+    });
+
+    const result = await service.getDeudas({});
+
+    const persona = result.find((d) => d.personaId === 'p-camp-bonif');
+    expect(persona).toBeDefined();
+    expect(persona!.campamentos[0].montoPagado).toBe(10000);
+    expect(persona!.campamentos[0].saldo).toBe(40000);
   });
 });

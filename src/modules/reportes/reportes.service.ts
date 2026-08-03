@@ -150,6 +150,9 @@ export class ReportesService {
       .andWhere('m.responsableId IN (:...personaIds)', { personaIds })
       .andWhere('m.tipo = :tipo', { tipo: TipoMovimiento.INGRESO })
       .andWhere('m.deletedAt IS NULL')
+      .andWhere('m.concepto = :concepto', {
+        concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+      })
       .getMany();
   }
 
@@ -296,8 +299,9 @@ export class ReportesService {
           )
           .reduce((sum, m) => sum + Number(m.monto), 0);
 
-        const montoTotal = Number(cp.campamento.costoPorPersona);
-        const saldo = montoTotal - montoPagado;
+        const montoTotal = Number(cp.montoAsignado);
+        const montoBonificado = Number(cp.montoBonificado);
+        const saldo = Math.max(0, montoTotal - montoBonificado - montoPagado);
 
         return {
           campamentoId: cp.campamentoId,
