@@ -375,6 +375,12 @@ export class ExportsService {
       { header: 'Campamento', key: 'campamentoNombre' },
       { header: 'Persona ID', key: 'personaId' },
       { header: 'Persona', key: 'personaNombre' },
+      { header: 'Monto asignado', key: 'montoAsignado', type: 'currency' },
+      {
+        header: 'Monto bonificado',
+        key: 'montoBonificado',
+        type: 'currency',
+      },
     ];
 
     const rows: Record<string, unknown>[] = [];
@@ -386,6 +392,8 @@ export class ExportsService {
           campamentoNombre: camp.nombre,
           personaId: junction.personaId,
           personaNombre: junction.persona?.nombre ?? '',
+          montoAsignado: Number(junction.montoAsignado),
+          montoBonificado: Number(junction.montoBonificado),
         });
       }
     }
