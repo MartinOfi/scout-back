@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
@@ -40,11 +45,19 @@ export class BonificacionesService {
     manager: EntityManager,
     params: OtorgarBonificacionParams,
   ): Promise<ResultadoBonificacionDto> {
-    const { personaId, monto, campamentoId, inscripcionId, descripcion, registradoPorId } =
-      params;
+    const {
+      personaId,
+      monto,
+      campamentoId,
+      inscripcionId,
+      descripcion,
+      registradoPorId,
+    } = params;
 
     if (monto <= 0) {
-      throw new BadRequestException('El monto de la bonificación debe ser mayor a cero');
+      throw new BadRequestException(
+        'El monto de la bonificación debe ser mayor a cero',
+      );
     }
 
     const cajaFondo = await this.cajasService.findCajaFondoSolidario();
@@ -120,8 +133,12 @@ export class BonificacionesService {
       registradoPorId,
     );
 
-    await manager.update(Movimiento, egreso.id, { movimientoRelacionadoId: ingreso.id });
-    await manager.update(Movimiento, ingreso.id, { movimientoRelacionadoId: egreso.id });
+    await manager.update(Movimiento, egreso.id, {
+      movimientoRelacionadoId: ingreso.id,
+    });
+    await manager.update(Movimiento, ingreso.id, {
+      movimientoRelacionadoId: egreso.id,
+    });
 
     return {
       movimientoEgresoId: egreso.id,
@@ -129,5 +146,40 @@ export class BonificacionesService {
       monto,
       saldoFondoRestante: saldoDisponible - monto,
     };
+  }
+
+  /**
+   * Revierte una bonificación: borra (soft) el egreso del fondo y su
+   * contraparte en la caja grupo, vía MovimientosService.softRemoveWithManager
+   * (idempotente, pensado para transacciones externas — ver Task 2.1).
+   *
+   * Nunca puede fallar por saldo: devolver plata al fondo siempre es seguro.
+   */
+  async revertirConManager(
+    manager: EntityManager,
+    movimientoEgresoId: string,
+  ): Promise<void> {
+    const egreso = await manager.findOne(Movimiento, {
+      where: { id: movimientoEgresoId },
+    });
+
+    if (!egreso) {
+      throw new BadRequestException(
+        'No se encontró la bonificación a revertir',
+      );
+    }
+    if (egreso.concepto !== ConceptoMovimiento.BONIFICACION_OTORGADA) {
+      throw new BadRequestException(
+        'El movimiento no es una bonificación otorgada',
+      );
+    }
+
+    await this.movimientosService.softRemoveWithManager(manager, egreso.id);
+    if (egreso.movimientoRelacionadoId) {
+      await this.movimientosService.softRemoveWithManager(
+        manager,
+        egreso.movimientoRelacionadoId,
+      );
+    }
   }
 }
