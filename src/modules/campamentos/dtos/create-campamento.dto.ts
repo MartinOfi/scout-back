@@ -42,6 +42,17 @@ export class CreateCampamentoDto {
   costoPorPersona!: number;
 
   @ApiPropertyOptional({
+    example: 0,
+    minimum: 0,
+    default: 0,
+    description: 'Aporte esperado de educadores. 0 = quedan exentos.',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  costoEducadores?: number;
+
+  @ApiPropertyOptional({
     example: 3,
     minimum: 1,
     default: 1,

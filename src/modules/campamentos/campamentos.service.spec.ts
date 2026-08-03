@@ -270,6 +270,25 @@ describe('CampamentosService', () => {
       expect(campamentoRepository.create).toHaveBeenCalledWith(dto);
       expect(result).toBeDefined();
     });
+
+    it('crea un campamento con costoEducadores en 0 por defecto', async () => {
+      campamentoRepository.create.mockImplementation(
+        (dto) => ({ ...dto, costoEducadores: 0 }) as Campamento,
+      );
+      campamentoRepository.save.mockImplementation((c) =>
+        Promise.resolve(c as Campamento),
+      );
+
+      const result = await service.create({
+        nombre: 'Campamento de verano',
+        fechaInicio: new Date('2026-01-10'),
+        fechaFin: new Date('2026-01-15'),
+        costoPorPersona: 50000,
+        cuotasBase: 3,
+      });
+
+      expect(result.costoEducadores).toBe(0);
+    });
   });
 
   describe('addParticipante', () => {

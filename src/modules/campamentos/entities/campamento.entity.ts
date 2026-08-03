@@ -29,6 +29,17 @@ export class Campamento extends BaseEntity {
   costoPorPersona!: number;
 
   /**
+   * Aporte esperado de los educadores. Default 0: los educadores quedan
+   * exentos y no se les registran pagos ni bonificaciones.
+   *
+   * Si se pone > 0, cada educador que no aporte consume ese monto completo
+   * del fondo solidario al bonificarlo. Dejarlo en 0 salvo que se espere
+   * cobrarles.
+   */
+  @Column('decimal', { precision: 10, scale: 2, default: 0 })
+  costoEducadores!: number;
+
+  /**
    * Suggested number of installments (informative only, not restrictive)
    */
   @Column({ default: 1 })
