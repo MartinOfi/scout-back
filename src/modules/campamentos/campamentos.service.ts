@@ -19,6 +19,7 @@ import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
 import { ResultadoPagoDto } from '../pagos/dtos/resultado-pago.dto';
+import { BonificacionesService } from '../bonificaciones/bonificaciones.service';
 import {
   TipoMovimiento,
   ConceptoMovimiento,
@@ -54,6 +55,8 @@ export class CampamentosService {
     private readonly movimientosService: MovimientosService,
     @Inject(forwardRef(() => PagosService))
     private readonly pagosService: PagosService,
+    @Inject(forwardRef(() => BonificacionesService))
+    private readonly bonificacionesService: BonificacionesService,
     private readonly dataSource: DataSource,
     private readonly deletionValidator: DeletionValidatorService,
   ) {}
@@ -156,6 +159,90 @@ export class CampamentosService {
     await this.campamentoParticipanteRepository.softDelete(junction.id);
 
     return this.findOne(id);
+  }
+
+  private async findEgresoBonificacionParticipante(
+    campamentoId: string,
+    personaId: string,
+  ): Promise<string | null> {
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'campamento',
+      campamentoId,
+    );
+    const egreso = movimientos.find(
+      (m) =>
+        m.tipo === TipoMovimiento.EGRESO &&
+        m.concepto === ConceptoMovimiento.BONIFICACION_OTORGADA &&
+        m.responsableId === personaId,
+    );
+    return egreso?.id ?? null;
+  }
+
+  /**
+   * Fija el monto bonificado de un participante contra el fondo solidario.
+   * `monto` es el total deseado (no un delta): ajustar de $5.000 a $6.000
+   * revierte la bonificación anterior y otorga una nueva por el total.
+   */
+  async bonificarParticipante(
+    campamentoId: string,
+    personaId: string,
+    monto: number,
+    registradoPorId?: string,
+  ): Promise<void> {
+    const junction = await this.campamentoParticipanteRepository.findOne({
+      where: { campamentoId, personaId, deletedAt: IsNull() },
+    });
+    if (!junction) {
+      throw new NotFoundException(
+        'El participante no está inscrito en el campamento',
+      );
+    }
+
+    const montoAsignado = Number(junction.montoAsignado);
+    if (montoAsignado === 0) {
+      throw new BadRequestException(
+        'No se puede bonificar a un participante exento',
+      );
+    }
+    if (monto > montoAsignado) {
+      throw new BadRequestException(
+        'El monto bonificado no puede exceder el monto asignado',
+      );
+    }
+
+    const campamento = await this.findOne(campamentoId);
+    const egresoPrevioId = await this.findEgresoBonificacionParticipante(
+      campamentoId,
+      personaId,
+    );
+
+    await this.dataSource.transaction(async (manager) => {
+      if (egresoPrevioId) {
+        await this.bonificacionesService.revertirConManager(
+          manager,
+          egresoPrevioId,
+        );
+      }
+      if (monto > 0) {
+        await this.bonificacionesService.otorgarConManager(manager, {
+          personaId,
+          monto,
+          campamentoId,
+          descripcion: `Bonificación campamento "${campamento.nombre}"`,
+          registradoPorId,
+        });
+      }
+      await manager.update(CampamentoParticipante, junction.id, {
+        montoBonificado: monto,
+      });
+    });
+  }
+
+  async quitarBonificacionParticipante(
+    campamentoId: string,
+    personaId: string,
+  ): Promise<void> {
+    return this.bonificarParticipante(campamentoId, personaId, 0);
   }
 
   async updateParticipanteAutorizacion(

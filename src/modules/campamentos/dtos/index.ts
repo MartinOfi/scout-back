@@ -5,3 +5,4 @@ export * from './campamento-detalle.dto';
 export * from './campamento-detalle-query.dto';
 export * from './pagar-campamento.dto';
 export * from './update-participante-autorizacion.dto';
+export * from './bonificar-participante.dto';

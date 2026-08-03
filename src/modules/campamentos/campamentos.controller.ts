@@ -23,6 +23,7 @@ import { UpdateCampamentoDto } from './dtos/update-campamento.dto';
 import { AddParticipanteDto } from './dtos/add-participante.dto';
 import { PagarCampamentoDto } from './dtos/pagar-campamento.dto';
 import { UpdateParticipanteAutorizacionDto } from './dtos/update-participante-autorizacion.dto';
+import { BonificarParticipanteDto } from './dtos/bonificar-participante.dto';
 import { MedioPago, EstadoPago } from '../../common/enums';
 import { CampamentoDetalleDto } from './dtos/campamento-detalle.dto';
 import { CampamentoDetalleQueryDto } from './dtos/campamento-detalle-query.dto';
@@ -176,6 +177,51 @@ export class CampamentosController {
       id,
       personaId,
       dto,
+    );
+  }
+
+  @Patch(':id/participantes/:personaId/bonificacion')
+  @ApiOperation({
+    summary: 'Fijar el monto bonificado de un participante',
+    description:
+      'Financia la bonificación contra la caja de fondo solidario. Recibe el monto total deseado (no un delta).',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiParam({ name: 'personaId', type: String, format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'Bonificación otorgada' })
+  @ApiResponse({ status: 404, description: 'Participante no encontrado' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Monto excede el asignado, participante exento, o el fondo solidario no tiene saldo suficiente',
+  })
+  async bonificarParticipante(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('personaId', ParseUUIDPipe) personaId: string,
+    @Body() dto: BonificarParticipanteDto,
+    @CurrentUser('id') userId: string,
+  ): Promise<void> {
+    return this.campamentosService.bonificarParticipante(
+      id,
+      personaId,
+      dto.monto,
+      userId,
+    );
+  }
+
+  @Delete(':id/participantes/:personaId/bonificacion')
+  @ApiOperation({ summary: 'Quitar la bonificación de un participante' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiParam({ name: 'personaId', type: String, format: 'uuid' })
+  @ApiResponse({ status: 200, description: 'Bonificación revertida' })
+  @ApiResponse({ status: 404, description: 'Participante no encontrado' })
+  async quitarBonificacionParticipante(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('personaId', ParseUUIDPipe) personaId: string,
+  ): Promise<void> {
+    return this.campamentosService.quitarBonificacionParticipante(
+      id,
+      personaId,
     );
   }
 

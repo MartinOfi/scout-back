@@ -177,6 +177,36 @@ describe('DeletionValidatorService', () => {
     });
   });
 
+  describe('canRemoveParticipanteCampamento', () => {
+    it('should return canDelete=true when participante has no movements', async () => {
+      movimientoRepository.count.mockResolvedValue(0);
+
+      const result = await service.canRemoveParticipanteCampamento(
+        'campamento-uuid',
+        'persona-uuid',
+      );
+
+      expect(result.canDelete).toBe(true);
+      expect(movimientoRepository.count).toHaveBeenCalledWith({
+        where: {
+          campamentoId: 'campamento-uuid',
+          responsableId: 'persona-uuid',
+        },
+      });
+    });
+
+    it('bloquea la baja si el participante tiene una bonificación activa (el chequeo genérico por campamentoId+responsableId ya la cuenta)', async () => {
+      movimientoRepository.count.mockResolvedValue(1);
+
+      const result = await service.canRemoveParticipanteCampamento(
+        'campamento-uuid',
+        'persona-uuid',
+      );
+
+      expect(result.canDelete).toBe(false);
+    });
+  });
+
   describe('canDeleteEvento', () => {
     it('should return canDelete=true when evento has no external movements', async () => {
       mockQueryBuilder.getCount.mockResolvedValue(0);

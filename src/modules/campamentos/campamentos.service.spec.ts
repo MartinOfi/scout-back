@@ -9,6 +9,7 @@ import { PersonasService } from '../personas/personas.service';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
+import { BonificacionesService } from '../bonificaciones/bonificaciones.service';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import {
   MedioPago,
@@ -38,6 +39,7 @@ describe('CampamentosService', () => {
   let cajasService: jest.Mocked<CajasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
   let pagosService: jest.Mocked<PagosService>;
+  let bonificacionesService: jest.Mocked<BonificacionesService>;
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
 
   const mockPersona: Partial<Persona> = {
@@ -107,6 +109,16 @@ describe('CampamentosService', () => {
       canDeleteCampamento: jest.fn().mockResolvedValue({ canDelete: true }),
     };
 
+    const mockBonificacionesService = {
+      otorgarConManager: jest.fn().mockResolvedValue({
+        movimientoEgresoId: 'egreso-bonif-uuid',
+        movimientoIngresoId: 'ingreso-bonif-uuid',
+        monto: 0,
+        saldoFondoRestante: 0,
+      }),
+      revertirConManager: jest.fn().mockResolvedValue(undefined),
+    };
+
     const mockPagosService = {
       ejecutarPagoConManager: jest.fn().mockResolvedValue({
         movimientoIngreso: {
@@ -124,6 +136,7 @@ describe('CampamentosService', () => {
 
     const mockManager = {
       softDelete: jest.fn().mockResolvedValue({ affected: 1 }),
+      update: jest.fn().mockResolvedValue(undefined),
     };
 
     const mockDataSource = {
@@ -158,6 +171,10 @@ describe('CampamentosService', () => {
           useValue: mockPagosService,
         },
         {
+          provide: BonificacionesService,
+          useValue: mockBonificacionesService,
+        },
+        {
           provide: DataSource,
           useValue: mockDataSource,
         },
@@ -177,6 +194,7 @@ describe('CampamentosService', () => {
     cajasService = module.get(CajasService);
     movimientosService = module.get(MovimientosService);
     pagosService = module.get(PagosService);
+    bonificacionesService = module.get(BonificacionesService);
     deletionValidator = module.get(DeletionValidatorService);
   });
 
@@ -484,6 +502,127 @@ describe('CampamentosService', () => {
       await expect(
         service.removeParticipante('campamento-uuid', 'persona-uuid'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('bonificarParticipante', () => {
+    const participanteBonificable: Partial<CampamentoParticipante> = {
+      id: 'cp-uuid',
+      campamentoId: 'campamento-uuid',
+      personaId: 'educador-uuid',
+      montoAsignado: 10000,
+      montoBonificado: 0,
+    };
+
+    beforeEach(() => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue(
+        participanteBonificable as CampamentoParticipante,
+      );
+      campamentoRepository.findOne.mockResolvedValue({
+        ...mockCampamento,
+        participantes: [],
+      } as Campamento);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+    });
+
+    it('otorga la bonificación y guarda el monto', async () => {
+      await service.bonificarParticipante(
+        'campamento-uuid',
+        'educador-uuid',
+        5000,
+      );
+
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          personaId: 'educador-uuid',
+          monto: 5000,
+          campamentoId: 'campamento-uuid',
+        }),
+      );
+    });
+
+    it('rechaza bonificar más que el monto asignado', async () => {
+      await expect(
+        service.bonificarParticipante(
+          'campamento-uuid',
+          'educador-uuid',
+          15000,
+        ),
+      ).rejects.toThrow(
+        'El monto bonificado no puede exceder el monto asignado',
+      );
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('rechaza bonificar a un participante exento', async () => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue({
+        ...participanteBonificable,
+        montoAsignado: 0,
+      } as CampamentoParticipante);
+
+      await expect(
+        service.bonificarParticipante('campamento-uuid', 'educador-uuid', 1000),
+      ).rejects.toThrow('No se puede bonificar a un participante exento');
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si el participante no está en el campamento', async () => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.bonificarParticipante('campamento-uuid', 'otro-id', 1000),
+      ).rejects.toThrow('El participante no está inscrito en el campamento');
+    });
+
+    it('al ajustar revierte la bonificación previa antes de otorgar la nueva', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'egreso-previo-uuid',
+          tipo: TipoMovimiento.EGRESO,
+          concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+          responsableId: 'educador-uuid',
+        },
+      ] as any);
+
+      await service.bonificarParticipante(
+        'campamento-uuid',
+        'educador-uuid',
+        8000,
+      );
+
+      expect(bonificacionesService.revertirConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'egreso-previo-uuid',
+      );
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ monto: 8000 }),
+      );
+    });
+
+    it('quitarBonificacionParticipante revierte sin otorgar una nueva', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'egreso-previo-uuid',
+          tipo: TipoMovimiento.EGRESO,
+          concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+          responsableId: 'educador-uuid',
+        },
+      ] as any);
+
+      await service.quitarBonificacionParticipante(
+        'campamento-uuid',
+        'educador-uuid',
+      );
+
+      expect(bonificacionesService.revertirConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'egreso-previo-uuid',
+      );
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
     });
   });
 
