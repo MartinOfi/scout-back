@@ -360,6 +360,13 @@ export class CajasService {
           GROUP BY responsable_id, campamento_id
         ) pagos ON pagos.responsable_id = cp.persona_id AND pagos.campamento_id = c.id
         WHERE c."deletedAt" IS NULL
+      ),
+      bonif_otorgadas AS (
+        SELECT COALESCE(SUM(monto), 0) AS total
+        FROM movimientos
+        WHERE "deletedAt" IS NULL
+          AND tipo = 'egreso'
+          AND concepto = 'bonificacion_otorgada'
       )
       SELECT
         (SELECT json_agg(row_to_json(t)) FROM (
@@ -370,7 +377,8 @@ export class CajasService {
         (SELECT row_to_json(r) FROM reembolsos r) AS reembolsos,
         (SELECT row_to_json(d) FROM deuda_inscr d) AS deuda_inscripciones,
         (SELECT row_to_json(d) FROM deuda_cuotas d) AS deuda_cuotas,
-        (SELECT row_to_json(d) FROM deuda_camp d) AS deuda_campamentos
+        (SELECT row_to_json(d) FROM deuda_camp d) AS deuda_campamentos,
+        (SELECT row_to_json(b) FROM bonif_otorgadas b) AS bonificaciones_otorgadas
     `);
 
     // Parse the aggregated result
@@ -387,9 +395,14 @@ export class CajasService {
     };
     const deudaCuotas = raw.deuda_cuotas ?? { total: 0, cantidad: 0 };
     const deudaCampamentos = raw.deuda_campamentos ?? { total: 0, cantidad: 0 };
+    const bonificacionesOtorgadas = raw.bonificaciones_otorgadas ?? {
+      total: 0,
+    };
 
     // Classify cajas by type
     const cajaGrupo = cajas.find((c) => c.tipo === CajaType.GRUPO) ?? null;
+    const cajaFondoSolidario =
+      cajas.find((c) => c.tipo === CajaType.FONDO_SOLIDARIO) ?? null;
     const ramaTipos = new Set([
       CajaType.RAMA_MANADA,
       CajaType.RAMA_UNIDAD,
@@ -400,6 +413,7 @@ export class CajasService {
     const cajasPersonales = cajas.filter((c) => c.tipo === CajaType.PERSONAL);
 
     const saldoGrupo = Number(cajaGrupo?.saldo ?? 0);
+    const saldoFondoSolidario = Number(cajaFondoSolidario?.saldo ?? 0);
     const saldosRama = cajasRama.map((caja) => ({
       tipo: caja.tipo,
       id: caja.id,
@@ -416,8 +430,12 @@ export class CajasService {
       Number(deudaCuotas.total) +
       Number(deudaCampamentos.total);
 
-    const totalGeneral = saldoGrupo + totalRamas + totalPersonales;
-    const totalDisponible = totalGeneral - totalReembolsos;
+    // El fondo solidario suma al total general (es plata que el grupo
+    // tiene) pero se excluye del disponible: sólo se libera al bonificar.
+    const totalGeneral =
+      saldoGrupo + totalRamas + totalPersonales + saldoFondoSolidario;
+    const totalDisponible =
+      totalGeneral - totalReembolsos - saldoFondoSolidario;
 
     return {
       fecha: new Date().toISOString(),
@@ -437,6 +455,11 @@ export class CajasService {
       cuentasPersonales: {
         total: totalPersonales,
         cantidad: cajasPersonales.length,
+      },
+      fondoSolidario: {
+        id: cajaFondoSolidario?.id ?? null,
+        saldo: saldoFondoSolidario,
+        bonificacionesOtorgadas: Number(bonificacionesOtorgadas.total),
       },
       reembolsosPendientes: {
         total: totalReembolsos,

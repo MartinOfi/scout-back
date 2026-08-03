@@ -705,5 +705,67 @@ describe('CajasService', () => {
 
       expect(result.fondosRama.detalle[0].nombre).toBe('Fondo Manada');
     });
+
+    it('reporta el fondo aparte, suma a totalGeneral y lo excluye de totalDisponible', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [
+            {
+              id: 'grupo-id',
+              tipo: CajaType.GRUPO,
+              nombre: null,
+              saldo: 50000,
+            },
+            {
+              id: 'fondo-id',
+              tipo: CajaType.FONDO_SOLIDARIO,
+              nombre: 'Fondo Solidario',
+              saldo: 500000,
+            },
+          ],
+          reembolsos: { total: 20000, cantidad: 1 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+          bonificaciones_otorgadas: { total: 80000 },
+        },
+      ]);
+
+      const result = await service.getConsolidadoSaldos();
+
+      expect(result.fondoSolidario.id).toBe('fondo-id');
+      expect(result.fondoSolidario.saldo).toBe(500000);
+      expect(result.fondoSolidario.bonificacionesOtorgadas).toBe(80000);
+      expect(result.resumen.totalGeneral).toBe(550000);
+      expect(result.resumen.totalDisponible).toBe(30000);
+    });
+
+    it('devuelve fondoSolidario con id null y saldo 0 cuando la caja no fue creada', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [
+            {
+              id: 'grupo-id',
+              tipo: CajaType.GRUPO,
+              nombre: null,
+              saldo: 50000,
+            },
+          ],
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+          bonificaciones_otorgadas: { total: 0 },
+        },
+      ]);
+
+      const result = await service.getConsolidadoSaldos();
+
+      expect(result.fondoSolidario.id).toBeNull();
+      expect(result.fondoSolidario.saldo).toBe(0);
+      expect(result.fondoSolidario.bonificacionesOtorgadas).toBe(0);
+      expect(result.resumen.totalGeneral).toBe(50000);
+      expect(result.resumen.totalDisponible).toBe(50000);
+    });
   });
 });
