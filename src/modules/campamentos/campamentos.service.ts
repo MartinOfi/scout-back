@@ -531,6 +531,7 @@ export class CampamentosService {
         fechaInicio: campamento.fechaInicio,
         fechaFin: campamento.fechaFin,
         costoPorPersona,
+        costoEducadores: Number(campamento.costoEducadores),
         cuotasBase: campamento.cuotasBase,
         descripcion: campamento.descripcion,
       },

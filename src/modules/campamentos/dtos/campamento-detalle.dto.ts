@@ -28,6 +28,13 @@ export class CampamentoInfoDto {
   @ApiProperty({ type: Number, example: 25000 })
   costoPorPersona!: number;
 
+  @ApiProperty({
+    type: Number,
+    example: 0,
+    description: 'Aporte esperado de educadores. 0 = quedan exentos.',
+  })
+  costoEducadores!: number;
+
   @ApiProperty({ example: 3 })
   cuotasBase!: number;
 

@@ -64,6 +64,7 @@ describe('CampamentosService', () => {
     fechaInicio: new Date('2024-01-15'),
     fechaFin: new Date('2024-01-20'),
     costoPorPersona: 15000,
+    costoEducadores: 0,
     participantes: [],
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -965,6 +966,17 @@ describe('CampamentosService', () => {
       const result = await service.getDetalle('campamento-uuid');
 
       expect(result.movimientos).toHaveLength(3);
+    });
+
+    it('incluye costoEducadores en el DTO de campamento', async () => {
+      campamentoRepository.findOne.mockResolvedValue({
+        ...campamentoConParticipante,
+        costoEducadores: 10000,
+      } as Campamento);
+
+      const result = await service.getDetalle('campamento-uuid');
+
+      expect(result.campamento.costoEducadores).toBe(10000);
     });
 
     it('should return all movements when filtro is TODOS', async () => {
