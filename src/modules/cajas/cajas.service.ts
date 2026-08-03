@@ -8,8 +8,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Caja } from './entities/caja.entity';
-import { CreateCajaDto, ConsolidadoSaldosDto, CajaResponseDto } from './dtos';
-import { CajaType, PersonaType } from '../../common/enums';
+import {
+  CreateCajaDto,
+  ConsolidadoSaldosDto,
+  CajaResponseDto,
+  BonificacionHistorialDto,
+} from './dtos';
+import { CajaType, PersonaType, ConceptoMovimiento } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 
@@ -133,6 +138,75 @@ export class CajasService {
 
     const saldo = await this.movimientosService.calcularSaldo(caja.id);
     return this.mapCajaToResponse(caja, saldo);
+  }
+
+  /**
+   * Devuelve la caja de fondo solidario con su saldo, o null si todavía no
+   * fue creada. A diferencia de findCajaGrupo, no lanza NotFoundException:
+   * el fondo es opcional y el sistema funciona sin él.
+   */
+  async findCajaFondoSolidario(): Promise<CajaResponseDto | null> {
+    const caja = await this.cajaRepository.findOne({
+      where: { tipo: CajaType.FONDO_SOLIDARIO },
+    });
+
+    if (!caja) {
+      return null;
+    }
+
+    const saldo = await this.movimientosService.calcularSaldo(caja.id);
+    return this.mapCajaToResponse(caja, saldo);
+  }
+
+  /**
+   * Historial de bonificaciones otorgadas por el fondo solidario, más
+   * recientes primero. Lee los egresos con concepto BONIFICACION_OTORGADA
+   * sobre la caja del fondo.
+   */
+  async getHistorialBonificaciones(): Promise<BonificacionHistorialDto[]> {
+    const cajaFondo = await this.cajaRepository.findOne({
+      where: { tipo: CajaType.FONDO_SOLIDARIO },
+    });
+    if (!cajaFondo) {
+      return [];
+    }
+
+    const movimientos = await this.movimientosService.findByCajaAndConcepto(
+      cajaFondo.id,
+      ConceptoMovimiento.BONIFICACION_OTORGADA,
+    );
+
+    const campamentoIds = [
+      ...new Set(
+        movimientos
+          .map((m) => m.campamentoId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const nombresCampamentos = campamentoIds.length
+      ? await this.getNombresCampamentos(campamentoIds)
+      : new Map<string, string>();
+
+    return movimientos.map((m) => ({
+      movimientoId: m.id,
+      fecha: m.fecha,
+      monto: Number(m.monto),
+      personaId: m.responsableId,
+      personaNombre: m.responsable?.nombre ?? 'Desconocido',
+      destino: m.campamentoId
+        ? `Campamento "${nombresCampamentos.get(m.campamentoId) ?? m.campamentoId}"`
+        : `Inscripción ${m.inscripcionId ?? ''}`.trim(),
+    }));
+  }
+
+  private async getNombresCampamentos(
+    ids: string[],
+  ): Promise<Map<string, string>> {
+    const rows: { id: string; nombre: string }[] = await this.dataSource.query(
+      `SELECT id, nombre FROM campamentos WHERE id = ANY($1)`,
+      [ids],
+    );
+    return new Map(rows.map((r) => [r.id, r.nombre]));
   }
 
   async findCajaPersonal(propietarioId: string): Promise<Caja | null> {

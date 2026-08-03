@@ -16,7 +16,12 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { CajasService } from './cajas.service';
-import { CreateCajaDto, ConsolidadoSaldosDto, CajaResponseDto } from './dtos';
+import {
+  CreateCajaDto,
+  ConsolidadoSaldosDto,
+  CajaResponseDto,
+  BonificacionHistorialDto,
+} from './dtos';
 import { CajaType } from '../../common/enums';
 
 @ApiTags('Cajas')
@@ -89,6 +94,28 @@ export class CajasController {
   ): Promise<{ saldo: number }> {
     const saldo = await this.cajasService.getSaldoCuentaPersonal(personaId);
     return { saldo };
+  }
+
+  @Get('fondo-solidario')
+  @ApiOperation({
+    summary: 'Obtener la caja de fondo solidario, su saldo e historial',
+    description:
+      'caja es null si todavía no fue creada. Su saldo NO es parte de la caja grupo.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Caja de fondo solidario (o null) con historial de bonificaciones',
+  })
+  async findFondoSolidario(): Promise<{
+    caja: CajaResponseDto | null;
+    historial: BonificacionHistorialDto[];
+  }> {
+    const [caja, historial] = await Promise.all([
+      this.cajasService.findCajaFondoSolidario(),
+      this.cajasService.getHistorialBonificaciones(),
+    ]);
+    return { caja, historial };
   }
 
   @Get(':id')
