@@ -9,6 +9,7 @@ import { PersonasService } from '../personas/personas.service';
 import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
+import { BonificacionesService } from '../bonificaciones/bonificaciones.service';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import {
   MedioPago,
@@ -18,9 +19,15 @@ import {
   ConceptoMovimiento,
   EstadoPagoCampamento,
   FiltroMovimientosCampamento,
+  PersonaType,
 } from '../../common/enums';
 import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
+import { Movimiento } from '../movimientos/entities/movimiento.entity';
+import {
+  ParticipantePagoDto,
+  CampamentoKpisDto,
+} from './dtos/campamento-detalle.dto';
 
 describe('CampamentosService', () => {
   let service: CampamentosService;
@@ -32,6 +39,7 @@ describe('CampamentosService', () => {
   let cajasService: jest.Mocked<CajasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
   let pagosService: jest.Mocked<PagosService>;
+  let bonificacionesService: jest.Mocked<BonificacionesService>;
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
 
   const mockPersona: Partial<Persona> = {
@@ -45,6 +53,8 @@ describe('CampamentosService', () => {
     personaId: 'persona-uuid',
     autorizacionEntregada: false,
     persona: mockPersona as Persona,
+    montoAsignado: 15000,
+    montoBonificado: 0,
     deletedAt: null,
   };
 
@@ -54,6 +64,7 @@ describe('CampamentosService', () => {
     fechaInicio: new Date('2024-01-15'),
     fechaFin: new Date('2024-01-20'),
     costoPorPersona: 15000,
+    costoEducadores: 0,
     participantes: [],
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -97,6 +108,19 @@ describe('CampamentosService', () => {
 
     const mockDeletionValidator = {
       canDeleteCampamento: jest.fn().mockResolvedValue({ canDelete: true }),
+      canRemoveParticipanteCampamento: jest
+        .fn()
+        .mockResolvedValue({ canDelete: true }),
+    };
+
+    const mockBonificacionesService = {
+      otorgarConManager: jest.fn().mockResolvedValue({
+        movimientoEgresoId: 'egreso-bonif-uuid',
+        movimientoIngresoId: 'ingreso-bonif-uuid',
+        monto: 0,
+        saldoFondoRestante: 0,
+      }),
+      revertirConManager: jest.fn().mockResolvedValue(undefined),
     };
 
     const mockPagosService = {
@@ -116,6 +140,7 @@ describe('CampamentosService', () => {
 
     const mockManager = {
       softDelete: jest.fn().mockResolvedValue({ affected: 1 }),
+      update: jest.fn().mockResolvedValue(undefined),
     };
 
     const mockDataSource = {
@@ -150,6 +175,10 @@ describe('CampamentosService', () => {
           useValue: mockPagosService,
         },
         {
+          provide: BonificacionesService,
+          useValue: mockBonificacionesService,
+        },
+        {
           provide: DataSource,
           useValue: mockDataSource,
         },
@@ -169,6 +198,7 @@ describe('CampamentosService', () => {
     cajasService = module.get(CajasService);
     movimientosService = module.get(MovimientosService);
     pagosService = module.get(PagosService);
+    bonificacionesService = module.get(BonificacionesService);
     deletionValidator = module.get(DeletionValidatorService);
   });
 
@@ -270,6 +300,43 @@ describe('CampamentosService', () => {
       expect(campamentoRepository.create).toHaveBeenCalledWith(dto);
       expect(result).toBeDefined();
     });
+
+    it('crea un campamento con costoEducadores en 0 por defecto', async () => {
+      campamentoRepository.create.mockImplementation(
+        (dto) => ({ ...dto, costoEducadores: 0 }) as Campamento,
+      );
+      campamentoRepository.save.mockImplementation((c) =>
+        Promise.resolve(c as Campamento),
+      );
+
+      const result = await service.create({
+        nombre: 'Campamento de verano',
+        fechaInicio: new Date('2026-01-10'),
+        fechaFin: new Date('2026-01-15'),
+        costoPorPersona: 50000,
+        cuotasBase: 3,
+      });
+
+      expect(result.costoEducadores).toBe(0);
+    });
+  });
+
+  describe('update', () => {
+    it('permite actualizar costoEducadores', async () => {
+      campamentoRepository.findOne.mockResolvedValue({
+        ...mockCampamento,
+        costoEducadores: 0,
+      } as Campamento);
+      campamentoRepository.save.mockImplementation((c) =>
+        Promise.resolve(c as Campamento),
+      );
+
+      const result = await service.update('campamento-uuid', {
+        costoEducadores: 10000,
+      });
+
+      expect(result.costoEducadores).toBe(10000);
+    });
   });
 
   describe('addParticipante', () => {
@@ -325,6 +392,90 @@ describe('CampamentosService', () => {
     });
   });
 
+  describe('addParticipante — monto asignado', () => {
+    const campamentoConCostos = {
+      id: 'campamento-id',
+      costoPorPersona: 50000,
+      costoEducadores: 10000,
+      participantes: [],
+    } as unknown as Campamento;
+
+    beforeEach(() => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(campamentoConCostos);
+      campamentoParticipanteRepository.findOne.mockResolvedValue(null);
+      campamentoParticipanteRepository.create.mockImplementation(
+        (cp) => cp as CampamentoParticipante,
+      );
+      campamentoParticipanteRepository.save.mockImplementation((cp) =>
+        Promise.resolve(cp as CampamentoParticipante),
+      );
+    });
+
+    it('asigna costoPorPersona a un protagonista', async () => {
+      personasService.findOne.mockResolvedValue({
+        id: 'persona-id',
+        tipo: PersonaType.PROTAGONISTA,
+      } as never);
+
+      await service.addParticipante('campamento-id', {
+        personaId: 'persona-id',
+      });
+
+      const created = (campamentoParticipanteRepository.create as jest.Mock)
+        .mock.calls[0][0];
+      expect(created.montoAsignado).toBe(50000);
+      expect(created.montoBonificado).toBe(0);
+    });
+
+    it('asigna costoEducadores a un educador', async () => {
+      personasService.findOne.mockResolvedValue({
+        id: 'educador-id',
+        tipo: PersonaType.EDUCADOR,
+      } as never);
+
+      await service.addParticipante('campamento-id', {
+        personaId: 'educador-id',
+      });
+
+      const created = (campamentoParticipanteRepository.create as jest.Mock)
+        .mock.calls[0][0];
+      expect(created.montoAsignado).toBe(10000);
+    });
+  });
+
+  describe('determineEstadoPago', () => {
+    const determinar = (
+      pagado: number,
+      asignado: number,
+      bonificado = 0,
+    ): EstadoPagoCampamento =>
+      (
+        service as unknown as {
+          determineEstadoPago: (
+            p: number,
+            a: number,
+            b: number,
+          ) => EstadoPagoCampamento;
+        }
+      ).determineEstadoPago(pagado, asignado, bonificado);
+
+    it('EXENTO cuando el monto asignado es 0', () => {
+      expect(determinar(0, 0)).toBe(EstadoPagoCampamento.EXENTO);
+    });
+    it('PAGADO cuando la bonificación cubre todo', () => {
+      expect(determinar(0, 10000, 10000)).toBe(EstadoPagoCampamento.PAGADO);
+    });
+    it('PAGADO cuando pago y bonificación suman el total', () => {
+      expect(determinar(5000, 10000, 5000)).toBe(EstadoPagoCampamento.PAGADO);
+    });
+    it('PARCIAL cuando sólo hay bonificación parcial', () => {
+      expect(determinar(0, 10000, 5000)).toBe(EstadoPagoCampamento.PARCIAL);
+    });
+    it('PENDIENTE sin pagos ni bonificación', () => {
+      expect(determinar(0, 50000)).toBe(EstadoPagoCampamento.PENDIENTE);
+    });
+  });
+
   describe('removeParticipante', () => {
     it('should soft-delete the junction record and return updated campamento', async () => {
       campamentoParticipanteRepository.findOne.mockResolvedValue(
@@ -355,6 +506,176 @@ describe('CampamentosService', () => {
       await expect(
         service.removeParticipante('campamento-uuid', 'persona-uuid'),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('bonificarParticipante', () => {
+    const participanteBonificable: Partial<CampamentoParticipante> = {
+      id: 'cp-uuid',
+      campamentoId: 'campamento-uuid',
+      personaId: 'educador-uuid',
+      montoAsignado: 10000,
+      montoBonificado: 0,
+    };
+
+    beforeEach(() => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue(
+        participanteBonificable as CampamentoParticipante,
+      );
+      campamentoRepository.findOne.mockResolvedValue({
+        ...mockCampamento,
+        participantes: [],
+      } as Campamento);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+    });
+
+    it('otorga la bonificación y guarda el monto', async () => {
+      await service.bonificarParticipante(
+        'campamento-uuid',
+        'educador-uuid',
+        5000,
+      );
+
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          personaId: 'educador-uuid',
+          monto: 5000,
+          campamentoId: 'campamento-uuid',
+        }),
+      );
+    });
+
+    it('rechaza bonificar más que el monto asignado', async () => {
+      await expect(
+        service.bonificarParticipante(
+          'campamento-uuid',
+          'educador-uuid',
+          15000,
+        ),
+      ).rejects.toThrow(
+        'El monto bonificado no puede exceder el saldo pendiente ($10000)',
+      );
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('rechaza bonificar más que el saldo pendiente cuando ya hay un pago parcial', async () => {
+      // $10.000 asignados, $2.000 ya pagados en efectivo: sólo quedan $8.000
+      // bonificables. Bonificar $10.000 dejaría un "pagado" de $12.000/$10.000.
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'pago-uuid',
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+          responsableId: 'educador-uuid',
+          monto: 2000,
+        },
+      ] as any);
+
+      await expect(
+        service.bonificarParticipante(
+          'campamento-uuid',
+          'educador-uuid',
+          10000,
+        ),
+      ).rejects.toThrow(
+        'El monto bonificado no puede exceder el saldo pendiente ($8000)',
+      );
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('permite bonificar exactamente el saldo pendiente cuando ya hay un pago parcial', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'pago-uuid',
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+          responsableId: 'educador-uuid',
+          monto: 2000,
+        },
+      ] as any);
+
+      await service.bonificarParticipante(
+        'campamento-uuid',
+        'educador-uuid',
+        8000,
+      );
+
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ monto: 8000 }),
+      );
+    });
+
+    it('rechaza bonificar a un participante exento', async () => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue({
+        ...participanteBonificable,
+        montoAsignado: 0,
+      } as CampamentoParticipante);
+
+      await expect(
+        service.bonificarParticipante('campamento-uuid', 'educador-uuid', 1000),
+      ).rejects.toThrow('No se puede bonificar a un participante exento');
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('rechaza si el participante no está en el campamento', async () => {
+      campamentoParticipanteRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.bonificarParticipante('campamento-uuid', 'otro-id', 1000),
+      ).rejects.toThrow('El participante no está inscrito en el campamento');
+    });
+
+    it('al ajustar revierte la bonificación previa antes de otorgar la nueva', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'egreso-previo-uuid',
+          tipo: TipoMovimiento.EGRESO,
+          concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+          responsableId: 'educador-uuid',
+        },
+      ] as any);
+
+      await service.bonificarParticipante(
+        'campamento-uuid',
+        'educador-uuid',
+        8000,
+      );
+
+      expect(bonificacionesService.revertirConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'egreso-previo-uuid',
+      );
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ monto: 8000 }),
+      );
+    });
+
+    it('quitarBonificacionParticipante revierte sin otorgar una nueva', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'egreso-previo-uuid',
+          tipo: TipoMovimiento.EGRESO,
+          concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+          responsableId: 'educador-uuid',
+        },
+      ] as any);
+
+      await service.quitarBonificacionParticipante(
+        'campamento-uuid',
+        'educador-uuid',
+      );
+
+      expect(bonificacionesService.revertirConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'egreso-previo-uuid',
+      );
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
     });
   });
 
@@ -521,6 +842,8 @@ describe('CampamentosService', () => {
             id: 'cp-uuid-2',
             personaId: 'persona2',
             persona: { nombre: 'Maria' },
+            montoAsignado: 15000,
+            montoBonificado: 0,
           } as CampamentoParticipante,
         ],
       };
@@ -532,11 +855,36 @@ describe('CampamentosService', () => {
       const result = await service.getResumenFinanciero('campamento-uuid');
 
       expect(result.participantes).toBe(2);
-      expect(result.totalEsperado).toBe(30000); // 2 * 15000
+      expect(result.totalEsperado).toBe(30000); // 15000 + 15000
       expect(result.totalRecaudado).toBe(0);
       expect(result.totalGastado).toBe(0);
       expect(result.totalPendienteReembolso).toBe(0);
       expect(result.saldo).toBe(0);
+    });
+
+    it('totalEsperado suma montoAsignado por participante, no un costo uniforme', async () => {
+      const campamentoConEducador = {
+        ...mockCampamento,
+        participantes: [
+          mockCampamentoParticipante as CampamentoParticipante, // montoAsignado: 15000
+          {
+            id: 'cp-uuid-educador',
+            personaId: 'educador-uuid',
+            persona: { nombre: 'Rosa Educadora' },
+            montoAsignado: 0, // educador exento
+            montoBonificado: 0,
+          } as CampamentoParticipante,
+        ],
+      };
+      campamentoRepository.findOne.mockResolvedValue(
+        campamentoConEducador as Campamento,
+      );
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      const result = await service.getResumenFinanciero('campamento-uuid');
+
+      // Si usara costoPorPersona uniforme (15000) * 2 participantes daría 30000
+      expect(result.totalEsperado).toBe(15000);
     });
   });
 
@@ -553,6 +901,57 @@ describe('CampamentosService', () => {
         relations: ['participantes', 'participantes.persona'],
         order: { fechaInicio: 'DESC' },
       });
+    });
+  });
+
+  describe('calculateKpis', () => {
+    it('calcula KPIs con exentos y bonificados', () => {
+      const participantes: ParticipantePagoDto[] = [
+        {
+          montoAsignado: 50000,
+          montoBonificado: 0,
+          totalPagado: 50000,
+          saldoPendiente: 0,
+          estadoPago: EstadoPagoCampamento.PAGADO,
+        } as ParticipantePagoDto,
+        {
+          montoAsignado: 50000,
+          montoBonificado: 0,
+          totalPagado: 0,
+          saldoPendiente: 50000,
+          estadoPago: EstadoPagoCampamento.PENDIENTE,
+        } as ParticipantePagoDto,
+        {
+          montoAsignado: 0,
+          montoBonificado: 0,
+          totalPagado: 0,
+          saldoPendiente: 0,
+          estadoPago: EstadoPagoCampamento.EXENTO,
+        } as ParticipantePagoDto,
+        {
+          montoAsignado: 10000,
+          montoBonificado: 5000,
+          totalPagado: 5000,
+          saldoPendiente: 0,
+          estadoPago: EstadoPagoCampamento.PAGADO,
+        } as ParticipantePagoDto,
+      ];
+
+      const kpis = (
+        service as unknown as {
+          calculateKpis: (
+            p: ParticipantePagoDto[],
+            m: Movimiento[],
+          ) => CampamentoKpisDto;
+        }
+      ).calculateKpis(participantes, []);
+
+      expect(kpis.totalARecaudar).toBe(110000);
+      expect(kpis.totalBonificado).toBe(5000);
+      expect(kpis.participantesExentos).toBe(1);
+      expect(kpis.participantesPagadosCompleto).toBe(2);
+      expect(kpis.participantesPendientes).toBe(1);
+      expect(kpis.deudaTotal).toBe(50000);
     });
   });
 
@@ -619,6 +1018,17 @@ describe('CampamentosService', () => {
       const result = await service.getDetalle('campamento-uuid');
 
       expect(result.movimientos).toHaveLength(3);
+    });
+
+    it('incluye costoEducadores en el DTO de campamento', async () => {
+      campamentoRepository.findOne.mockResolvedValue({
+        ...campamentoConParticipante,
+        costoEducadores: 10000,
+      } as Campamento);
+
+      const result = await service.getDetalle('campamento-uuid');
+
+      expect(result.campamento.costoEducadores).toBe(10000);
     });
 
     it('should return all movements when filtro is TODOS', async () => {
@@ -769,6 +1179,183 @@ describe('CampamentosService', () => {
 
       expect(result.participantes[0].autorizacionEntregada).toBe(false);
     });
+
+    it('expone montoAsignado y montoBonificado en vez de costoPorPersona uniforme', async () => {
+      const result = await service.getDetalle('campamento-uuid');
+
+      const participante = result.participantes[0];
+      expect(participante.montoAsignado).toBe(15000);
+      expect(participante.montoBonificado).toBe(0);
+      expect(
+        (participante as unknown as { costoPorPersona?: number })
+          .costoPorPersona,
+      ).toBeUndefined();
+    });
+
+    it('descuenta montoBonificado del saldoPendiente y del estadoPago', async () => {
+      const campamentoConBonificado = {
+        ...campamentoConParticipante,
+        participantes: [
+          {
+            ...mockCampamentoParticipante,
+            montoAsignado: 15000,
+            montoBonificado: 3000,
+          } as CampamentoParticipante,
+        ],
+      };
+      campamentoRepository.findOne.mockResolvedValue(
+        campamentoConBonificado as Campamento,
+      );
+
+      const result = await service.getDetalle('campamento-uuid');
+
+      const participante = result.participantes[0];
+      // totalPagado 10000 + montoBonificado 3000 = 13000 cubierto de 15000
+      expect(participante.saldoPendiente).toBe(2000);
+      expect(participante.estadoPago).toBe(EstadoPagoCampamento.PARCIAL);
+    });
+
+    it('incluye los movimientos de bonificación en participante.pagos, con concepto, sin sumarlos a totalPagado', async () => {
+      const mockMovimientoBonificacionOtorgada = {
+        id: 'mov-bon-otorgada-uuid',
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+        monto: 3000,
+        medioPago: MedioPago.EFECTIVO,
+        estadoPago: EstadoPago.PAGADO,
+        responsableId: 'persona-uuid',
+        responsable: { nombre: 'Juan Scout' },
+        fecha: new Date('2026-01-11'),
+        descripcion: 'Bonificación campamento',
+      };
+      const mockMovimientoBonificacionRecibida = {
+        id: 'mov-bon-recibida-uuid',
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        monto: 3000,
+        medioPago: MedioPago.EFECTIVO,
+        estadoPago: EstadoPago.PAGADO,
+        responsableId: 'persona-uuid',
+        responsable: { nombre: 'Juan Scout' },
+        fecha: new Date('2026-01-11'),
+        descripcion: 'Bonificación campamento',
+      };
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockMovimientoPago,
+        mockMovimientoUseSaldo,
+        mockMovimientoGasto,
+        mockMovimientoBonificacionOtorgada,
+        mockMovimientoBonificacionRecibida,
+      ] as any);
+
+      const result = await service.getDetalle('campamento-uuid');
+
+      const participante = result.participantes[0];
+      // totalPagado sigue reflejando sólo el pago real: bonificar no cuenta
+      // como pago (mismo criterio que en inscripciones).
+      expect(participante.totalPagado).toBe(10000);
+      expect(participante.pagos).toHaveLength(3);
+      const conceptos = participante.pagos.map((p) => p.concepto);
+      expect(conceptos).toContain(ConceptoMovimiento.CAMPAMENTO_PAGO);
+      expect(conceptos).toContain(ConceptoMovimiento.BONIFICACION_OTORGADA);
+      expect(conceptos).toContain(ConceptoMovimiento.BONIFICACION_RECIBIDA);
+    });
+
+    it('un educador con montoAsignado 0 aparece EXENTO con saldoPendiente 0', async () => {
+      const campamentoConEducadorExento = {
+        ...campamentoConParticipante,
+        participantes: [
+          {
+            id: 'cp-educador-uuid',
+            campamentoId: 'campamento-uuid',
+            personaId: 'educador-uuid',
+            autorizacionEntregada: false,
+            persona: { nombre: 'Rosa Educadora' },
+            montoAsignado: 0,
+            montoBonificado: 0,
+            deletedAt: null,
+          } as unknown as CampamentoParticipante,
+        ],
+      };
+      campamentoRepository.findOne.mockResolvedValue(
+        campamentoConEducadorExento as Campamento,
+      );
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      const result = await service.getDetalle('campamento-uuid');
+
+      const participante = result.participantes[0];
+      expect(participante.estadoPago).toBe(EstadoPagoCampamento.EXENTO);
+      expect(participante.saldoPendiente).toBe(0);
+    });
+  });
+
+  describe('getPagosPorParticipante', () => {
+    const mockMovimientoPago = {
+      id: 'mov-pago-uuid',
+      tipo: TipoMovimiento.INGRESO,
+      concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+      monto: 10000,
+      medioPago: MedioPago.EFECTIVO,
+      responsableId: 'persona-uuid',
+      fecha: new Date('2026-01-10'),
+    };
+
+    it('usa montoAsignado y montoBonificado por participante, no un costoPorPersona uniforme', async () => {
+      const campamentoConDosParticipantes = {
+        ...mockCampamento,
+        participantes: [
+          mockCampamentoParticipante as CampamentoParticipante, // montoAsignado 15000
+          {
+            id: 'cp-educador-uuid',
+            personaId: 'educador-uuid',
+            persona: { nombre: 'Rosa Educadora' },
+            montoAsignado: 0,
+            montoBonificado: 0,
+          } as CampamentoParticipante,
+        ],
+      };
+      campamentoRepository.findOne.mockResolvedValue(
+        campamentoConDosParticipantes as Campamento,
+      );
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockMovimientoPago,
+      ] as any);
+
+      const result = await service.getPagosPorParticipante('campamento-uuid');
+
+      const protagonista = result.find(
+        (p) => p.participanteId === 'persona-uuid',
+      );
+      const educador = result.find((p) => p.participanteId === 'educador-uuid');
+
+      expect(protagonista?.saldoPendiente).toBe(5000); // 15000 - 10000
+      expect(educador?.saldoPendiente).toBe(0); // 0 - 0
+    });
+
+    it('resta montoBonificado del saldoPendiente', async () => {
+      const campamentoConBonificado = {
+        ...mockCampamento,
+        participantes: [
+          {
+            ...mockCampamentoParticipante,
+            montoAsignado: 15000,
+            montoBonificado: 5000,
+          } as CampamentoParticipante,
+        ],
+      };
+      campamentoRepository.findOne.mockResolvedValue(
+        campamentoConBonificado as Campamento,
+      );
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockMovimientoPago,
+      ] as any);
+
+      const result = await service.getPagosPorParticipante('campamento-uuid');
+
+      // 15000 - 10000 (pagado) - 5000 (bonificado) = 0
+      expect(result[0].saldoPendiente).toBe(0);
+    });
   });
 
   describe('eliminarPagoCampamento', () => {
@@ -879,6 +1466,7 @@ describe('CampamentosService', () => {
         innerJoin: jest.fn().mockReturnThis(),
         leftJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue(rawResult),
       };
       campamentoRepository.createQueryBuilder.mockReturnValue(qb as any);
@@ -917,6 +1505,25 @@ describe('CampamentosService', () => {
 
       expect(movimientosService.findByRelatedEntity).not.toHaveBeenCalled();
       expect(campamentoRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('excluye participantes soft-deleted del cálculo de deuda', async () => {
+      const qb = buildQueryBuilderMock({ total: '5000', cantidad: '1' });
+
+      await service.getTotalDeudaCampamentos();
+
+      expect(qb.andWhere).toHaveBeenCalledWith('cp."deletedAt" IS NULL');
+    });
+
+    it('usa montoAsignado y montoBonificado por participante, no costoPorPersona uniforme', async () => {
+      const qb = buildQueryBuilderMock({ total: '5000', cantidad: '1' });
+
+      await service.getTotalDeudaCampamentos();
+
+      const selectSql = qb.select.mock.calls[0][0] as string;
+      expect(selectSql).toContain('cp."montoAsignado"');
+      expect(selectSql).toContain('cp."montoBonificado"');
+      expect(selectSql).not.toContain('c."costoPorPersona"');
     });
   });
 });

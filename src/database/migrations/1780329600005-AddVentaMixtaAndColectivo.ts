@@ -31,7 +31,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Those must be resolved before migrating, otherwise the back-fill would leave
  * NULLs behind and SET NOT NULL would fail with a far less obvious error.
  */
-export class AddVentaMixtaAndColectivo1780329600001 implements MigrationInterface {
+export class AddVentaMixtaAndColectivo1780329600005 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       DO $$

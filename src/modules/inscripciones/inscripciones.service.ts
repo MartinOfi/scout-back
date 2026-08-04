@@ -23,6 +23,7 @@ import {
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
+import { BonificacionesService } from '../bonificaciones/bonificaciones.service';
 import {
   EstadoInscripcion,
   TipoInscripcion,
@@ -46,6 +47,8 @@ export class InscripcionesService {
     private readonly movimientosService: MovimientosService,
     @Inject(forwardRef(() => PagosService))
     private readonly pagosService: PagosService,
+    @Inject(forwardRef(() => BonificacionesService))
+    private readonly bonificacionesService: BonificacionesService,
     private readonly dataSource: DataSource,
     private readonly deletionValidator: DeletionValidatorService,
   ) {}
@@ -78,9 +81,15 @@ export class InscripcionesService {
       concepto: m.concepto,
     }));
 
-    // Calculate montoPagado only from INGRESO movements (money that entered the group)
+    // Calculate montoPagado only from real INGRESO movements — excluye
+    // BONIFICACION_RECIBIDA, que ya se cuenta vía montoBonificado (C1: sin
+    // este filtro se cuenta dos veces y el saldoPendiente colapsa a 0).
     const montoPagado = movimientos
-      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
+      .filter(
+        (m) =>
+          m.tipo === TipoMovimiento.INGRESO &&
+          m.concepto !== ConceptoMovimiento.BONIFICACION_RECIBIDA,
+      )
       .reduce((sum, m) => sum + Number(m.monto), 0);
     const montoTotal = Number(inscripcion.montoTotal);
     const montoBonificado = Number(inscripcion.montoBonificado);
@@ -360,16 +369,16 @@ export class InscripcionesService {
       );
     }
 
-    const montoBonificado = dto.montoBonificado ?? 0;
-    if (montoBonificado > dto.montoTotal) {
-      throw new BadRequestException(
-        'El monto bonificado no puede exceder el monto total',
-      );
-    }
-
     const montoPagado = dto.montoPagado ?? 0;
     const montoConSaldoPersonal = dto.montoConSaldoPersonal ?? 0;
     const montoTotalPago = montoPagado + montoConSaldoPersonal;
+    const montoBonificado = dto.montoBonificado ?? 0;
+
+    if (montoTotalPago + montoBonificado > dto.montoTotal) {
+      throw new BadRequestException(
+        'La suma de los pagos y la bonificación no puede superar el monto total',
+      );
+    }
 
     // Campos de autorización solo aplican a SCOUT_ARGENTINA
     const esScoutArgentina = dto.tipo === TipoInscripcion.SCOUT_ARGENTINA;
@@ -381,7 +390,7 @@ export class InscripcionesService {
         tipo: dto.tipo,
         ano: dto.ano,
         montoTotal: dto.montoTotal,
-        montoBonificado,
+        montoBonificado: 0,
         // Autorizaciones: solo se guardan para SCOUT_ARGENTINA, siempre false para GRUPO
         declaracionDeSalud: esScoutArgentina
           ? (dto.declaracionDeSalud ?? false)
@@ -421,6 +430,21 @@ export class InscripcionesService {
         });
       }
 
+      // Bonificación en la misma transacción: si el fondo no tiene saldo
+      // suficiente, todo el bloque (incluida la inscripción) se revierte.
+      if (montoBonificado > 0) {
+        await this.bonificacionesService.otorgarConManager(manager, {
+          personaId: dto.personaId,
+          monto: montoBonificado,
+          inscripcionId: savedInscripcion.id,
+          descripcion: `Bonificación inscripción ${dto.tipo} ${dto.ano}`,
+          registradoPorId,
+        });
+        await manager.update(Inscripcion, savedInscripcion.id, {
+          montoBonificado,
+        });
+      }
+
       // Reload with persona relation for response
       const reloaded = await manager.findOne(Inscripcion, {
         where: { id: savedInscripcion.id },
@@ -438,7 +462,11 @@ export class InscripcionesService {
     );
 
     return movimientos
-      .filter((m) => m.tipo === TipoMovimiento.INGRESO)
+      .filter(
+        (m) =>
+          m.tipo === TipoMovimiento.INGRESO &&
+          m.concepto !== ConceptoMovimiento.BONIFICACION_RECIBIDA,
+      )
       .reduce((sum, m) => sum + Number(m.monto), 0);
   }
 
@@ -461,13 +489,9 @@ export class InscripcionesService {
   ): Promise<InscripcionResponseDto> {
     const inscripcion = await this.findOneEntity(id);
 
-    // Validar que montoBonificado no exceda montoTotal si se actualiza
-    if (
-      dto.montoBonificado !== undefined &&
-      dto.montoBonificado > Number(inscripcion.montoTotal)
-    ) {
+    if ('montoBonificado' in dto) {
       throw new BadRequestException(
-        'El monto bonificado no puede exceder el monto total',
+        'Usá PATCH /inscripciones/:id/bonificacion para modificar el monto bonificado',
       );
     }
 
@@ -488,9 +512,6 @@ export class InscripcionesService {
     }
 
     // Actualizar solo los campos proporcionados
-    if (dto.montoBonificado !== undefined) {
-      inscripcion.montoBonificado = dto.montoBonificado;
-    }
     if (esScoutArgentina) {
       if (dto.declaracionDeSalud !== undefined) {
         inscripcion.declaracionDeSalud = dto.declaracionDeSalud;
@@ -511,6 +532,69 @@ export class InscripcionesService {
 
     await this.inscripcionRepository.save(inscripcion);
     return this.toResponseDto(inscripcion);
+  }
+
+  private async findEgresoBonificacion(
+    inscripcionId: string,
+  ): Promise<string | null> {
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'inscripcion',
+      inscripcionId,
+    );
+    const egreso = movimientos.find(
+      (m) =>
+        m.tipo === TipoMovimiento.EGRESO &&
+        m.concepto === ConceptoMovimiento.BONIFICACION_OTORGADA,
+    );
+    return egreso?.id ?? null;
+  }
+
+  /**
+   * Fija el monto bonificado. Recibe el TOTAL deseado, no un delta: si ya
+   * había una bonificación, se revierte y se crea de nuevo en la misma
+   * transacción — la validación de saldo de otorgarConManager corre
+   * después, así que queda automáticamente sobre el neto (ver
+   * BonificacionesService.otorgarConManager).
+   */
+  async bonificar(
+    id: string,
+    monto: number,
+    registradoPorId?: string,
+  ): Promise<InscripcionResponseDto> {
+    const inscripcion = await this.findOneEntity(id);
+
+    if (monto > Number(inscripcion.montoTotal)) {
+      throw new BadRequestException(
+        'El monto bonificado no puede exceder el monto total',
+      );
+    }
+
+    const egresoPrevioId = await this.findEgresoBonificacion(id);
+
+    await this.dataSource.transaction(async (manager) => {
+      if (egresoPrevioId) {
+        await this.bonificacionesService.revertirConManager(
+          manager,
+          egresoPrevioId,
+        );
+      }
+      if (monto > 0) {
+        await this.bonificacionesService.otorgarConManager(manager, {
+          personaId: inscripcion.personaId,
+          monto,
+          inscripcionId: inscripcion.id,
+          descripcion: `Bonificación inscripción ${inscripcion.tipo} ${inscripcion.ano}`,
+          registradoPorId,
+        });
+      }
+      await manager.update(Inscripcion, id, { montoBonificado: monto });
+    });
+
+    return this.findOne(id);
+  }
+
+  async quitarBonificacion(id: string): Promise<InscripcionResponseDto> {
+    return this.bonificar(id, 0);
   }
 
   async remove(id: string): Promise<void> {
@@ -552,6 +636,9 @@ export class InscripcionesService {
             .where('m."deletedAt" IS NULL')
             .andWhere('m.tipo = :ingreso', { ingreso: 'ingreso' })
             .andWhere('m.inscripcion_id IS NOT NULL')
+            .andWhere('m.concepto != :concepto', {
+              concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+            })
             .groupBy('m.inscripcion_id'),
         'pagos',
         'pagos.inscripcion_id = i.id',

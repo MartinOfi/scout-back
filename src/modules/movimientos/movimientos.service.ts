@@ -171,6 +171,17 @@ export class MovimientosService {
     });
   }
 
+  async findByCajaAndConcepto(
+    cajaId: string,
+    concepto: ConceptoMovimiento,
+  ): Promise<Movimiento[]> {
+    return this.movimientoRepository.find({
+      where: { cajaId, concepto },
+      relations: ['responsable'],
+      order: { fecha: 'DESC', createdAt: 'DESC' },
+    });
+  }
+
   async findByResponsable(responsableId: string): Promise<Movimiento[]> {
     return this.movimientoRepository.find({
       where: { responsableId },

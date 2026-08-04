@@ -92,6 +92,22 @@ export class DeudaTipoDto {
 }
 
 /**
+ * DTO para el fondo solidario en el consolidado. Su saldo suma a
+ * totalGeneral pero se excluye de totalDisponible: sólo se libera al
+ * otorgar una bonificación.
+ */
+export class FondoSolidarioConsolidadoDto {
+  @ApiProperty({ nullable: true, format: 'uuid' })
+  id!: string | null;
+
+  @ApiProperty({ example: 500000 })
+  saldo!: number;
+
+  @ApiProperty({ example: 80000, description: 'Total histórico bonificado' })
+  bonificacionesOtorgadas!: number;
+}
+
+/**
  * DTO para el consolidado de todas las deudas
  */
 export class DeudasTotalesDto {
@@ -149,6 +165,9 @@ export class ConsolidadoSaldosDto {
 
   @ApiProperty({ type: CuentasPersonalesDto })
   cuentasPersonales!: CuentasPersonalesDto;
+
+  @ApiProperty({ type: FondoSolidarioConsolidadoDto })
+  fondoSolidario!: FondoSolidarioConsolidadoDto;
 
   @ApiProperty({ type: ReembolsosPendientesDto })
   reembolsosPendientes!: ReembolsosPendientesDto;

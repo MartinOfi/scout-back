@@ -28,6 +28,13 @@ export class CampamentoInfoDto {
   @ApiProperty({ type: Number, example: 25000 })
   costoPorPersona!: number;
 
+  @ApiProperty({
+    type: Number,
+    example: 0,
+    description: 'Aporte esperado de educadores. 0 = quedan exentos.',
+  })
+  costoEducadores!: number;
+
   @ApiProperty({ example: 3 })
   cuotasBase!: number;
 
@@ -50,6 +57,16 @@ export class PagoParticipanteDto {
 
   @ApiProperty({ enum: MedioPago })
   medioPago!: MedioPago;
+
+  @ApiProperty({ enum: TipoMovimiento })
+  tipo!: TipoMovimiento;
+
+  @ApiProperty({
+    enum: ConceptoMovimiento,
+    description:
+      'campamento_pago = pago real; bonificacion_recibida/otorgada = movimientos de la bonificación (no suman a totalPagado).',
+  })
+  concepto!: ConceptoMovimiento;
 }
 
 /**
@@ -68,8 +85,19 @@ export class ParticipantePagoDto {
   @ApiPropertyOptional({ enum: Rama, nullable: true })
   rama!: Rama | null;
 
-  @ApiProperty({ type: Number, example: 25000 })
-  costoPorPersona!: number;
+  @ApiProperty({
+    type: Number,
+    example: 25000,
+    description: 'Snapshot copiado al agregar al participante',
+  })
+  montoAsignado!: number;
+
+  @ApiProperty({
+    type: Number,
+    example: 0,
+    description: 'Monto cubierto por el fondo solidario',
+  })
+  montoBonificado!: number;
 
   @ApiProperty({ type: Number, example: 16000 })
   totalPagado!: number;
@@ -142,6 +170,13 @@ export class CampamentoKpisDto {
 
   @ApiProperty({
     type: Number,
+    example: 15000,
+    description: 'Suma de montoBonificado de todos los participantes',
+  })
+  totalBonificado!: number;
+
+  @ApiProperty({
+    type: Number,
     example: 45000,
     description:
       'Egresos CAMPAMENTO_GASTO con estadoPago=PAGADO. Impacta directamente en la caja del grupo.',
@@ -194,6 +229,12 @@ export class CampamentoKpisDto {
     description: 'Participantes sin pago',
   })
   participantesPendientes!: number;
+
+  @ApiProperty({
+    example: 2,
+    description: 'Participantes con montoAsignado 0 (típicamente educadores)',
+  })
+  participantesExentos!: number;
 }
 
 /**

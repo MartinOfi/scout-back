@@ -7,6 +7,7 @@ import { Inscripcion } from './entities/inscripcion.entity';
 import { PersonasService } from '../personas/personas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
+import { BonificacionesService } from '../bonificaciones/bonificaciones.service';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import {
   TipoInscripcion,
@@ -23,6 +24,7 @@ describe('InscripcionesService', () => {
   let personasService: jest.Mocked<PersonasService>;
   let movimientosService: jest.Mocked<MovimientosService>;
   let pagosService: jest.Mocked<PagosService>;
+  let bonificacionesService: jest.Mocked<BonificacionesService>;
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
   let dataSource: jest.Mocked<DataSource>;
 
@@ -48,6 +50,7 @@ describe('InscripcionesService', () => {
     ({
       create: jest.fn().mockImplementation((_, data) => data),
       save: jest.fn().mockImplementation((entity) => Promise.resolve(entity)),
+      update: jest.fn().mockResolvedValue(undefined),
       findOne: repository.findOne,
     }) as unknown as jest.Mocked<EntityManager>;
 
@@ -109,6 +112,18 @@ describe('InscripcionesService', () => {
           useValue: mockDataSource,
         },
         {
+          provide: BonificacionesService,
+          useValue: {
+            otorgarConManager: jest.fn().mockResolvedValue({
+              movimientoEgresoId: 'egreso-nuevo',
+              movimientoIngresoId: 'ingreso-nuevo',
+              monto: 0,
+              saldoFondoRestante: 0,
+            }),
+            revertirConManager: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
           provide: DeletionValidatorService,
           useValue: {
             canDeleteInscripcion: jest
@@ -124,12 +139,70 @@ describe('InscripcionesService', () => {
     personasService = module.get(PersonasService);
     movimientosService = module.get(MovimientosService);
     pagosService = module.get(PagosService);
+    bonificacionesService = module.get(BonificacionesService);
     deletionValidator = module.get(DeletionValidatorService);
     dataSource = module.get(DataSource);
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('C1: bonificar NO se cuenta como pago — saldoPendiente refleja sólo pagos reales', () => {
+    // Inscripción de $50.000, un INGRESO real de $5.000 (concepto inscripcion_grupo)
+    // y un INGRESO de bonificación de $10.000 (concepto bonificacion_recibida).
+    const movimientos = [
+      {
+        id: 'm1',
+        monto: 5000,
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
+        medioPago: MedioPago.EFECTIVO,
+        fecha: new Date(),
+        descripcion: null,
+      },
+      {
+        id: 'm2',
+        monto: 10000,
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        medioPago: MedioPago.EFECTIVO,
+        fecha: new Date(),
+        descripcion: null,
+      },
+    ];
+    const inscripcion = {
+      id: 'inscripcion-id',
+      personaId: 'persona-id',
+      tipo: TipoInscripcion.GRUPO,
+      ano: 2026,
+      montoTotal: 50000,
+      montoBonificado: 10000,
+      declaracionDeSalud: false,
+      autorizacionDeImagen: false,
+      salidasCercanas: false,
+      autorizacionIngreso: false,
+      certificadoAptitudFisica: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      persona: undefined,
+    } as never;
+
+    const dto = (
+      service as unknown as {
+        toResponseDtoWithMovimientos: (
+          i: unknown,
+          m: unknown,
+        ) => { montoPagado: number; saldoPendiente: number };
+      }
+    ).toResponseDtoWithMovimientos(inscripcion, movimientos);
+
+    // Sin el filtro de C1: montoPagado = 5000+10000=15000 (mal, cuenta la
+    // bonificación dos veces: una en montoBonificado y otra en montoPagado).
+    // Corregido: montoPagado excluye BONIFICACION_RECIBIDA → 5000,
+    // saldoPendiente = 50000 - 10000 - 5000 = 35000.
+    expect(dto.montoPagado).toBe(5000);
+    expect(dto.saldoPendiente).toBe(35000);
   });
 
   describe('findAll', () => {
@@ -430,35 +503,29 @@ describe('InscripcionesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw if montoBonificado exceeds montoTotal', async () => {
-      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
-      repository.findOne.mockResolvedValue(null);
-
-      await expect(
-        service.registrarInscripcion({
-          personaId: 'persona-uuid',
-          tipo: TipoInscripcion.GRUPO,
-          ano: 2026,
-          montoTotal: 10000,
-          montoBonificado: 15000,
-        }),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('should set montoBonificado to 0 when not provided', async () => {
+    it('crea siempre con montoBonificado 0 en el insert inicial, luego lo actualiza atómicamente si el dto trae bonificación', async () => {
+      const savedInscripcion = {
+        ...mockInscripcion,
+        id: 'new-inscripcion-uuid',
+      };
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
       repository.findOne.mockResolvedValueOnce(null);
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       let capturedCreateData: any;
+      let capturedUpdateArgs: any;
       (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
         const mockManager = {
           create: jest.fn().mockImplementation((_, data) => {
             capturedCreateData = data;
-            return mockInscripcion;
+            return savedInscripcion;
           }),
-          save: jest.fn().mockResolvedValue(mockInscripcion),
-          findOne: jest.fn().mockResolvedValue(mockInscripcion),
+          save: jest.fn().mockResolvedValue(savedInscripcion),
+          update: jest.fn().mockImplementation((_, id, data) => {
+            capturedUpdateArgs = { id, data };
+            return Promise.resolve(undefined);
+          }),
+          findOne: jest.fn().mockResolvedValue(savedInscripcion),
         };
         return cb(mockManager);
       });
@@ -468,11 +535,59 @@ describe('InscripcionesService', () => {
         tipo: TipoInscripcion.GRUPO,
         ano: 2026,
         montoTotal: 10000,
-      });
+        montoBonificado: 4000,
+      } as never);
 
       expect(capturedCreateData).toEqual(
         expect.objectContaining({ montoBonificado: 0 }),
       );
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          personaId: 'persona-uuid',
+          monto: 4000,
+          inscripcionId: 'new-inscripcion-uuid',
+        }),
+      );
+      expect(capturedUpdateArgs).toEqual({
+        id: 'new-inscripcion-uuid',
+        data: { montoBonificado: 4000 },
+      });
+    });
+
+    it('no llama a otorgarConManager cuando montoBonificado es 0 o no se envía', async () => {
+      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
+      repository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      await service.registrarInscripcion({
+        personaId: 'persona-uuid',
+        tipo: TipoInscripcion.GRUPO,
+        ano: 2026,
+        montoTotal: 10000,
+      });
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si pago + saldo personal + bonificación superan el monto total', async () => {
+      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
+      repository.findOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.registrarInscripcion({
+          personaId: 'persona-uuid',
+          tipo: TipoInscripcion.GRUPO,
+          ano: 2026,
+          montoTotal: 10000,
+          montoPagado: 5000,
+          montoBonificado: 6000,
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
     });
 
     it('should call pagosService when montoPagado > 0', async () => {
@@ -606,6 +721,21 @@ describe('InscripcionesService', () => {
 
       expect(result).toBe(0);
     });
+
+    it('C1: excludes BONIFICACION_RECIBIDA from the sum', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { tipo: TipoMovimiento.INGRESO, monto: 5000 },
+        {
+          tipo: TipoMovimiento.INGRESO,
+          monto: 10000,
+          concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        },
+      ] as any);
+
+      const result = await service.getMontoPagado('inscripcion-uuid');
+
+      expect(result).toBe(5000);
+    });
   });
 
   describe('getEstado', () => {
@@ -695,34 +825,21 @@ describe('InscripcionesService', () => {
       expect(result.estado).toBe(EstadoInscripcion.PENDIENTE);
     });
 
-    it('should update montoBonificado on any inscription type', async () => {
+    it('rechaza montoBonificado en el update — hay que usar PATCH /inscripciones/:id/bonificacion', async () => {
       const existingInscripcion = {
         ...mockInscripcion,
         tipo: TipoInscripcion.GRUPO,
         montoTotal: 10000,
       };
       repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
-      repository.save.mockResolvedValue({
-        ...existingInscripcion,
-        montoBonificado: 5000,
-      } as Inscripcion);
-      movimientosService.findByRelatedEntity.mockResolvedValue([]);
-
-      const result = await service.update('inscripcion-uuid', {
-        montoBonificado: 5000,
-      });
-
-      expect(result.montoBonificado).toBe(5000);
-      expect(result.saldoPendiente).toBe(5000); // 10000 - 5000 bonificado
-    });
-
-    it('should throw if montoBonificado exceeds montoTotal', async () => {
-      const existingInscripcion = { ...mockInscripcion, montoTotal: 10000 };
-      repository.findOne.mockResolvedValue(existingInscripcion as Inscripcion);
 
       await expect(
-        service.update('inscripcion-uuid', { montoBonificado: 15000 }),
-      ).rejects.toThrow(BadRequestException);
+        service.update('inscripcion-uuid', {
+          montoBonificado: 5000,
+        } as never),
+      ).rejects.toThrow(
+        'Usá PATCH /inscripciones/:id/bonificacion para modificar el monto bonificado',
+      );
     });
 
     it('should throw NotFoundException if inscription not found', async () => {
@@ -768,24 +885,118 @@ describe('InscripcionesService', () => {
       expect(result.declaracionDeSalud).toBe(true);
     });
 
-    it('should allow updating montoBonificado on GRUPO inscription', async () => {
+    it('rechaza montoBonificado en el update incluso en inscripciones GRUPO', async () => {
       const grupoInscripcion = {
         ...mockInscripcion,
         tipo: TipoInscripcion.GRUPO,
         montoTotal: 10000,
       };
       repository.findOne.mockResolvedValue(grupoInscripcion as Inscripcion);
-      repository.save.mockResolvedValue({
-        ...grupoInscripcion,
-        montoBonificado: 3000,
-      } as Inscripcion);
+
+      await expect(
+        service.update('inscripcion-uuid', { montoBonificado: 3000 } as never),
+      ).rejects.toThrow(
+        'Usá PATCH /inscripciones/:id/bonificacion para modificar el monto bonificado',
+      );
+    });
+  });
+
+  describe('bonificar', () => {
+    it('otorga la bonificación contra el fondo solidario y guarda el monto en la inscripción', async () => {
+      const inscripcion = {
+        ...mockInscripcion,
+        id: 'inscripcion-uuid',
+        personaId: 'persona-uuid',
+        tipo: TipoInscripcion.GRUPO,
+        ano: 2026,
+        montoTotal: 50000,
+        montoBonificado: 0,
+      };
+      repository.findOne.mockResolvedValue(inscripcion as Inscripcion);
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
-      const result = await service.update('inscripcion-uuid', {
-        montoBonificado: 3000,
-      });
+      await service.bonificar('inscripcion-uuid', 10000);
 
-      expect(result.montoBonificado).toBe(3000);
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          personaId: 'persona-uuid',
+          monto: 10000,
+          inscripcionId: 'inscripcion-uuid',
+        }),
+      );
+      expect(bonificacionesService.revertirConManager).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un monto que excede el total', async () => {
+      const inscripcion = {
+        ...mockInscripcion,
+        montoTotal: 50000,
+        montoBonificado: 0,
+      };
+      repository.findOne.mockResolvedValue(inscripcion as Inscripcion);
+
+      await expect(
+        service.bonificar('inscripcion-uuid', 60000),
+      ).rejects.toThrow('El monto bonificado no puede exceder el monto total');
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('al ajustar, revierte la bonificación previa antes de crear la nueva', async () => {
+      const inscripcion = {
+        ...mockInscripcion,
+        id: 'inscripcion-uuid',
+        personaId: 'persona-uuid',
+        montoTotal: 50000,
+        montoBonificado: 10000,
+      };
+      repository.findOne.mockResolvedValue(inscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'egreso-previo',
+          concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+          tipo: TipoMovimiento.EGRESO,
+          responsableId: 'persona-uuid',
+        },
+      ] as never);
+
+      await service.bonificar('inscripcion-uuid', 20000);
+
+      expect(bonificacionesService.revertirConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'egreso-previo',
+      );
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ monto: 20000 }),
+      );
+    });
+
+    it('quitarBonificacion revierte la bonificación existente sin crear una nueva', async () => {
+      const inscripcion = {
+        ...mockInscripcion,
+        id: 'inscripcion-uuid',
+        personaId: 'persona-uuid',
+        montoTotal: 50000,
+        montoBonificado: 10000,
+      };
+      repository.findOne.mockResolvedValue(inscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'egreso-previo',
+          concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+          tipo: TipoMovimiento.EGRESO,
+          responsableId: 'persona-uuid',
+        },
+      ] as never);
+
+      await service.quitarBonificacion('inscripcion-uuid');
+
+      expect(bonificacionesService.revertirConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        'egreso-previo',
+      );
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
     });
   });
 
@@ -973,15 +1184,28 @@ describe('InscripcionesService', () => {
     const buildQueryBuilderMock = (
       rawResult: { total: string | null; cantidad: string } | null,
     ) => {
+      const subQb = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+      };
       const qb = {
         select: jest.fn().mockReturnThis(),
         addSelect: jest.fn().mockReturnThis(),
-        leftJoin: jest.fn().mockReturnThis(),
+        leftJoin: jest
+          .fn()
+          .mockImplementation((cb: (subQb: unknown) => unknown) => {
+            cb(subQb);
+            return qb;
+          }),
         where: jest.fn().mockReturnThis(),
         getRawOne: jest.fn().mockResolvedValue(rawResult),
       };
       repository.createQueryBuilder.mockReturnValue(qb as any);
-      return qb;
+      return { qb, subQb };
     };
 
     it('should return total and cantidad from a single aggregation query', async () => {
@@ -1016,6 +1240,19 @@ describe('InscripcionesService', () => {
 
       expect(movimientosService.findByRelatedEntity).not.toHaveBeenCalled();
       expect(repository.find).not.toHaveBeenCalled();
+    });
+
+    it('C1: excluye bonificacion_recibida de la subquery de pagos', async () => {
+      const { subQb } = buildQueryBuilderMock({ total: '0', cantidad: '0' });
+
+      await service.getTotalDeudaInscripciones();
+
+      expect(subQb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('concepto'),
+        expect.objectContaining({
+          concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        }),
+      );
     });
   });
 });

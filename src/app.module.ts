@@ -17,6 +17,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { ExportsModule } from './modules/exports/exports.module';
 import { ReportesModule } from './modules/reportes/reportes.module';
+import { BonificacionesModule } from './modules/bonificaciones/bonificaciones.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -39,6 +40,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     BackupsModule,
     ExportsModule,
     ReportesModule,
+    BonificacionesModule,
   ],
   controllers: [AppController],
   providers: [

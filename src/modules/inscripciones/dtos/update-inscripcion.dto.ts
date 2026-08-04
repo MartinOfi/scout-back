@@ -1,21 +1,12 @@
-import { IsBoolean, IsNumber, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsOptional } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * DTO para actualizar una inscripción existente.
- * Solo permite actualizar montos y autorizaciones.
+ * Solo permite actualizar autorizaciones — el monto bonificado se maneja
+ * exclusivamente vía PATCH /inscripciones/:id/bonificacion (fondo solidario).
  */
 export class UpdateInscripcionDto {
-  @ApiPropertyOptional({
-    example: 5000.0,
-    minimum: 0,
-    description: 'Monto bonificado',
-  })
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @IsOptional()
-  montoBonificado?: number;
-
   @ApiPropertyOptional({
     example: true,
     description: 'Declaración de salud presentada',

@@ -19,6 +19,7 @@ import {
   InscripcionResponseDto,
   GetInscripcionesQueryDto,
   InscripcionesConsolidadoDto,
+  BonificarInscripcionDto,
 } from './dtos';
 
 @ApiTags('Inscripciones')
@@ -127,6 +128,47 @@ export class InscripcionesController {
     @Body() dto: UpdateInscripcionDto,
   ): Promise<InscripcionResponseDto> {
     return this.inscripcionesService.update(id, dto);
+  }
+
+  @Patch(':id/bonificacion')
+  @ApiOperation({
+    summary: 'Fijar el monto bonificado de una inscripción',
+    description:
+      'Financia la bonificación contra la caja de fondo solidario. Recibe el monto total deseado (no un delta).',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Bonificación otorgada, inscripción actualizada',
+    type: InscripcionResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Monto excede el total, o el fondo solidario no tiene saldo suficiente',
+  })
+  async bonificar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BonificarInscripcionDto,
+    @CurrentUser('id') userId: string,
+  ): Promise<InscripcionResponseDto> {
+    return this.inscripcionesService.bonificar(id, dto.monto, userId);
+  }
+
+  @Delete(':id/bonificacion')
+  @ApiOperation({ summary: 'Quitar la bonificación de una inscripción' })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Bonificación revertida, inscripción actualizada',
+    type: InscripcionResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
+  async quitarBonificacion(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<InscripcionResponseDto> {
+    return this.inscripcionesService.quitarBonificacion(id);
   }
 
   @Post(':id/pagar')

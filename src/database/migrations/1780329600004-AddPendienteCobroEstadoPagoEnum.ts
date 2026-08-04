@@ -17,7 +17,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * NOTE: Postgres cannot DROP an enum value, so down() is intentionally a no-op.
  */
-export class AddPendienteCobroEstadoPagoEnum1780329600000 implements MigrationInterface {
+export class AddPendienteCobroEstadoPagoEnum1780329600004 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TYPE "movimientos_estadopago_enum"

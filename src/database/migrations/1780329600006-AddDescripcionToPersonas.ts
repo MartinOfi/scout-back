@@ -10,7 +10,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * every persona lookup, including auth) failed with
  * `column Persona.descripcion does not exist`.
  */
-export class AddDescripcionToPersonas1780329600002 implements MigrationInterface {
+export class AddDescripcionToPersonas1780329600006 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "personas"

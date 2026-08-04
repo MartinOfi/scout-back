@@ -8,6 +8,7 @@ import { PersonasModule } from '../personas/personas.module';
 import { CajasModule } from '../cajas/cajas.module';
 import { MovimientosModule } from '../movimientos/movimientos.module';
 import { PagosModule } from '../pagos/pagos.module';
+import { BonificacionesModule } from '../bonificaciones/bonificaciones.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PagosModule } from '../pagos/pagos.module';
     forwardRef(() => CajasModule),
     forwardRef(() => MovimientosModule),
     forwardRef(() => PagosModule),
+    forwardRef(() => BonificacionesModule),
   ],
   controllers: [CampamentosController],
   providers: [CampamentosService],

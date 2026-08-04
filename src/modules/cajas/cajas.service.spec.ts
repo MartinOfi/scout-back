@@ -9,7 +9,7 @@ import { MovimientosService } from '../movimientos/movimientos.service';
 import { InscripcionesService } from '../inscripciones/inscripciones.service';
 import { CuotasService } from '../cuotas/cuotas.service';
 import { CampamentosService } from '../campamentos/campamentos.service';
-import { CajaType, PersonaType } from '../../common/enums';
+import { CajaType, PersonaType, ConceptoMovimiento } from '../../common/enums';
 
 describe('CajasService', () => {
   let service: CajasService;
@@ -77,6 +77,7 @@ describe('CajasService', () => {
       getReembolsosPendientesResumen: jest
         .fn()
         .mockResolvedValue({ total: 0, cantidad: 0 }),
+      findByCajaAndConcepto: jest.fn().mockResolvedValue([]),
     };
 
     const mockInscripcionesService = {
@@ -274,6 +275,101 @@ describe('CajasService', () => {
     });
   });
 
+  describe('findCajaFondoSolidario', () => {
+    it('devuelve la caja con su saldo calculado', async () => {
+      cajaRepository.findOne.mockResolvedValue({
+        id: 'fondo-id',
+        tipo: CajaType.FONDO_SOLIDARIO,
+        nombre: 'Fondo Solidario',
+        propietarioId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as Caja);
+      movimientosService.calcularSaldo.mockResolvedValue(500000);
+
+      const result = await service.findCajaFondoSolidario();
+
+      expect(result).not.toBeNull();
+      expect(result!.saldoActual).toBe(500000);
+      expect(cajaRepository.findOne).toHaveBeenCalledWith({
+        where: { tipo: CajaType.FONDO_SOLIDARIO },
+      });
+    });
+
+    it('devuelve null si la caja todavía no fue creada', async () => {
+      cajaRepository.findOne.mockResolvedValue(null);
+
+      const result = await service.findCajaFondoSolidario();
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getHistorialBonificaciones', () => {
+    it('devuelve [] si el fondo todavía no fue creado', async () => {
+      cajaRepository.findOne.mockResolvedValue(null);
+
+      const result = await service.getHistorialBonificaciones();
+
+      expect(result).toEqual([]);
+      expect(movimientosService.findByCajaAndConcepto).not.toHaveBeenCalled();
+    });
+
+    it('lista los egresos de bonificación otorgada más recientes primero, resolviendo el nombre del campamento', async () => {
+      cajaRepository.findOne.mockResolvedValue({
+        id: 'fondo-id',
+        tipo: CajaType.FONDO_SOLIDARIO,
+      } as Caja);
+      movimientosService.findByCajaAndConcepto.mockResolvedValue([
+        {
+          id: 'mov-1',
+          monto: 5000,
+          fecha: new Date('2026-08-01'),
+          responsableId: 'persona-1',
+          responsable: { nombre: 'Martín' },
+          campamentoId: 'campamento-1',
+          inscripcionId: null,
+        } as never,
+      ]);
+      dataSource.query.mockResolvedValue([
+        { id: 'campamento-1', nombre: 'Campamento Verano' },
+      ]);
+
+      const result = await service.getHistorialBonificaciones();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].personaNombre).toBe('Martín');
+      expect(result[0].destino).toBe('Campamento "Campamento Verano"');
+      expect(movimientosService.findByCajaAndConcepto).toHaveBeenCalledWith(
+        'fondo-id',
+        ConceptoMovimiento.BONIFICACION_OTORGADA,
+      );
+    });
+
+    it('arma el destino con inscripcionId cuando no hay campamento', async () => {
+      cajaRepository.findOne.mockResolvedValue({
+        id: 'fondo-id',
+        tipo: CajaType.FONDO_SOLIDARIO,
+      } as Caja);
+      movimientosService.findByCajaAndConcepto.mockResolvedValue([
+        {
+          id: 'mov-2',
+          monto: 3000,
+          fecha: new Date('2026-08-01'),
+          responsableId: 'persona-2',
+          responsable: { nombre: 'Ana' },
+          campamentoId: null,
+          inscripcionId: 'inscripcion-1',
+        } as never,
+      ]);
+
+      const result = await service.getHistorialBonificaciones();
+
+      expect(result[0].destino).toBe('Inscripción inscripcion-1');
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findCajaPersonal', () => {
     it('should return personal caja for a propietario', async () => {
       cajaRepository.findOne.mockResolvedValue(mockCajaPersonal as Caja);
@@ -350,6 +446,23 @@ describe('CajasService', () => {
       await expect(service.create(dto)).rejects.toThrow(BadRequestException);
       await expect(service.create(dto)).rejects.toThrow(
         /ya tiene una caja personal/,
+      );
+    });
+
+    it('rechaza crear una segunda caja de fondo solidario', async () => {
+      const dto = {
+        tipo: CajaType.FONDO_SOLIDARIO,
+        nombre: 'Fondo Solidario',
+      };
+
+      cajaRepository.findOne.mockResolvedValue({
+        id: 'fondo-existente',
+        tipo: CajaType.FONDO_SOLIDARIO,
+      } as Caja);
+
+      await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.create(dto)).rejects.toThrow(
+        /Ya existe una caja de fondo solidario/,
       );
     });
   });
@@ -547,6 +660,51 @@ describe('CajasService', () => {
       expect(dataSource.query).toHaveBeenCalledTimes(1);
     });
 
+    it('C1: la subquery de pagos del CTE deuda_inscr excluye bonificacion_recibida', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [],
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+        },
+      ]);
+
+      await service.getConsolidadoSaldos();
+
+      const sql = (dataSource.query as jest.Mock).mock.calls[0][0] as string;
+      const deudaInscrBlock = sql.slice(
+        sql.indexOf('deuda_inscr AS'),
+        sql.indexOf('deuda_cuotas AS'),
+      );
+      expect(deudaInscrBlock).toContain("concepto != 'bonificacion_recibida'");
+    });
+
+    it('el CTE deuda_camp usa montoAsignado/montoBonificado por participante y excluye soft-deleted', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [],
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+        },
+      ]);
+
+      await service.getConsolidadoSaldos();
+
+      const sql = (dataSource.query as jest.Mock).mock.calls[0][0] as string;
+      const deudaCampBlock = sql.slice(
+        sql.indexOf('deuda_camp AS'),
+        sql.indexOf('bonif_otorgadas AS'),
+      );
+      expect(deudaCampBlock).toContain('cp."montoAsignado"');
+      expect(deudaCampBlock).toContain('cp."montoBonificado"');
+      expect(deudaCampBlock).not.toContain('c."costoPorPersona"');
+      expect(deudaCampBlock).toContain('cp."deletedAt" IS NULL');
+    });
+
     it('should handle empty cajas gracefully', async () => {
       dataSource.query.mockResolvedValue([
         {
@@ -592,6 +750,68 @@ describe('CajasService', () => {
       const result = await service.getConsolidadoSaldos();
 
       expect(result.fondosRama.detalle[0].nombre).toBe('Fondo Manada');
+    });
+
+    it('reporta el fondo aparte, suma a totalGeneral y lo excluye de totalDisponible', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [
+            {
+              id: 'grupo-id',
+              tipo: CajaType.GRUPO,
+              nombre: null,
+              saldo: 50000,
+            },
+            {
+              id: 'fondo-id',
+              tipo: CajaType.FONDO_SOLIDARIO,
+              nombre: 'Fondo Solidario',
+              saldo: 500000,
+            },
+          ],
+          reembolsos: { total: 20000, cantidad: 1 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+          bonificaciones_otorgadas: { total: 80000 },
+        },
+      ]);
+
+      const result = await service.getConsolidadoSaldos();
+
+      expect(result.fondoSolidario.id).toBe('fondo-id');
+      expect(result.fondoSolidario.saldo).toBe(500000);
+      expect(result.fondoSolidario.bonificacionesOtorgadas).toBe(80000);
+      expect(result.resumen.totalGeneral).toBe(550000);
+      expect(result.resumen.totalDisponible).toBe(30000);
+    });
+
+    it('devuelve fondoSolidario con id null y saldo 0 cuando la caja no fue creada', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [
+            {
+              id: 'grupo-id',
+              tipo: CajaType.GRUPO,
+              nombre: null,
+              saldo: 50000,
+            },
+          ],
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+          bonificaciones_otorgadas: { total: 0 },
+        },
+      ]);
+
+      const result = await service.getConsolidadoSaldos();
+
+      expect(result.fondoSolidario.id).toBeNull();
+      expect(result.fondoSolidario.saldo).toBe(0);
+      expect(result.fondoSolidario.bonificacionesOtorgadas).toBe(0);
+      expect(result.resumen.totalGeneral).toBe(50000);
+      expect(result.resumen.totalDisponible).toBe(50000);
     });
   });
 

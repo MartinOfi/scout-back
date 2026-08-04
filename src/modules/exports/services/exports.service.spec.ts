@@ -115,8 +115,18 @@ const mockCampamentos: unknown[] = [
     costoPorPersona: 8000,
     cuotasBase: 2,
     participantes: [
-      { id: 'p1', nombre: 'Juan' },
-      { id: 'p2', nombre: 'Ana' },
+      {
+        personaId: 'p1',
+        persona: { nombre: 'Juan' },
+        montoAsignado: 8000,
+        montoBonificado: 0,
+      },
+      {
+        personaId: 'p2',
+        persona: { nombre: 'Ana' },
+        montoAsignado: 8000,
+        montoBonificado: 2000,
+      },
     ],
   },
 ];
@@ -279,6 +289,21 @@ describe('ExportsService', () => {
       expect(first.campamentoNombre).toBe('Campamento Verano');
       expect(first.personaId).toBe('p1');
       expect(first.personaNombre).toBe('Juan');
+    });
+
+    it('la hoja CampamentoParticipantes incluye montoAsignado y montoBonificado', async () => {
+      await service.generateXlsx();
+
+      const sheet = capturedSpecs.find(
+        (s) => s.name === 'CampamentoParticipantes',
+      );
+      const first = sheet?.rows[0] as Record<string, unknown>;
+      const second = sheet?.rows[1] as Record<string, unknown>;
+
+      expect(first.montoAsignado).toBe(8000);
+      expect(first.montoBonificado).toBe(0);
+      expect(second.montoAsignado).toBe(8000);
+      expect(second.montoBonificado).toBe(2000);
     });
 
     it('enriches VentasProductos rows with evento, producto and vendedor names', async () => {

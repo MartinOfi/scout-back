@@ -19,6 +19,7 @@ import { CajasService } from '../cajas/cajas.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { PagosService } from '../pagos/pagos.service';
 import { ResultadoPagoDto } from '../pagos/dtos/resultado-pago.dto';
+import { BonificacionesService } from '../bonificaciones/bonificaciones.service';
 import {
   TipoMovimiento,
   ConceptoMovimiento,
@@ -27,6 +28,7 @@ import {
   EstadoPagoCampamento,
   FiltroMovimientosCampamento,
   Rama,
+  PersonaType,
 } from '../../common/enums';
 import {
   CampamentoDetalleDto,
@@ -53,6 +55,8 @@ export class CampamentosService {
     private readonly movimientosService: MovimientosService,
     @Inject(forwardRef(() => PagosService))
     private readonly pagosService: PagosService,
+    @Inject(forwardRef(() => BonificacionesService))
+    private readonly bonificacionesService: BonificacionesService,
     private readonly dataSource: DataSource,
     private readonly deletionValidator: DeletionValidatorService,
   ) {}
@@ -88,12 +92,21 @@ export class CampamentosService {
     return this.campamentoRepository.save(campamento);
   }
 
+  private resolverMontoAsignado(
+    campamento: Campamento,
+    tipoPersona: PersonaType,
+  ): number {
+    return tipoPersona === PersonaType.EDUCADOR
+      ? Number(campamento.costoEducadores)
+      : Number(campamento.costoPorPersona);
+  }
+
   async addParticipante(
     id: string,
     dto: AddParticipanteDto,
   ): Promise<Campamento> {
-    await this.findOne(id);
-    await this.personasService.findOne(dto.personaId);
+    const campamento = await this.findOne(id);
+    const persona = await this.personasService.findOne(dto.personaId);
 
     const existing = await this.campamentoParticipanteRepository.findOne({
       where: {
@@ -109,11 +122,15 @@ export class CampamentosService {
       );
     }
 
+    const montoAsignado = this.resolverMontoAsignado(campamento, persona.tipo);
+
     await this.campamentoParticipanteRepository.save(
       this.campamentoParticipanteRepository.create({
         campamentoId: id,
         personaId: dto.personaId,
         autorizacionEntregada: dto.autorizacionEntregada ?? false,
+        montoAsignado,
+        montoBonificado: 0,
       }),
     );
 
@@ -142,6 +159,95 @@ export class CampamentosService {
     await this.campamentoParticipanteRepository.softDelete(junction.id);
 
     return this.findOne(id);
+  }
+
+  /**
+   * Fija el monto bonificado de un participante contra el fondo solidario.
+   * `monto` es el total deseado (no un delta): ajustar de $5.000 a $6.000
+   * revierte la bonificación anterior y otorga una nueva por el total.
+   */
+  async bonificarParticipante(
+    campamentoId: string,
+    personaId: string,
+    monto: number,
+    registradoPorId?: string,
+  ): Promise<void> {
+    const junction = await this.campamentoParticipanteRepository.findOne({
+      where: { campamentoId, personaId, deletedAt: IsNull() },
+    });
+    if (!junction) {
+      throw new NotFoundException(
+        'El participante no está inscrito en el campamento',
+      );
+    }
+
+    const montoAsignado = Number(junction.montoAsignado);
+    if (montoAsignado === 0) {
+      throw new BadRequestException(
+        'No se puede bonificar a un participante exento',
+      );
+    }
+
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'campamento',
+      campamentoId,
+    );
+
+    // Lo ya pagado en efectivo/transferencia no puede ser cubierto de nuevo
+    // por una bonificación: el máximo bonificable es el saldo pendiente, no
+    // el monto asignado completo (dejaría un pago > 100% del asignado).
+    const totalPagado = movimientos
+      .filter(
+        (m) =>
+          m.tipo === TipoMovimiento.INGRESO &&
+          m.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO &&
+          m.responsableId === personaId,
+      )
+      .reduce((sum, m) => sum + Number(m.monto), 0);
+    const maxBonificable = montoAsignado - totalPagado;
+
+    if (monto > maxBonificable) {
+      throw new BadRequestException(
+        `El monto bonificado no puede exceder el saldo pendiente ($${maxBonificable})`,
+      );
+    }
+
+    const campamento = await this.findOne(campamentoId);
+    const egresoPrevioId =
+      movimientos.find(
+        (m) =>
+          m.tipo === TipoMovimiento.EGRESO &&
+          m.concepto === ConceptoMovimiento.BONIFICACION_OTORGADA &&
+          m.responsableId === personaId,
+      )?.id ?? null;
+
+    await this.dataSource.transaction(async (manager) => {
+      if (egresoPrevioId) {
+        await this.bonificacionesService.revertirConManager(
+          manager,
+          egresoPrevioId,
+        );
+      }
+      if (monto > 0) {
+        await this.bonificacionesService.otorgarConManager(manager, {
+          personaId,
+          monto,
+          campamentoId,
+          descripcion: `Bonificación campamento "${campamento.nombre}"`,
+          registradoPorId,
+        });
+      }
+      await manager.update(CampamentoParticipante, junction.id, {
+        montoBonificado: monto,
+      });
+    });
+  }
+
+  async quitarBonificacionParticipante(
+    campamentoId: string,
+    personaId: string,
+  ): Promise<void> {
+    return this.bonificarParticipante(campamentoId, personaId, 0);
   }
 
   async updateParticipanteAutorizacion(
@@ -277,8 +383,10 @@ export class CampamentosService {
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
     return {
-      totalEsperado:
-        campamento.participantes.length * Number(campamento.costoPorPersona),
+      totalEsperado: campamento.participantes.reduce(
+        (sum, p) => sum + Number(p.montoAsignado),
+        0,
+      ),
       totalRecaudado,
       totalGastado,
       totalPendienteReembolso,
@@ -295,7 +403,8 @@ export class CampamentosService {
     {
       participanteId: string;
       participanteNombre: string;
-      costoPorPersona: number;
+      montoAsignado: number;
+      montoBonificado: number;
       totalPagado: number;
       saldoPendiente: number;
       pagos: { fecha: Date; monto: number; medioPago: string }[];
@@ -339,21 +448,25 @@ export class CampamentosService {
       pagosPorParticipante.set(pago.responsableId, current);
     }
 
-    const costoPorPersona = Number(campamento.costoPorPersona);
-
     // Construir respuesta con todos los participantes
     return campamento.participantes.map((cp) => {
       const datosPago = pagosPorParticipante.get(cp.personaId) || {
         totalPagado: 0,
         pagos: [],
       };
+      const montoAsignado = Number(cp.montoAsignado);
+      const montoBonificado = Number(cp.montoBonificado);
 
       return {
         participanteId: cp.personaId,
         participanteNombre: cp.persona.nombre,
-        costoPorPersona,
+        montoAsignado,
+        montoBonificado,
         totalPagado: datosPago.totalPagado,
-        saldoPendiente: costoPorPersona - datosPago.totalPagado,
+        saldoPendiente: Math.max(
+          0,
+          montoAsignado - datosPago.totalPagado - montoBonificado,
+        ),
         pagos: datosPago.pagos.sort(
           (a, b) => b.fecha.getTime() - a.fecha.getTime(),
         ),
@@ -381,30 +494,32 @@ export class CampamentosService {
       campamentoId,
     );
 
-    // 3. Separate payments (INGRESO) from expenses (EGRESO)
-    const pagos = todosMovimientos.filter(
+    // 3. Movimientos a mostrar en el historial de cada participante: pagos
+    // reales (CAMPAMENTO_PAGO) + ambas patas de la bonificación, para que se
+    // vea de dónde salió cada peso. Sólo CAMPAMENTO_PAGO suma a totalPagado
+    // (ver buildPagosPorParticipante) — bonificar no se cuenta como pago.
+    const movimientosHistorialParticipante = todosMovimientos.filter(
       (m) =>
-        m.tipo === TipoMovimiento.INGRESO &&
-        m.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO,
+        (m.tipo === TipoMovimiento.INGRESO &&
+          m.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO) ||
+        m.concepto === ConceptoMovimiento.BONIFICACION_RECIBIDA ||
+        m.concepto === ConceptoMovimiento.BONIFICACION_OTORGADA,
     );
 
     // 4. Build payments map by responsableId (participant)
-    const pagosPorParticipante = this.buildPagosPorParticipante(pagos);
+    const pagosPorParticipante = this.buildPagosPorParticipante(
+      movimientosHistorialParticipante,
+    );
 
     // 5. Build participant DTOs with payment status
     const costoPorPersona = Number(campamento.costoPorPersona);
     const participantesDto = this.buildParticipantesDto(
       campamento.participantes,
       pagosPorParticipante,
-      costoPorPersona,
     );
 
     // 6. Calculate KPIs (always use all movements for accurate KPIs)
-    const kpis = this.calculateKpis(
-      participantesDto,
-      todosMovimientos,
-      costoPorPersona,
-    );
+    const kpis = this.calculateKpis(participantesDto, todosMovimientos);
 
     // 6b. Apply participant filters after KPI calculation (KPIs always reflect full camp)
     const participantesFiltrados = this.filterParticipantes(
@@ -428,6 +543,7 @@ export class CampamentosService {
         fechaInicio: campamento.fechaInicio,
         fechaFin: campamento.fechaFin,
         costoPorPersona,
+        costoEducadores: Number(campamento.costoEducadores),
         cuotasBase: campamento.cuotasBase,
         descripcion: campamento.descripcion,
       },
@@ -483,34 +599,45 @@ export class CampamentosService {
   }
 
   /**
-   * Build payments map grouped by participant ID
+   * Build payments map grouped by participant ID.
+   *
+   * `movimientos` puede incluir pagos reales y movimientos de bonificación
+   * (para mostrarlos en el historial). Sólo los pagos reales
+   * (CAMPAMENTO_PAGO) suman a `totalPagado` — bonificar no se cuenta como
+   * pago (ver C1 en inscripciones, mismo criterio acá).
    */
   private buildPagosPorParticipante(
-    pagos: Movimiento[],
+    movimientos: Movimiento[],
   ): Map<string, { totalPagado: number; pagos: PagoParticipanteDto[] }> {
     const result = new Map<
       string,
       { totalPagado: number; pagos: PagoParticipanteDto[] }
     >();
 
-    for (const pago of pagos) {
-      const current = result.get(pago.responsableId) ?? {
+    for (const mov of movimientos) {
+      const current = result.get(mov.responsableId) ?? {
         totalPagado: 0,
         pagos: [],
       };
 
+      const esPagoReal =
+        mov.tipo === TipoMovimiento.INGRESO &&
+        mov.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO;
+
       const updatedPagos: PagoParticipanteDto[] = [
         ...current.pagos,
         {
-          movimientoId: pago.id,
-          fecha: pago.fecha,
-          monto: Number(pago.monto),
-          medioPago: pago.medioPago,
+          movimientoId: mov.id,
+          fecha: mov.fecha,
+          monto: Number(mov.monto),
+          medioPago: mov.medioPago,
+          tipo: mov.tipo,
+          concepto: mov.concepto,
         },
       ];
 
-      result.set(pago.responsableId, {
-        totalPagado: current.totalPagado + Number(pago.monto),
+      result.set(mov.responsableId, {
+        totalPagado: current.totalPagado + (esPagoReal ? Number(mov.monto) : 0),
         pagos: updatedPagos,
       });
     }
@@ -527,7 +654,6 @@ export class CampamentosService {
       string,
       { totalPagado: number; pagos: PagoParticipanteDto[] }
     >,
-    costoPorPersona: number,
   ): ParticipantePagoDto[] {
     return participantes.map((cp) => {
       const datosPago = pagosPorParticipante.get(cp.personaId) ?? {
@@ -535,10 +661,16 @@ export class CampamentosService {
         pagos: [],
       };
 
-      const saldoPendiente = costoPorPersona - datosPago.totalPagado;
+      const montoAsignado = Number(cp.montoAsignado);
+      const montoBonificado = Number(cp.montoBonificado);
+      const saldoPendiente = Math.max(
+        0,
+        montoAsignado - datosPago.totalPagado - montoBonificado,
+      );
       const estadoPago = this.determineEstadoPago(
         datosPago.totalPagado,
-        costoPorPersona,
+        montoAsignado,
+        montoBonificado,
       );
 
       const rama =
@@ -549,7 +681,8 @@ export class CampamentosService {
         nombre: cp.persona.nombre,
         tipo: cp.persona.tipo,
         rama: rama as ParticipantePagoDto['rama'],
-        costoPorPersona,
+        montoAsignado,
+        montoBonificado,
         totalPagado: datosPago.totalPagado,
         saldoPendiente,
         estadoPago,
@@ -566,15 +699,20 @@ export class CampamentosService {
    */
   private determineEstadoPago(
     totalPagado: number,
-    costoPorPersona: number,
+    montoAsignado: number,
+    montoBonificado: number,
   ): EstadoPagoCampamento {
-    if (totalPagado === 0) {
-      return EstadoPagoCampamento.PENDIENTE;
+    if (montoAsignado === 0) {
+      return EstadoPagoCampamento.EXENTO;
     }
-    if (totalPagado >= costoPorPersona) {
+    const cubierto = totalPagado + montoBonificado;
+    if (cubierto >= montoAsignado) {
       return EstadoPagoCampamento.PAGADO;
     }
-    return EstadoPagoCampamento.PARCIAL;
+    if (cubierto > 0) {
+      return EstadoPagoCampamento.PARCIAL;
+    }
+    return EstadoPagoCampamento.PENDIENTE;
   }
 
   /**
@@ -585,10 +723,16 @@ export class CampamentosService {
   private calculateKpis(
     participantes: ParticipantePagoDto[],
     movimientos: Movimiento[],
-    costoPorPersona: number,
   ): CampamentoKpisDto {
     const cantidadParticipantes = participantes.length;
-    const totalARecaudar = costoPorPersona * cantidadParticipantes;
+    const totalARecaudar = participantes.reduce(
+      (sum, p) => sum + p.montoAsignado,
+      0,
+    );
+    const totalBonificado = participantes.reduce(
+      (sum, p) => sum + p.montoBonificado,
+      0,
+    );
 
     const totalRecaudado = movimientos
       .filter((m) => m.tipo === TipoMovimiento.INGRESO)
@@ -608,29 +752,26 @@ export class CampamentosService {
       .filter((m) => m.estadoPago === EstadoPago.PENDIENTE_REEMBOLSO)
       .reduce((sum, m) => sum + Number(m.monto), 0);
 
-    const participantesPagadosCompleto = participantes.filter(
-      (p) => p.estadoPago === EstadoPagoCampamento.PAGADO,
-    ).length;
-
-    const participantesPagadosParcial = participantes.filter(
-      (p) => p.estadoPago === EstadoPagoCampamento.PARCIAL,
-    ).length;
-
-    const participantesPendientes = participantes.filter(
-      (p) => p.estadoPago === EstadoPagoCampamento.PENDIENTE,
-    ).length;
+    const contarPorEstado = (estado: EstadoPagoCampamento): number =>
+      participantes.filter((p) => p.estadoPago === estado).length;
 
     return {
       totalARecaudar,
       totalRecaudado,
+      totalBonificado,
       totalGastado,
       totalPendienteReembolso,
       balance: totalRecaudado - totalGastado,
-      deudaTotal: totalARecaudar - totalRecaudado,
+      deudaTotal: participantes.reduce((sum, p) => sum + p.saldoPendiente, 0),
       cantidadParticipantes,
-      participantesPagadosCompleto,
-      participantesPagadosParcial,
-      participantesPendientes,
+      participantesPagadosCompleto: contarPorEstado(
+        EstadoPagoCampamento.PAGADO,
+      ),
+      participantesPagadosParcial: contarPorEstado(
+        EstadoPagoCampamento.PARCIAL,
+      ),
+      participantesPendientes: contarPorEstado(EstadoPagoCampamento.PENDIENTE),
+      participantesExentos: contarPorEstado(EstadoPagoCampamento.EXENTO),
     };
   }
 
@@ -723,7 +864,8 @@ export class CampamentosService {
 
   /**
    * Calcula el total de deuda de todos los campamentos
-   * Suma de (costoPorPersona - totalPagado) para cada participante con deuda
+   * Suma de (montoAsignado - montoBonificado - totalPagado) para cada
+   * participante con deuda
    */
   async getTotalDeudaCampamentos(): Promise<{
     total: number;
@@ -732,11 +874,11 @@ export class CampamentosService {
     const result = await this.campamentoRepository
       .createQueryBuilder('c')
       .select(
-        `SUM(GREATEST(0, c."costoPorPersona" - COALESCE(pagos.total_pagado, 0)))`,
+        `SUM(GREATEST(0, cp."montoAsignado" - cp."montoBonificado" - COALESCE(pagos.total_pagado, 0)))`,
         'total',
       )
       .addSelect(
-        `COUNT(CASE WHEN c."costoPorPersona" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END)`,
+        `COUNT(CASE WHEN cp."montoAsignado" - cp."montoBonificado" - COALESCE(pagos.total_pagado, 0) > 0 THEN 1 END)`,
         'cantidad',
       )
       .innerJoin('c.participantes', 'cp')
@@ -760,6 +902,7 @@ export class CampamentosService {
         'pagos.responsable_id = p.id AND pagos.campamento_id = c.id',
       )
       .where('c.deletedAt IS NULL')
+      .andWhere('cp."deletedAt" IS NULL')
       .getRawOne<{ total: string | null; cantidad: string }>();
 
     return {

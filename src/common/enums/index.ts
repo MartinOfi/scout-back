@@ -73,6 +73,11 @@ export enum CajaType {
   RAMA_CAMINANTES = 'rama_caminantes',
   RAMA_ROVERS = 'rama_rovers',
   PERSONAL = 'personal',
+  /**
+   * Caja que financia las bonificaciones. Su plata NO es parte de la caja
+   * grupo: sólo entra a la caja grupo en el momento de otorgar una bonificación.
+   */
+  FONDO_SOLIDARIO = 'fondo_solidario',
 }
 
 /**
@@ -129,6 +134,17 @@ export enum ConceptoMovimiento {
 
   // Uso de saldo personal
   USO_SALDO_PERSONAL = 'uso_saldo_personal', // Egreso desde caja personal para pago
+
+  // Bonificaciones (fondo solidario)
+  /** Egreso del fondo solidario: ayuda otorgada a una persona */
+  BONIFICACION_OTORGADA = 'bonificacion_otorgada',
+  /**
+   * Ingreso a la caja grupo: contraparte de la bonificación otorgada.
+   * Conserva inscripcionId/campamentoId para trazabilidad, pero DEBE
+   * excluirse explícitamente de todo cálculo de "cuánto pagó esta persona"
+   * — si no, cuenta doble contra montoBonificado.
+   */
+  BONIFICACION_RECIBIDA = 'bonificacion_recibida',
 }
 
 /**
@@ -223,6 +239,8 @@ export enum EstadoPagoCampamento {
   PENDIENTE = 'pendiente',
   PARCIAL = 'parcial',
   PAGADO = 'pagado',
+  /** Monto asignado 0: no se espera pago (típicamente educadores) */
+  EXENTO = 'exento',
 }
 
 // ============================================================================
