@@ -85,6 +85,18 @@ export class MovimientosController {
     return this.movimientosService.findReembolsosPendientes();
   }
 
+  @Get('cobros-pendientes')
+  @ApiOperation({
+    summary: 'Obtener ventas a cobrar agrupadas por responsable',
+    description:
+      'Ingresos registrados con estadoPago = pendiente_cobro (ventas cargadas ' +
+      'pero cuya plata todavía no entró), agrupados por responsableId.',
+  })
+  @ApiResponse({ status: 200, description: 'Lista de cobros pendientes' })
+  async findCobrosPendientes() {
+    return this.movimientosService.findCobrosPendientes();
+  }
+
   @Get('caja/:cajaId')
   @ApiOperation({ summary: 'Listar movimientos de una caja' })
   @ApiParam({ name: 'cajaId', type: String, format: 'uuid' })
@@ -211,7 +223,10 @@ export class MovimientosController {
         descripcion: { type: 'string', example: 'Compra de materiales' },
         responsableId: { type: 'string', format: 'uuid' },
         medioPago: { type: 'string', enum: ['efectivo', 'transferencia'] },
-        estadoPago: { type: 'string', enum: ['pagado', 'pendiente_reembolso'] },
+        estadoPago: {
+          type: 'string',
+          enum: ['pagado', 'pendiente_reembolso', 'pendiente_cobro'],
+        },
         personaAReembolsarId: { type: 'string', format: 'uuid' },
         requiereComprobante: { type: 'boolean', default: true },
       },

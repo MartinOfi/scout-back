@@ -1,6 +1,10 @@
 import { Entity, Column, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
-import { TipoEvento, DestinoGanancia } from '../../../common/enums';
+import {
+  TipoEvento,
+  DestinoGanancia,
+  ModalidadVenta,
+} from '../../../common/enums';
 import { Producto } from './producto.entity';
 
 /**
@@ -28,12 +32,32 @@ export class Evento extends BaseEntity {
   tipo!: TipoEvento;
 
   /**
-   * Profit destination (only for VENTA events)
+   * Default profit destination for this event's ventas (only for VENTA events)
    * - cuentas_personales: distributed to participants who sold
    * - caja_grupo: all goes to group
+   *
+   * With modalidadVenta = UNICA this is THE destino: every venta inherits it.
+   * With MIXTA it is only a fallback — each venta declares its own, and the
+   * value that decides the caja is VentaProducto.destinoGanancia.
    */
   @Column({ type: 'enum', enum: DestinoGanancia, nullable: true })
   destinoGanancia!: DestinoGanancia | null;
+
+  /**
+   * Whether every venta of this event shares one destino or each venta picks
+   * its own. Only meaningful for TipoEvento.VENTA events.
+   *
+   * Gastos are event-wide in both modes and are charged entirely to the group,
+   * so netoPersonal is never reduced by them.
+   */
+  @Column({
+    name: 'modalidad_venta',
+    type: 'enum',
+    enum: ModalidadVenta,
+    enumName: 'eventos_modalidad_venta_enum',
+    default: ModalidadVenta.UNICA,
+  })
+  modalidadVenta!: ModalidadVenta;
 
   /**
    * Type of group event (cena, kermesse, etc.)

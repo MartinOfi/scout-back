@@ -13,6 +13,7 @@ import {
   ReporteProductoDto,
   ReporteStockDto,
   ReporteVendedorDto,
+  ReportePorDestinoDto,
 } from './reporte-bloques.dto';
 
 /**
@@ -73,6 +74,25 @@ export class ReporteVentaCuentasPersonalesDto extends ReporteVentaBaseDto {
   gananciaPorPersona!: ReporteGananciaPersonaDto[];
 }
 
+export class ReporteVentaMixtaDto extends ReporteVentaBaseDto {
+  @ApiProperty({ enum: [REPORTE_VARIANTE.VENTA_MIXTA] })
+  variante!: typeof REPORTE_VARIANTE.VENTA_MIXTA;
+
+  @ApiProperty({
+    type: ReportePorDestinoDto,
+    description:
+      'Los mismos KPIs abiertos por destino. Los gastos del evento se imputan 100% al grupo, así que el neto personal es la suma de márgenes sin descuento.',
+  })
+  porDestino!: ReportePorDestinoDto;
+
+  @ApiProperty({
+    type: [ReporteGananciaPersonaDto],
+    description:
+      'Payout a cuentas personales. Sólo cuenta las ventas con destino cuentas_personales.',
+  })
+  gananciaPorPersona!: ReporteGananciaPersonaDto[];
+}
+
 export class ReporteGrupoDto extends ReporteBaseDto {
   @ApiProperty({ enum: [REPORTE_VARIANTE.GRUPO] })
   variante!: typeof REPORTE_VARIANTE.GRUPO;
@@ -88,11 +108,13 @@ export class ReporteGrupoDto extends ReporteBaseDto {
 export type ReporteEventoDto =
   | ReporteVentaCajaGrupoDto
   | ReporteVentaCuentasPersonalesDto
+  | ReporteVentaMixtaDto
   | ReporteGrupoDto;
 
 /** Todas las clases concretas, para @ApiExtraModels y oneOf en Swagger. */
 export const REPORTE_EVENTO_DTOS = [
   ReporteVentaCajaGrupoDto,
   ReporteVentaCuentasPersonalesDto,
+  ReporteVentaMixtaDto,
   ReporteGrupoDto,
 ] as const;

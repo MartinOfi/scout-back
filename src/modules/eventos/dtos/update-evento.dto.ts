@@ -9,7 +9,11 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { DestinoGanancia, TipoEvento } from '../../../common/enums';
+import {
+  DestinoGanancia,
+  TipoEvento,
+  ModalidadVenta,
+} from '../../../common/enums';
 
 export class UpdateEventoDto {
   @ApiPropertyOptional({
@@ -61,6 +65,16 @@ export class UpdateEventoDto {
   @IsEnum(DestinoGanancia)
   @IsOptional()
   destinoGanancia?: DestinoGanancia;
+
+  @ApiPropertyOptional({
+    description:
+      'Modalidad de venta del evento. MIXTA permite que cada venta defina su ' +
+      'propio destinoGanancia; UNICA usa el destinoGanancia del evento.',
+    enum: ModalidadVenta,
+  })
+  @IsEnum(ModalidadVenta)
+  @IsOptional()
+  modalidadVenta?: ModalidadVenta;
 
   @ApiPropertyOptional({
     description: 'Subtipo de evento',

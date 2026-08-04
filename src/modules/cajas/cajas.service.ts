@@ -13,6 +13,11 @@ import { CajaType, PersonaType } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 
+const CAJAS_ERROR_MESSAGES = {
+  COLECTIVO_SIN_CAJA:
+    'Un colectivo no puede tener caja personal: su plata va siempre a la caja del grupo',
+} as const;
+
 @Injectable()
 export class CajasService {
   constructor(
@@ -200,24 +205,52 @@ export class CajasService {
     await this.cajaRepository.softRemove(caja);
   }
 
+  /**
+   * Devuelve la caja personal del propietario, creándola si no existe.
+   *
+   * Rechaza a los COLECTIVO: no son personas, representan al grupo (o a una
+   * rama) vendiendo, y su plata va siempre a la caja del grupo. El guard vive
+   * acá y no en eventos a propósito — es el único punto por el que se crea una
+   * caja personal, así que protege a todos los llamadores del sistema y hace
+   * imposible representar "el grupo vendió a una cuenta personal".
+   */
   async getOrCreateCajaPersonal(
     propietarioId: string,
     nombrePropietario?: string,
   ): Promise<Caja> {
     let caja = await this.findCajaPersonal(propietarioId);
-
-    if (!caja) {
-      caja = this.cajaRepository.create({
-        tipo: CajaType.PERSONAL,
-        propietarioId,
-        nombre: nombrePropietario
-          ? `Cuenta Personal - ${nombrePropietario}`
-          : undefined,
-      });
-      caja = await this.cajaRepository.save(caja);
+    if (caja) {
+      return caja;
     }
 
-    return caja;
+    await this.assertPuedeTenerCajaPersonal(propietarioId);
+
+    caja = this.cajaRepository.create({
+      tipo: CajaType.PERSONAL,
+      propietarioId,
+      nombre: nombrePropietario
+        ? `Cuenta Personal - ${nombrePropietario}`
+        : undefined,
+    });
+    return this.cajaRepository.save(caja);
+  }
+
+  /**
+   * Consulta el tipo por dataSource en vez de inyectar PersonasService: ese
+   * servicio ya depende de CajasService y la inyección cruzada agregaría otro
+   * forwardRef sólo para leer una columna.
+   */
+  private async assertPuedeTenerCajaPersonal(
+    propietarioId: string,
+  ): Promise<void> {
+    const rows: { tipo: PersonaType }[] = await this.dataSource.query(
+      `SELECT "tipo" FROM "personas" WHERE "id" = $1 AND "deletedAt" IS NULL`,
+      [propietarioId],
+    );
+
+    if (rows[0]?.tipo === PersonaType.COLECTIVO) {
+      throw new BadRequestException(CAJAS_ERROR_MESSAGES.COLECTIVO_SIN_CAJA);
+    }
   }
 
   /**
@@ -230,7 +263,7 @@ export class CajasService {
       WITH saldos AS (
         SELECT caja_id,
           SUM(CASE
-            WHEN tipo = 'ingreso' THEN monto
+            WHEN tipo = 'ingreso' AND "estadoPago" != 'pendiente_cobro' THEN monto
             WHEN tipo = 'egreso' AND "estadoPago" != 'pendiente_reembolso' THEN -monto
             ELSE 0
           END) AS saldo
@@ -244,6 +277,14 @@ export class CajasService {
         WHERE "estadoPago" = 'pendiente_reembolso'
           AND "deletedAt" IS NULL
           AND persona_a_reembolsar_id IS NOT NULL
+      ),
+      cobros AS (
+        SELECT COALESCE(SUM(monto), 0) AS total,
+          COUNT(DISTINCT responsable_id) AS cantidad
+        FROM movimientos
+        WHERE "estadoPago" = 'pendiente_cobro'
+          AND "deletedAt" IS NULL
+          AND responsable_id IS NOT NULL
       ),
       deuda_inscr AS (
         SELECT
@@ -285,6 +326,7 @@ export class CajasService {
           WHERE c."deletedAt" IS NULL ORDER BY c.tipo, c.nombre
         ) t) AS cajas,
         (SELECT row_to_json(r) FROM reembolsos r) AS reembolsos,
+        (SELECT row_to_json(c) FROM cobros c) AS cobros,
         (SELECT row_to_json(d) FROM deuda_inscr d) AS deuda_inscripciones,
         (SELECT row_to_json(d) FROM deuda_cuotas d) AS deuda_cuotas,
         (SELECT row_to_json(d) FROM deuda_camp d) AS deuda_campamentos
@@ -298,6 +340,7 @@ export class CajasService {
       saldo: number;
     }[] = raw.cajas ?? [];
     const reembolsos = raw.reembolsos ?? { total: 0, cantidad: 0 };
+    const cobros = raw.cobros ?? { total: 0, cantidad: 0 };
     const deudaInscripciones = raw.deuda_inscripciones ?? {
       total: 0,
       cantidad: 0,
@@ -358,6 +401,10 @@ export class CajasService {
       reembolsosPendientes: {
         total: totalReembolsos,
         cantidad: Number(reembolsos.cantidad),
+      },
+      cobrosPendientes: {
+        total: Number(cobros.total),
+        cantidad: Number(cobros.cantidad),
       },
       deudasTotales: {
         total: totalDeudas,

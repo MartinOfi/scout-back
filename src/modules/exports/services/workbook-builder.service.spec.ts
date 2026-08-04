@@ -91,8 +91,7 @@ describe('WorkbookBuilderService', () => {
 
     expect(ws.getRow(1).font?.bold).toBe(true);
     const view = ws.views?.[0] as
-      | { state?: string; ySplit?: number }
-      | undefined;
+      { state?: string; ySplit?: number } | undefined;
     expect(view?.state).toBe('frozen');
     expect(view?.ySplit).toBe(1);
   });

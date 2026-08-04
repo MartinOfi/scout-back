@@ -66,6 +66,21 @@ export class ReembolsosPendientesDto {
 }
 
 /**
+ * DTO para resumen de cobros pendientes (ventas registradas cuya plata
+ * todavía no entró — ej. pedidos por WhatsApp)
+ */
+export class CobrosPendientesDto {
+  @ApiProperty({ example: 4500 })
+  total!: number;
+
+  @ApiProperty({
+    example: 2,
+    description: 'Cantidad de responsables con cobros pendientes',
+  })
+  cantidad!: number;
+}
+
+/**
  * DTO para deuda por tipo de concepto
  */
 export class DeudaTipoDto {
@@ -137,6 +152,9 @@ export class ConsolidadoSaldosDto {
 
   @ApiProperty({ type: ReembolsosPendientesDto })
   reembolsosPendientes!: ReembolsosPendientesDto;
+
+  @ApiProperty({ type: CobrosPendientesDto })
+  cobrosPendientes!: CobrosPendientesDto;
 
   @ApiProperty({ type: DeudasTotalesDto })
   deudasTotales!: DeudasTotalesDto;

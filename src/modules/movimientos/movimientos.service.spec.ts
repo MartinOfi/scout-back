@@ -6,6 +6,7 @@ import { MovimientosService } from './movimientos.service';
 import { Movimiento } from './entities/movimiento.entity';
 import { CajasService } from '../cajas/cajas.service';
 import { PersonasService } from '../personas/personas.service';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import {
   TipoMovimiento,
   ConceptoMovimiento,
@@ -60,6 +61,10 @@ describe('MovimientosService', () => {
       transaction: jest.fn(),
     };
 
+    const mockDeletionValidator = {
+      canDeleteMovimiento: jest.fn().mockResolvedValue({ canDelete: true }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MovimientosService,
@@ -70,6 +75,10 @@ describe('MovimientosService', () => {
         { provide: CajasService, useValue: mockCajasService },
         { provide: PersonasService, useValue: mockPersonasService },
         { provide: DataSource, useValue: mockDataSource },
+        {
+          provide: DeletionValidatorService,
+          useValue: mockDeletionValidator,
+        },
       ],
     }).compile();
 
@@ -167,7 +176,7 @@ describe('MovimientosService', () => {
 
       await service.findWithFilters({
         categoria: CategoriaMovimiento.COMIDA,
-      } as never);
+      });
 
       const andWhereCalls = mockQb.andWhere.mock.calls.map((c) => c[0]);
       expect(andWhereCalls.some((s: string) => s.includes('categoria'))).toBe(
@@ -191,6 +200,7 @@ describe('MovimientosService', () => {
         andWhere: jest.fn().mockReturnThis(),
         groupBy: jest.fn().mockReturnThis(),
         setParameter: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue(rawResults),
       };
       movimientoRepository.createQueryBuilder.mockReturnValue(mockQb as any);

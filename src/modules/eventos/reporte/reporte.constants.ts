@@ -2,7 +2,8 @@
  * Constants for the event-report feature.
  *
  * A report "variant" is the discriminator that decides which contract and which
- * strategy apply. It is derived from (tipo, destinoGanancia):
+ * strategy apply. It is derived from (tipo, modalidadVenta, destinoGanancia):
+ *   - venta + modalidad mixta     -> VENTA_MIXTA
  *   - venta + caja_grupo          -> VENTA_CAJA_GRUPO
  *   - venta + cuentas_personales  -> VENTA_CUENTAS_PERSONALES
  *   - grupo                       -> GRUPO
@@ -10,6 +11,7 @@
 export const REPORTE_VARIANTE = {
   VENTA_CAJA_GRUPO: 'venta_caja_grupo',
   VENTA_CUENTAS_PERSONALES: 'venta_cuentas_personales',
+  VENTA_MIXTA: 'venta_mixta',
   GRUPO: 'grupo',
 } as const;
 

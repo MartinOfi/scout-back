@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import {
   NotFoundException,
   BadRequestException,
@@ -586,7 +586,32 @@ describe('PersonasService', () => {
 
       expect(result).toHaveLength(3);
       expect(personaRepository.find).toHaveBeenCalledWith({
+        where: { tipo: Not(PersonaType.COLECTIVO) },
         order: { nombre: 'ASC' },
+      });
+    });
+
+    it('excluye a los COLECTIVO: no son miembros del grupo', async () => {
+      personaRepository.find.mockResolvedValue([]);
+
+      await service.findAll();
+
+      const [args] = personaRepository.find.mock.calls[0] as [
+        { where: { tipo: unknown } },
+      ];
+      expect(args.where.tipo).toEqual(Not(PersonaType.COLECTIVO));
+    });
+  });
+
+  describe('findVendedoresElegibles', () => {
+    it('incluye a los colectivos: es la única lista donde el grupo figura como vendedor', async () => {
+      personaRepository.find.mockResolvedValue([]);
+
+      await service.findVendedoresElegibles();
+
+      expect(personaRepository.find).toHaveBeenCalledWith({
+        where: { estado: EstadoPersona.ACTIVO },
+        order: { tipo: 'ASC', nombre: 'ASC' },
       });
     });
   });
@@ -616,7 +641,10 @@ describe('PersonasService', () => {
 
       expect(result).toHaveLength(2);
       expect(personaRepository.find).toHaveBeenCalledWith({
-        where: { estado: EstadoPersona.ACTIVO },
+        where: {
+          estado: EstadoPersona.ACTIVO,
+          tipo: Not(PersonaType.COLECTIVO),
+        },
         order: { nombre: 'ASC' },
       });
     });
@@ -669,7 +697,7 @@ describe('PersonasService', () => {
       jest.spyOn(service, 'findOne').mockResolvedValue({
         ...personaProtagonista,
         tipo: PersonaType.EDUCADOR,
-      } as Persona);
+      });
       movimientosService.calcularSaldo.mockResolvedValue(800);
 
       const result = await service.darDeBaja('persona-uuid', 'admin-uuid');
@@ -694,7 +722,7 @@ describe('PersonasService', () => {
       jest.spyOn(service, 'findOne').mockResolvedValue({
         ...personaProtagonista,
         tipo: PersonaType.EXTERNA,
-      } as Persona);
+      });
 
       const result = await service.darDeBaja('persona-uuid', 'admin-uuid');
 

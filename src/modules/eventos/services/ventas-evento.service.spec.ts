@@ -68,17 +68,27 @@ describe('VentasEventoService', () => {
   const buildFakeManager = (
     siblings: VentaProducto[] = [],
   ): jest.Mocked<Pick<EntityManager, 'softRemove' | 'createQueryBuilder'>> => {
-    const queryBuilder = {
+    // El manager construye dos queries distintas: las ventas hermanas del lote
+    // y las entregas inmediatas a arrastrar. Se distinguen por la entidad.
+    const siblingsQb = {
       where: jest.fn().mockReturnThis(),
       andWhere: jest.fn().mockReturnThis(),
       getMany: jest.fn().mockResolvedValue(siblings),
     };
+    const entregasInmediatasQb = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
     return {
       softRemove: jest.fn().mockResolvedValue(undefined),
-      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
-    } as unknown as jest.Mocked<
-      Pick<EntityManager, 'softRemove' | 'createQueryBuilder'>
-    >;
+      createQueryBuilder: jest
+        .fn()
+        .mockImplementation((entity: unknown) =>
+          entity === EntregaLinea ? entregasInmediatasQb : siblingsQb,
+        ),
+    };
   };
 
   let fakeManager: ReturnType<typeof buildFakeManager>;

@@ -12,11 +12,20 @@
 /**
  * Types of people in the system (Single Table Inheritance discriminator)
  * From PRD §2.1: Protagonista, Educador, Persona Externa
+ *
+ * COLECTIVO is not a person: it represents the group itself (or any future
+ * collective, e.g. a rama) acting as a seller. It exists so that a sale made
+ * "by the group" at a park stand has a real vendedor instead of a stand-in
+ * member, which used to distort the participation blocks of the event report.
+ *
+ * A COLECTIVO never has a caja personal, never appears in member listings and
+ * is never part of the deudores report. See CajasService.getOrCreateCajaPersonal.
  */
 export enum PersonaType {
   PROTAGONISTA = 'protagonista',
   EDUCADOR = 'educador',
   EXTERNA = 'externo',
+  COLECTIVO = 'colectivo',
 }
 
 /**
@@ -136,12 +145,22 @@ export enum MedioPago {
 }
 
 /**
- * Payment status for movements (egresos)
+ * Payment status for movements
  * From TRD §4.1: Estado de pago
+ *
+ * The two PENDIENTE values are mirror images of each other and both mean
+ * "this movement is recorded but the money has not changed hands yet", so
+ * neither affects the caja balance (see MovimientosService.calcularSaldo):
+ *
+ * - PENDIENTE_REEMBOLSO (egresos): a liability. Someone paid a group expense
+ *   out of pocket; the group owes them. The money is still in the caja.
+ * - PENDIENTE_COBRO (ingresos): a receivable. A sale was recorded but not
+ *   collected yet (e.g. a WhatsApp order). The money is not in the caja.
  */
 export enum EstadoPago {
   PAGADO = 'pagado',
   PENDIENTE_REEMBOLSO = 'pendiente_reembolso',
+  PENDIENTE_COBRO = 'pendiente_cobro',
 }
 
 /**
@@ -222,10 +241,41 @@ export enum TipoEvento {
 /**
  * Destination of event profits (for sale events)
  * From PRD §3.4 (F10): Destino de ganancia
+ *
+ * Lives on BOTH Evento and VentaProducto. On the evento it is the default
+ * applied to new ventas; on the venta it is the value that actually decides
+ * which caja receives the margen. They only differ in MIXTA events.
  */
 export enum DestinoGanancia {
   CUENTAS_PERSONALES = 'cuentas_personales',
   CAJA_GRUPO = 'caja_grupo',
+}
+
+/**
+ * Whether a sale event uses a single destino for every venta or lets each
+ * venta pick its own.
+ *
+ * UNICA: every venta inherits evento.destinoGanancia. Sending a destino per
+ *        venta is rejected.
+ * MIXTA: each venta must declare its destino. Gastos stay event-wide and are
+ *        charged entirely to the group (netoPersonal is not reduced by them).
+ */
+export enum ModalidadVenta {
+  UNICA = 'unica',
+  MIXTA = 'mixta',
+}
+
+/**
+ * Whether the money for a venta has actually been collected.
+ *
+ * PENDIENTE covers orders taken without payment (typically via WhatsApp), so
+ * they are not forgotten. It is the source of truth from which the linked
+ * movimiento's EstadoPago is derived: PENDIENTE → PENDIENTE_COBRO, meaning the
+ * caja balance stays untouched until the venta is marked as collected.
+ */
+export enum EstadoCobroVenta {
+  COBRADO = 'cobrado',
+  PENDIENTE = 'pendiente',
 }
 
 // ============================================================================

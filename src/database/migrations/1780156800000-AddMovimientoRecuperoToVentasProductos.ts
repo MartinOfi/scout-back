@@ -9,9 +9,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * personal. This column links the venta to that recupero movimiento, mirroring
  * `movimiento_id` (nullable, ON DELETE SET NULL).
  */
-export class AddMovimientoRecuperoToVentasProductos1780156800000
-  implements MigrationInterface
-{
+export class AddMovimientoRecuperoToVentasProductos1780156800000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "ventas_productos"

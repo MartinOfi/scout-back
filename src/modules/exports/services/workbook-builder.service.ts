@@ -38,7 +38,7 @@ export class WorkbookBuilderService {
     }
 
     const arrayBuffer = await workbook.xlsx.writeBuffer();
-    return Buffer.from(arrayBuffer as ArrayBuffer);
+    return Buffer.from(arrayBuffer);
   }
 
   private addSheet(workbook: ExcelJS.Workbook, spec: SheetSpec): void {

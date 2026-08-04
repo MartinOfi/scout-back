@@ -8,6 +8,13 @@
  * Add new entries here BEFORE throwing a new exception in service code.
  */
 export const EVENTOS_ERROR_MESSAGES = {
+  DESTINO_REQUERIDO_EN_MIXTA:
+    'El evento es de modalidad mixta: cada venta debe declarar su destinoGanancia (caja_grupo o cuentas_personales)',
+  DESTINO_NO_APLICA_EN_UNICA:
+    'El evento es de modalidad única: el destino se hereda del evento y no se puede especificar por venta',
+  EVENTO_SIN_DESTINO: (id: string): string =>
+    `El evento ${id} no tiene destinoGanancia definido y no se pueden registrar ventas`,
+  VENTA_YA_COBRADA: 'La venta ya figura como cobrada',
   EVENTO_NOT_FOUND: (id: string): string => `Evento con ID ${id} no encontrado`,
   EVENTO_CERRADO:
     'El evento está cerrado y no admite modificaciones (incluyendo borrados)',
