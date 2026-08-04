@@ -118,4 +118,19 @@ export class CreateInscripcionDto {
   @Min(0)
   @IsOptional()
   montoConSaldoPersonal?: number;
+
+  // =========================================================================
+  // Bonificación (opcional)
+  // =========================================================================
+
+  @ApiPropertyOptional({
+    example: 5000.0,
+    minimum: 0,
+    description:
+      'Monto a bonificar contra el fondo solidario al momento de crear la inscripción (default: 0). Se otorga en la misma transacción que la creación: si el fondo no tiene saldo suficiente, no se crea nada.',
+  })
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  montoBonificado?: number;
 }

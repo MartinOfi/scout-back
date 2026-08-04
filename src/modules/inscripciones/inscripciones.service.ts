@@ -372,6 +372,13 @@ export class InscripcionesService {
     const montoPagado = dto.montoPagado ?? 0;
     const montoConSaldoPersonal = dto.montoConSaldoPersonal ?? 0;
     const montoTotalPago = montoPagado + montoConSaldoPersonal;
+    const montoBonificado = dto.montoBonificado ?? 0;
+
+    if (montoTotalPago + montoBonificado > dto.montoTotal) {
+      throw new BadRequestException(
+        'La suma de los pagos y la bonificación no puede superar el monto total',
+      );
+    }
 
     // Campos de autorización solo aplican a SCOUT_ARGENTINA
     const esScoutArgentina = dto.tipo === TipoInscripcion.SCOUT_ARGENTINA;
@@ -420,6 +427,21 @@ export class InscripcionesService {
           inscripcionId: savedInscripcion.id,
           descripcion: `Pago inscripción ${dto.tipo} ${dto.ano}`,
           registradoPorId,
+        });
+      }
+
+      // Bonificación en la misma transacción: si el fondo no tiene saldo
+      // suficiente, todo el bloque (incluida la inscripción) se revierte.
+      if (montoBonificado > 0) {
+        await this.bonificacionesService.otorgarConManager(manager, {
+          personaId: dto.personaId,
+          monto: montoBonificado,
+          inscripcionId: savedInscripcion.id,
+          descripcion: `Bonificación inscripción ${dto.tipo} ${dto.ano}`,
+          registradoPorId,
+        });
+        await manager.update(Inscripcion, savedInscripcion.id, {
+          montoBonificado,
         });
       }
 

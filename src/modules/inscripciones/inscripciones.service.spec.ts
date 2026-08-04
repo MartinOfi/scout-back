@@ -503,20 +503,29 @@ describe('InscripcionesService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('siempre crea con montoBonificado 0, ignorando cualquier valor en el dto (ya no forma parte de CreateInscripcionDto)', async () => {
+    it('crea siempre con montoBonificado 0 en el insert inicial, luego lo actualiza atómicamente si el dto trae bonificación', async () => {
+      const savedInscripcion = {
+        ...mockInscripcion,
+        id: 'new-inscripcion-uuid',
+      };
       personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
       repository.findOne.mockResolvedValueOnce(null);
       movimientosService.findByRelatedEntity.mockResolvedValue([]);
 
       let capturedCreateData: any;
+      let capturedUpdateArgs: any;
       (dataSource.transaction as jest.Mock).mockImplementation(async (cb) => {
         const mockManager = {
           create: jest.fn().mockImplementation((_, data) => {
             capturedCreateData = data;
-            return mockInscripcion;
+            return savedInscripcion;
           }),
-          save: jest.fn().mockResolvedValue(mockInscripcion),
-          findOne: jest.fn().mockResolvedValue(mockInscripcion),
+          save: jest.fn().mockResolvedValue(savedInscripcion),
+          update: jest.fn().mockImplementation((_, id, data) => {
+            capturedUpdateArgs = { id, data };
+            return Promise.resolve(undefined);
+          }),
+          findOne: jest.fn().mockResolvedValue(savedInscripcion),
         };
         return cb(mockManager);
       });
@@ -526,12 +535,59 @@ describe('InscripcionesService', () => {
         tipo: TipoInscripcion.GRUPO,
         ano: 2026,
         montoTotal: 10000,
-        montoBonificado: 999,
+        montoBonificado: 4000,
       } as never);
 
       expect(capturedCreateData).toEqual(
         expect.objectContaining({ montoBonificado: 0 }),
       );
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({
+          personaId: 'persona-uuid',
+          monto: 4000,
+          inscripcionId: 'new-inscripcion-uuid',
+        }),
+      );
+      expect(capturedUpdateArgs).toEqual({
+        id: 'new-inscripcion-uuid',
+        data: { montoBonificado: 4000 },
+      });
+    });
+
+    it('no llama a otorgarConManager cuando montoBonificado es 0 o no se envía', async () => {
+      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
+      repository.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(mockInscripcion as Inscripcion);
+      movimientosService.findByRelatedEntity.mockResolvedValue([]);
+
+      await service.registrarInscripcion({
+        personaId: 'persona-uuid',
+        tipo: TipoInscripcion.GRUPO,
+        ano: 2026,
+        montoTotal: 10000,
+      });
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si pago + saldo personal + bonificación superan el monto total', async () => {
+      personasService.findOne.mockResolvedValue({ id: 'persona-uuid' } as any);
+      repository.findOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.registrarInscripcion({
+          personaId: 'persona-uuid',
+          tipo: TipoInscripcion.GRUPO,
+          ano: 2026,
+          montoTotal: 10000,
+          montoPagado: 5000,
+          montoBonificado: 6000,
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
     });
 
     it('should call pagosService when montoPagado > 0', async () => {
