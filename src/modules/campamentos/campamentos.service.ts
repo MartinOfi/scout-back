@@ -161,23 +161,6 @@ export class CampamentosService {
     return this.findOne(id);
   }
 
-  private async findEgresoBonificacionParticipante(
-    campamentoId: string,
-    personaId: string,
-  ): Promise<string | null> {
-    const movimientos = await this.movimientosService.findByRelatedEntity(
-      'campamento',
-      campamentoId,
-    );
-    const egreso = movimientos.find(
-      (m) =>
-        m.tipo === TipoMovimiento.EGRESO &&
-        m.concepto === ConceptoMovimiento.BONIFICACION_OTORGADA &&
-        m.responsableId === personaId,
-    );
-    return egreso?.id ?? null;
-  }
-
   /**
    * Fija el monto bonificado de un participante contra el fondo solidario.
    * `monto` es el total deseado (no un delta): ajustar de $5.000 a $6.000
@@ -204,17 +187,39 @@ export class CampamentosService {
         'No se puede bonificar a un participante exento',
       );
     }
-    if (monto > montoAsignado) {
+
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'campamento',
+      campamentoId,
+    );
+
+    // Lo ya pagado en efectivo/transferencia no puede ser cubierto de nuevo
+    // por una bonificación: el máximo bonificable es el saldo pendiente, no
+    // el monto asignado completo (dejaría un pago > 100% del asignado).
+    const totalPagado = movimientos
+      .filter(
+        (m) =>
+          m.tipo === TipoMovimiento.INGRESO &&
+          m.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO &&
+          m.responsableId === personaId,
+      )
+      .reduce((sum, m) => sum + Number(m.monto), 0);
+    const maxBonificable = montoAsignado - totalPagado;
+
+    if (monto > maxBonificable) {
       throw new BadRequestException(
-        'El monto bonificado no puede exceder el monto asignado',
+        `El monto bonificado no puede exceder el saldo pendiente ($${maxBonificable})`,
       );
     }
 
     const campamento = await this.findOne(campamentoId);
-    const egresoPrevioId = await this.findEgresoBonificacionParticipante(
-      campamentoId,
-      personaId,
-    );
+    const egresoPrevioId =
+      movimientos.find(
+        (m) =>
+          m.tipo === TipoMovimiento.EGRESO &&
+          m.concepto === ConceptoMovimiento.BONIFICACION_OTORGADA &&
+          m.responsableId === personaId,
+      )?.id ?? null;
 
     await this.dataSource.transaction(async (manager) => {
       if (egresoPrevioId) {
@@ -489,15 +494,22 @@ export class CampamentosService {
       campamentoId,
     );
 
-    // 3. Separate payments (INGRESO) from expenses (EGRESO)
-    const pagos = todosMovimientos.filter(
+    // 3. Movimientos a mostrar en el historial de cada participante: pagos
+    // reales (CAMPAMENTO_PAGO) + ambas patas de la bonificación, para que se
+    // vea de dónde salió cada peso. Sólo CAMPAMENTO_PAGO suma a totalPagado
+    // (ver buildPagosPorParticipante) — bonificar no se cuenta como pago.
+    const movimientosHistorialParticipante = todosMovimientos.filter(
       (m) =>
-        m.tipo === TipoMovimiento.INGRESO &&
-        m.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO,
+        (m.tipo === TipoMovimiento.INGRESO &&
+          m.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO) ||
+        m.concepto === ConceptoMovimiento.BONIFICACION_RECIBIDA ||
+        m.concepto === ConceptoMovimiento.BONIFICACION_OTORGADA,
     );
 
     // 4. Build payments map by responsableId (participant)
-    const pagosPorParticipante = this.buildPagosPorParticipante(pagos);
+    const pagosPorParticipante = this.buildPagosPorParticipante(
+      movimientosHistorialParticipante,
+    );
 
     // 5. Build participant DTOs with payment status
     const costoPorPersona = Number(campamento.costoPorPersona);
@@ -587,34 +599,45 @@ export class CampamentosService {
   }
 
   /**
-   * Build payments map grouped by participant ID
+   * Build payments map grouped by participant ID.
+   *
+   * `movimientos` puede incluir pagos reales y movimientos de bonificación
+   * (para mostrarlos en el historial). Sólo los pagos reales
+   * (CAMPAMENTO_PAGO) suman a `totalPagado` — bonificar no se cuenta como
+   * pago (ver C1 en inscripciones, mismo criterio acá).
    */
   private buildPagosPorParticipante(
-    pagos: Movimiento[],
+    movimientos: Movimiento[],
   ): Map<string, { totalPagado: number; pagos: PagoParticipanteDto[] }> {
     const result = new Map<
       string,
       { totalPagado: number; pagos: PagoParticipanteDto[] }
     >();
 
-    for (const pago of pagos) {
-      const current = result.get(pago.responsableId) ?? {
+    for (const mov of movimientos) {
+      const current = result.get(mov.responsableId) ?? {
         totalPagado: 0,
         pagos: [],
       };
 
+      const esPagoReal =
+        mov.tipo === TipoMovimiento.INGRESO &&
+        mov.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO;
+
       const updatedPagos: PagoParticipanteDto[] = [
         ...current.pagos,
         {
-          movimientoId: pago.id,
-          fecha: pago.fecha,
-          monto: Number(pago.monto),
-          medioPago: pago.medioPago,
+          movimientoId: mov.id,
+          fecha: mov.fecha,
+          monto: Number(mov.monto),
+          medioPago: mov.medioPago,
+          tipo: mov.tipo,
+          concepto: mov.concepto,
         },
       ];
 
-      result.set(pago.responsableId, {
-        totalPagado: current.totalPagado + Number(pago.monto),
+      result.set(mov.responsableId, {
+        totalPagado: current.totalPagado + (esPagoReal ? Number(mov.monto) : 0),
         pagos: updatedPagos,
       });
     }

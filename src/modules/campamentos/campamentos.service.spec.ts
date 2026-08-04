@@ -551,10 +551,59 @@ describe('CampamentosService', () => {
           15000,
         ),
       ).rejects.toThrow(
-        'El monto bonificado no puede exceder el monto asignado',
+        'El monto bonificado no puede exceder el saldo pendiente ($10000)',
       );
 
       expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('rechaza bonificar más que el saldo pendiente cuando ya hay un pago parcial', async () => {
+      // $10.000 asignados, $2.000 ya pagados en efectivo: sólo quedan $8.000
+      // bonificables. Bonificar $10.000 dejaría un "pagado" de $12.000/$10.000.
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'pago-uuid',
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+          responsableId: 'educador-uuid',
+          monto: 2000,
+        },
+      ] as any);
+
+      await expect(
+        service.bonificarParticipante(
+          'campamento-uuid',
+          'educador-uuid',
+          10000,
+        ),
+      ).rejects.toThrow(
+        'El monto bonificado no puede exceder el saldo pendiente ($8000)',
+      );
+
+      expect(bonificacionesService.otorgarConManager).not.toHaveBeenCalled();
+    });
+
+    it('permite bonificar exactamente el saldo pendiente cuando ya hay un pago parcial', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          id: 'pago-uuid',
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+          responsableId: 'educador-uuid',
+          monto: 2000,
+        },
+      ] as any);
+
+      await service.bonificarParticipante(
+        'campamento-uuid',
+        'educador-uuid',
+        8000,
+      );
+
+      expect(bonificacionesService.otorgarConManager).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ monto: 8000 }),
+      );
     });
 
     it('rechaza bonificar a un participante exento', async () => {
@@ -1161,6 +1210,52 @@ describe('CampamentosService', () => {
       // totalPagado 10000 + montoBonificado 3000 = 13000 cubierto de 15000
       expect(participante.saldoPendiente).toBe(2000);
       expect(participante.estadoPago).toBe(EstadoPagoCampamento.PARCIAL);
+    });
+
+    it('incluye los movimientos de bonificación en participante.pagos, con concepto, sin sumarlos a totalPagado', async () => {
+      const mockMovimientoBonificacionOtorgada = {
+        id: 'mov-bon-otorgada-uuid',
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.BONIFICACION_OTORGADA,
+        monto: 3000,
+        medioPago: MedioPago.EFECTIVO,
+        estadoPago: EstadoPago.PAGADO,
+        responsableId: 'persona-uuid',
+        responsable: { nombre: 'Juan Scout' },
+        fecha: new Date('2026-01-11'),
+        descripcion: 'Bonificación campamento',
+      };
+      const mockMovimientoBonificacionRecibida = {
+        id: 'mov-bon-recibida-uuid',
+        tipo: TipoMovimiento.INGRESO,
+        concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        monto: 3000,
+        medioPago: MedioPago.EFECTIVO,
+        estadoPago: EstadoPago.PAGADO,
+        responsableId: 'persona-uuid',
+        responsable: { nombre: 'Juan Scout' },
+        fecha: new Date('2026-01-11'),
+        descripcion: 'Bonificación campamento',
+      };
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        mockMovimientoPago,
+        mockMovimientoUseSaldo,
+        mockMovimientoGasto,
+        mockMovimientoBonificacionOtorgada,
+        mockMovimientoBonificacionRecibida,
+      ] as any);
+
+      const result = await service.getDetalle('campamento-uuid');
+
+      const participante = result.participantes[0];
+      // totalPagado sigue reflejando sólo el pago real: bonificar no cuenta
+      // como pago (mismo criterio que en inscripciones).
+      expect(participante.totalPagado).toBe(10000);
+      expect(participante.pagos).toHaveLength(3);
+      const conceptos = participante.pagos.map((p) => p.concepto);
+      expect(conceptos).toContain(ConceptoMovimiento.CAMPAMENTO_PAGO);
+      expect(conceptos).toContain(ConceptoMovimiento.BONIFICACION_OTORGADA);
+      expect(conceptos).toContain(ConceptoMovimiento.BONIFICACION_RECIBIDA);
     });
 
     it('un educador con montoAsignado 0 aparece EXENTO con saldoPendiente 0', async () => {

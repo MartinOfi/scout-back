@@ -57,6 +57,16 @@ export class PagoParticipanteDto {
 
   @ApiProperty({ enum: MedioPago })
   medioPago!: MedioPago;
+
+  @ApiProperty({ enum: TipoMovimiento })
+  tipo!: TipoMovimiento;
+
+  @ApiProperty({
+    enum: ConceptoMovimiento,
+    description:
+      'campamento_pago = pago real; bonificacion_recibida/otorgada = movimientos de la bonificación (no suman a totalPagado).',
+  })
+  concepto!: ConceptoMovimiento;
 }
 
 /**
