@@ -24,17 +24,17 @@ const TIPO_LABELS: Record<string, string> = {
   [PersonaType.EDUCADOR]: 'Educadores',
   [PersonaType.PROTAGONISTA]: 'Protagonistas',
   [PersonaType.EXTERNA]: 'Externos',
-  [PersonaType.COLECTIVO]: 'Grupo',
+  [PersonaType.AGRUPACION]: 'Grupo',
 };
 
 const GRUPO_EDUCADORES = 'Educadores';
 
 /**
- * Un colectivo no tiene rama. Se agrupa aparte igual que los educadores, en
+ * Una agrupación no tiene rama. Se agrupa aparte igual que los educadores, en
  * vez de caer en "Sin rama", para que el bloque de participación distinga
  * "vendió el grupo" de "vendió alguien sin rama asignada".
  */
-const GRUPO_COLECTIVO = 'Grupo';
+const GRUPO_AGRUPACION = 'Grupo';
 
 interface RawTipoRow {
   tipo: string;
@@ -139,14 +139,14 @@ export class ReporteAggregatorsService {
     // 'Educadores' al enum personas_rama_enum y falla).
     const grupoExpr = `CASE
       WHEN pe.tipo = :educador THEN :educLabel
-      WHEN pe.tipo = :colectivo THEN :colectivoLabel
+      WHEN pe.tipo = :agrupacion THEN :agrupacionLabel
       ELSE pe.rama::text END`;
     const rows = await this.baseVentasQuery(eventoId)
       .setParameters({
         educador: PersonaType.EDUCADOR,
         educLabel: GRUPO_EDUCADORES,
-        colectivo: PersonaType.COLECTIVO,
-        colectivoLabel: GRUPO_COLECTIVO,
+        agrupacion: PersonaType.AGRUPACION,
+        agrupacionLabel: GRUPO_AGRUPACION,
       })
       .select(grupoExpr, 'grupo')
       .addSelect(`(pe.tipo = :educador)`, 'esEducador')

@@ -586,12 +586,12 @@ describe('PersonasService', () => {
 
       expect(result).toHaveLength(3);
       expect(personaRepository.find).toHaveBeenCalledWith({
-        where: { tipo: Not(PersonaType.COLECTIVO) },
+        where: { tipo: Not(PersonaType.AGRUPACION) },
         order: { nombre: 'ASC' },
       });
     });
 
-    it('excluye a los COLECTIVO: no son miembros del grupo', async () => {
+    it('excluye a las AGRUPACION: no son miembros del grupo', async () => {
       personaRepository.find.mockResolvedValue([]);
 
       await service.findAll();
@@ -599,12 +599,12 @@ describe('PersonasService', () => {
       const [args] = personaRepository.find.mock.calls[0] as [
         { where: { tipo: unknown } },
       ];
-      expect(args.where.tipo).toEqual(Not(PersonaType.COLECTIVO));
+      expect(args.where.tipo).toEqual(Not(PersonaType.AGRUPACION));
     });
   });
 
   describe('findVendedoresElegibles', () => {
-    it('incluye a los colectivos: es la única lista donde el grupo figura como vendedor', async () => {
+    it('incluye a las agrupaciones: es la única lista donde el grupo figura como vendedor', async () => {
       personaRepository.find.mockResolvedValue([]);
 
       await service.findVendedoresElegibles();
@@ -643,7 +643,7 @@ describe('PersonasService', () => {
       expect(personaRepository.find).toHaveBeenCalledWith({
         where: {
           estado: EstadoPersona.ACTIVO,
-          tipo: Not(PersonaType.COLECTIVO),
+          tipo: Not(PersonaType.AGRUPACION),
         },
         order: { nombre: 'ASC' },
       });

@@ -19,8 +19,8 @@ import { DeletionValidatorService } from '../../common/services/deletion-validat
 import { MovimientosService } from '../movimientos/movimientos.service';
 
 const CAJAS_ERROR_MESSAGES = {
-  COLECTIVO_SIN_CAJA:
-    'Un colectivo no puede tener caja personal: su plata va siempre a la caja del grupo',
+  AGRUPACION_SIN_CAJA:
+    'Una agrupación no puede tener caja personal: su plata va siempre a la caja del grupo',
 } as const;
 
 @Injectable()
@@ -291,7 +291,7 @@ export class CajasService {
   /**
    * Devuelve la caja personal del propietario, creándola si no existe.
    *
-   * Rechaza a los COLECTIVO: no son personas, representan al grupo (o a una
+   * Rechaza a las AGRUPACION: no son personas, representan al grupo (o a una
    * rama) vendiendo, y su plata va siempre a la caja del grupo. El guard vive
    * acá y no en eventos a propósito — es el único punto por el que se crea una
    * caja personal, así que protege a todos los llamadores del sistema y hace
@@ -331,8 +331,8 @@ export class CajasService {
       [propietarioId],
     );
 
-    if (rows[0]?.tipo === PersonaType.COLECTIVO) {
-      throw new BadRequestException(CAJAS_ERROR_MESSAGES.COLECTIVO_SIN_CAJA);
+    if (rows[0]?.tipo === PersonaType.AGRUPACION) {
+      throw new BadRequestException(CAJAS_ERROR_MESSAGES.AGRUPACION_SIN_CAJA);
     }
   }
 

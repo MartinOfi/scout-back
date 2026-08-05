@@ -39,7 +39,7 @@ export class VentaProducto extends BaseEntity {
   /**
    * Person who sold (vendedor).
    *
-   * May be a Colectivo (PersonaType.COLECTIVO) when the group itself sold —
+   * May be an Agrupacion (PersonaType.AGRUPACION) when the group itself sold —
    * e.g. a park stand with no individual seller. That is why this stays
    * NOT NULL: "the group sold it" is a real vendedor, not a missing one, so
    * aggregations keep their inner joins and no sale can silently drop out of
@@ -65,9 +65,9 @@ export class VentaProducto extends BaseEntity {
    * each lote declares its own. This — not the evento — is what
    * resolveCajaForVenta and shouldGenerateRecuperoCosto read.
    *
-   * A venta sold by a Colectivo can only be CAJA_GRUPO: there is no personal
+   * A venta sold by an Agrupacion can only be CAJA_GRUPO: there is no personal
    * caja to credit. The rule is enforced by CajasService.getOrCreateCajaPersonal,
-   * which rejects colectivos for every caller in the system, not just eventos.
+   * which rejects agrupaciones for every caller in the system, not just eventos.
    */
   @Column({
     name: 'destino_ganancia',

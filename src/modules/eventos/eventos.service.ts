@@ -44,7 +44,7 @@ import {
 /**
  * Everything the two venta-movimiento creators need. `destino` and
  * `estadoPago` come from the VENTA (not the evento), and `responsableId` is
- * separate from `vendedorId`: when a colectivo sells, the vendedor is the
+ * separate from `vendedorId`: when an agrupacion sells, the vendedor is the
  * collective but a real person answers for the cash.
  */
 interface MovimientoVentaParams {
@@ -935,8 +935,8 @@ export class EventosService {
    * ventas of the same evento land in different cajas.
    *
    * For CUENTAS_PERSONALES the vendedor must be a real person —
-   * getOrCreateCajaPersonal rejects colectivos, which is what makes "el grupo
-   * vendió a una cuenta personal" impossible to represent.
+   * getOrCreateCajaPersonal rejects agrupaciones, which is what makes "el
+   * grupo vendió a una cuenta personal" impossible to represent.
    */
   private async resolveCajaForVenta(
     destino: DestinoGanancia,

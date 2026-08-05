@@ -21,7 +21,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * 3. `ventas_productos.estado_cobro` — whether the money actually came in.
  *    Defaults to COBRADO, which is what every pre-existing venta was.
  *
- * Plus the `Colectivo` persona ("Grupo Scout"), so that a sale made by the
+ * Plus the `Agrupacion` persona ("Grupo Scout"), so that a sale made by the
  * group itself has a real vendedor instead of a stand-in member. `personas.tipo`
  * is a varchar discriminator, so the new Single Table Inheritance child needs
  * no type change — only the row.
@@ -92,22 +92,22 @@ export class AddVentaMixtaAndColectivo1780329600005 implements MigrationInterfac
       NOT NULL DEFAULT 'cobrado'
     `);
 
-    // 4. Colectivo "Grupo Scout" — idempotent
+    // 4. Agrupacion "Grupo Scout" — idempotent
     await queryRunner.query(`
       INSERT INTO "personas" ("id", "tipo", "nombre", "estado", "emailVerified")
-      SELECT gen_random_uuid(), 'colectivo', 'Grupo Scout', 'activo', false
+      SELECT gen_random_uuid(), 'agrupacion', 'Grupo Scout', 'activo', false
       WHERE NOT EXISTS (
-        SELECT 1 FROM "personas" WHERE "tipo" = 'colectivo'
+        SELECT 1 FROM "personas" WHERE "tipo" = 'agrupacion'
       )
     `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Only removes colectivos nobody sold through, so reverting can never
-    // orphan a venta. A colectivo with ventas is left in place on purpose.
+    // Only removes agrupaciones nobody sold through, so reverting can never
+    // orphan a venta. An agrupacion with ventas is left in place on purpose.
     await queryRunner.query(`
       DELETE FROM "personas" p
-      WHERE p."tipo" = 'colectivo'
+      WHERE p."tipo" = 'agrupacion'
         AND NOT EXISTS (
           SELECT 1 FROM "ventas_productos" v WHERE v."vendedor_id" = p."id"
         )

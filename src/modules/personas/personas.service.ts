@@ -47,13 +47,13 @@ export class PersonasService {
   ) {}
 
   /**
-   * Miembros del grupo. Excluye COLECTIVO: no es una persona sino el grupo (o
+   * Miembros del grupo. Excluye AGRUPACION: no es una persona sino el grupo (o
    * una rama) actuando como vendedor, así que no corresponde listarlo entre la
    * gente. Para elegir vendedor de una venta usar findVendedoresElegibles.
    */
   async findAll(): Promise<Persona[]> {
     return this.personaRepository.find({
-      where: { tipo: Not(PersonaType.COLECTIVO) },
+      where: { tipo: Not(PersonaType.AGRUPACION) },
       order: { nombre: 'ASC' },
     });
   }
@@ -67,16 +67,19 @@ export class PersonasService {
 
   async findAllActivos(): Promise<Persona[]> {
     return this.personaRepository.find({
-      where: { estado: EstadoPersona.ACTIVO, tipo: Not(PersonaType.COLECTIVO) },
+      where: {
+        estado: EstadoPersona.ACTIVO,
+        tipo: Not(PersonaType.AGRUPACION),
+      },
       order: { nombre: 'ASC' },
     });
   }
 
   /**
    * Quiénes pueden figurar como vendedor de una venta de evento: los miembros
-   * activos MÁS los colectivos. Es la única lista donde el colectivo aparece,
-   * y existe para que "vendió el grupo" se cargue eligiéndolo del desplegable
-   * en vez de poner a un miembro de fachada.
+   * activos MÁS las agrupaciones. Es la única lista donde la agrupación
+   * aparece, y existe para que "vendió el grupo" se cargue eligiéndola del
+   * desplegable en vez de poner a un miembro de fachada.
    */
   async findVendedoresElegibles(): Promise<Persona[]> {
     return this.personaRepository.find({

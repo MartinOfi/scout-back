@@ -10,7 +10,7 @@ import {
 /**
  * Persona base entity using Single Table Inheritance
  * Discriminator column: 'tipo'
- * Children: Protagonista, Educador, PersonaExterna, Colectivo
+ * Children: Protagonista, Educador, PersonaExterna, Agrupacion
  */
 @Entity('personas')
 @TableInheritance({ column: { type: 'varchar', name: 'tipo' } })
@@ -95,7 +95,7 @@ export class PersonaExterna extends Persona {
 }
 
 /**
- * Colectivo: NOT a person. Represents the group itself (or any future
+ * Agrupacion: NOT a person. Represents the group itself (or any future
  * collective, e.g. "Rama Rovers") acting as a seller in a sale event.
  *
  * Exists so that a sale made by the group — a park stand where no single
@@ -106,15 +106,15 @@ export class PersonaExterna extends Persona {
  * Invariants:
  * - NEVER has a caja personal. CajasService.getOrCreateCajaPersonal rejects it,
  *   which is also what makes destinoGanancia = CUENTAS_PERSONALES impossible
- *   for a venta sold by a colectivo.
+ *   for a venta sold by an agrupacion.
  * - Excluded from member listings, the deudores report and the persona
  *   dashboard: it has no cuotas, inscripciones, campamentos nor papeles.
  *
  * Adding another collective is a new ROW, not a new type — which is why the
- * discriminator is COLECTIVO and not GRUPO.
+ * discriminator is AGRUPACION and not GRUPO.
  */
-@ChildEntity(PersonaType.COLECTIVO)
-export class Colectivo extends Persona {
+@ChildEntity(PersonaType.AGRUPACION)
+export class Agrupacion extends Persona {
   @Column({ type: 'text', nullable: true })
   descripcion!: string | null;
 }

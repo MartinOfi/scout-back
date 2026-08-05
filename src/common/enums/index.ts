@@ -13,19 +13,19 @@
  * Types of people in the system (Single Table Inheritance discriminator)
  * From PRD §2.1: Protagonista, Educador, Persona Externa
  *
- * COLECTIVO is not a person: it represents the group itself (or any future
+ * AGRUPACION is not a person: it represents the group itself (or any future
  * collective, e.g. a rama) acting as a seller. It exists so that a sale made
  * "by the group" at a park stand has a real vendedor instead of a stand-in
  * member, which used to distort the participation blocks of the event report.
  *
- * A COLECTIVO never has a caja personal, never appears in member listings and
+ * An AGRUPACION never has a caja personal, never appears in member listings and
  * is never part of the deudores report. See CajasService.getOrCreateCajaPersonal.
  */
 export enum PersonaType {
   PROTAGONISTA = 'protagonista',
   EDUCADOR = 'educador',
   EXTERNA = 'externo',
-  COLECTIVO = 'colectivo',
+  AGRUPACION = 'agrupacion',
 }
 
 /**

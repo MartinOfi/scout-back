@@ -39,7 +39,7 @@ export class VentaItemDto {
 export class RegisterVentasLoteDto {
   @ApiProperty({
     description:
-      'ID del vendedor. Puede ser un protagonista, un educador o un COLECTIVO (ej. "Grupo Scout") cuando vendió el grupo y no una persona en particular.',
+      'ID del vendedor. Puede ser un protagonista, un educador o una AGRUPACION (ej. "Grupo Scout") cuando vendió el grupo y no una persona en particular.',
     example: '550e8400-e29b-41d4-a716-446655440002',
     format: 'uuid',
   })
@@ -48,7 +48,7 @@ export class RegisterVentasLoteDto {
 
   @ApiPropertyOptional({
     description:
-      'Quién responde por esta plata. Por defecto es el vendedor; se especifica cuando vende un colectivo y hay un educador a cargo de la caja.',
+      'Quién responde por esta plata. Por defecto es el vendedor; se especifica cuando vende una agrupación y hay un educador a cargo de la caja.',
     format: 'uuid',
   })
   @IsUUID()

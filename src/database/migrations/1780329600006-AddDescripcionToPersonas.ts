@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Adds `personas.descripcion`, backing the `Colectivo` child entity
- * (`@ChildEntity(PersonaType.COLECTIVO)`) added in 1780329600001.
+ * Adds `personas.descripcion`, backing the `Agrupacion` child entity
+ * (`@ChildEntity(PersonaType.AGRUPACION)`) added in 1780329600005.
  *
  * Missing from that migration by mistake: the column was added to the local
  * Docker test DB by hand during development and the gap only surfaced when

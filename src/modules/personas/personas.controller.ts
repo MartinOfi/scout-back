@@ -56,7 +56,7 @@ export class PersonasController {
   @ApiOperation({
     summary: 'Listar quiénes pueden figurar como vendedor de una venta',
     description:
-      'Miembros activos MÁS los colectivos (ej. "Grupo Scout"). Es la única lista donde aparece un colectivo: existe para cargar "vendió el grupo" sin poner a un miembro de fachada.',
+      'Miembros activos MÁS las agrupaciones (ej. "Grupo Scout"). Es la única lista donde aparece una agrupación: existe para cargar "vendió el grupo" sin poner a un miembro de fachada.',
   })
   @ApiResponse({ status: 200, description: 'Lista de vendedores elegibles' })
   async findVendedoresElegibles() {

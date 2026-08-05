@@ -815,13 +815,13 @@ describe('CajasService', () => {
     });
   });
 
-  describe('getOrCreateCajaPersonal — un colectivo nunca tiene caja personal', () => {
-    it('rechaza a un COLECTIVO en vez de crearle una caja', async () => {
+  describe('getOrCreateCajaPersonal — una agrupacion nunca tiene caja personal', () => {
+    it('rechaza a una AGRUPACION en vez de crearle una caja', async () => {
       cajaRepository.findOne.mockResolvedValue(null);
-      dataSource.query.mockResolvedValue([{ tipo: PersonaType.COLECTIVO }]);
+      dataSource.query.mockResolvedValue([{ tipo: PersonaType.AGRUPACION }]);
 
       await expect(
-        service.getOrCreateCajaPersonal('colectivo-uuid'),
+        service.getOrCreateCajaPersonal('agrupacion-uuid'),
       ).rejects.toThrow(BadRequestException);
 
       expect(cajaRepository.save).not.toHaveBeenCalled();
