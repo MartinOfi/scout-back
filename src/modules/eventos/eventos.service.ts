@@ -9,6 +9,7 @@ import { Evento } from './entities/evento.entity';
 import { Producto } from './entities/producto.entity';
 import { VentaProducto } from './entities/venta-producto.entity';
 import { Entrega } from './entities/entrega.entity';
+import { EntregaLinea } from './entities/entrega-linea.entity';
 import { CreateEventoDto } from './dtos/create-evento.dto';
 import { UpdateEventoDto } from './dtos/update-evento.dto';
 import { CreateProductoDto } from './dtos/create-producto.dto';
@@ -35,11 +36,34 @@ import {
   ConceptoMovimiento,
   MedioPago,
   EstadoPago,
+  ModalidadVenta,
+  EstadoCobroVenta,
   VENTA_DERIVED_CONCEPTOS,
 } from '../../common/enums';
+
+/**
+ * Everything the two venta-movimiento creators need. `destino` and
+ * `estadoPago` come from the VENTA (not the evento), and `responsableId` is
+ * separate from `vendedorId`: when an agrupacion sells, the vendedor is the
+ * collective but a real person answers for the cash.
+ */
+interface MovimientoVentaParams {
+  readonly evento: Evento;
+  readonly vendedorId: string;
+  readonly responsableId: string;
+  readonly destino: DestinoGanancia;
+  readonly estadoPago: EstadoPago;
+  readonly medioPago: MedioPago;
+  readonly monto: number;
+  readonly descripcion: string;
+}
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import { APP_TIMEZONE } from '../../common/constants';
-import { EVENTOS_ERROR_MESSAGES, PRODUCTOS_ERROR_MESSAGES } from './constants';
+import {
+  EVENTOS_ERROR_MESSAGES,
+  PRODUCTOS_ERROR_MESSAGES,
+  ENTREGA_INMEDIATA_NOTA,
+} from './constants';
 import { escapeLikePattern } from '../../common/utils';
 
 @Injectable()
@@ -191,26 +215,33 @@ export class EventosService {
       relations: ['producto'],
     });
 
-    const ventasPorVendedor = this.groupVentasByVendedor(ventasSinMovimiento);
-    for (const [vendedorId, ventas] of ventasPorVendedor) {
-      await this.backfillMovimientosVendedor(manager, {
-        evento,
-        vendedorId,
-        ventas,
-      });
+    for (const ventas of this.groupVentasForBackfill(
+      ventasSinMovimiento,
+    ).values()) {
+      await this.backfillMovimientosVendedor(manager, { evento, ventas });
     }
 
     return { ...evento, movimientosHabilitados: true };
   }
 
-  private groupVentasByVendedor(
+  /**
+   * Agrupa las ventas que van a compartir UN movimiento agregado.
+   *
+   * La clave es (vendedor, destino, estadoCobro) y no sólo el vendedor: en un
+   * evento mixto la misma persona puede tener ventas con destinos distintos, y
+   * cualquiera puede tener ventas cobradas e impagas a la vez. Si la clave no
+   * incluye los tres, un vendedor recibiría un único movimiento a la caja
+   * equivocada, mezclando además plata cobrada con plata a cobrar.
+   */
+  private groupVentasForBackfill(
     ventas: ReadonlyArray<VentaProducto>,
   ): Map<string, VentaProducto[]> {
     const grouped = new Map<string, VentaProducto[]>();
     for (const venta of ventas) {
-      const current = grouped.get(venta.vendedorId) ?? [];
+      const key = `${venta.vendedorId}|${venta.destinoGanancia}|${venta.estadoCobro}`;
+      const current = grouped.get(key) ?? [];
       current.push(venta);
-      grouped.set(venta.vendedorId, current);
+      grouped.set(key, current);
     }
     return grouped;
   }
@@ -224,11 +255,13 @@ export class EventosService {
     manager: EntityManager,
     params: {
       evento: Evento;
-      vendedorId: string;
       ventas: VentaProducto[];
     },
   ): Promise<void> {
-    const { evento, vendedorId, ventas } = params;
+    const { evento, ventas } = params;
+    // Todas las ventas del grupo comparten vendedor, destino y estadoCobro
+    // por construcción de groupVentasForBackfill, así que la primera manda.
+    const { vendedorId, destinoGanancia, estadoCobro } = ventas[0];
     const items = ventas.map((v) => ({
       productoId: v.productoId,
       cantidad: v.cantidad,
@@ -237,10 +270,17 @@ export class EventosService {
       ventas.filter((v) => v.producto).map((v) => [v.productoId, v.producto]),
     );
 
-    const movimiento = await this.crearMovimientoIngresoVentaInTx(manager, {
+    const movimientoParams = {
       evento,
       vendedorId,
+      responsableId: vendedorId,
+      destino: destinoGanancia,
+      estadoPago: this.resolveEstadoPago(estadoCobro),
       medioPago: MedioPago.EFECTIVO,
+    };
+
+    const movimiento = await this.crearMovimientoIngresoVentaInTx(manager, {
+      ...movimientoParams,
       monto: this.computeGananciaTotalLote(items, productosMap),
       descripcion: this.buildVentasLoteDescripcion(items, productosMap, evento),
     });
@@ -248,11 +288,9 @@ export class EventosService {
       venta.movimientoId = movimiento.id;
     }
 
-    if (this.shouldGenerateRecuperoCosto(evento)) {
+    if (this.shouldGenerateRecuperoCosto(destinoGanancia)) {
       const recupero = await this.crearMovimientoRecuperoVentaInTx(manager, {
-        evento,
-        vendedorId,
-        medioPago: MedioPago.EFECTIVO,
+        ...movimientoParams,
         monto: this.computeCostoTotalLote(items, productosMap),
         descripcion: this.buildRecuperoLoteDescripcion(
           items,
@@ -287,9 +325,13 @@ export class EventosService {
     const tipoToValidate = dto.tipo ?? currentEvento?.tipo;
     const destinoToValidate =
       dto.destinoGanancia ?? currentEvento?.destinoGanancia;
+    const modalidadToValidate =
+      dto.modalidadVenta ?? currentEvento?.modalidadVenta;
 
     if (tipoToValidate === TipoEvento.VENTA) {
-      if (!destinoToValidate) {
+      // MIXTA no tiene un destino único: cada venta define el suyo. El destino
+      // a nivel evento sólo es obligatorio para la modalidad UNICA.
+      if (modalidadToValidate !== ModalidadVenta.MIXTA && !destinoToValidate) {
         throw new BadRequestException(
           EVENTOS_ERROR_MESSAGES.VENTA_REQUIRES_DESTINO_GANANCIA,
         );
@@ -564,11 +606,14 @@ export class EventosService {
     producto: Producto,
     dto: CreateVentaProductoDto,
   ): Promise<VentaProducto> {
+    const destino = this.resolveDestinoVenta(evento);
     const ventaEntity = manager.create(VentaProducto, {
       eventoId: dto.eventoId,
       productoId: dto.productoId,
       vendedorId: dto.vendedorId,
       cantidad: dto.cantidad,
+      destinoGanancia: destino,
+      estadoCobro: EstadoCobroVenta.COBRADO,
     });
     const savedVenta = await manager.save(ventaEntity);
 
@@ -576,21 +621,26 @@ export class EventosService {
       return savedVenta;
     }
 
-    const movimiento = await this.crearMovimientoIngresoVentaInTx(manager, {
+    const movimientoParams = {
       evento,
       vendedorId: dto.vendedorId,
+      responsableId: dto.vendedorId,
+      destino,
+      estadoPago: EstadoPago.PAGADO,
       medioPago: dto.medioPago,
+    };
+
+    const movimiento = await this.crearMovimientoIngresoVentaInTx(manager, {
+      ...movimientoParams,
       monto: this.computeGananciaProducto(producto, dto.cantidad),
       descripcion: this.buildVentaDescripcion(producto, evento),
     });
 
     savedVenta.movimientoId = movimiento.id;
 
-    if (this.shouldGenerateRecuperoCosto(evento)) {
+    if (this.shouldGenerateRecuperoCosto(destino)) {
       const recupero = await this.crearMovimientoRecuperoVentaInTx(manager, {
-        evento,
-        vendedorId: dto.vendedorId,
-        medioPago: dto.medioPago,
+        ...movimientoParams,
         monto: this.computeCostoProducto(producto, dto.cantidad),
         descripcion: this.buildRecuperoDescripcion(producto, evento),
       });
@@ -606,24 +656,41 @@ export class EventosService {
     productosMap: ReadonlyMap<string, Producto>,
     dto: RegisterVentasLoteDto,
   ): Promise<VentaProducto[]> {
+    const destino = this.resolveDestinoVenta(evento, dto.destinoGanancia);
+    const estadoCobro = dto.estadoCobro ?? EstadoCobroVenta.COBRADO;
+    const responsableId = dto.responsableId ?? dto.vendedorId;
+
     const ventasToCreate = dto.items.map((item) =>
       manager.create(VentaProducto, {
         eventoId: evento.id,
         productoId: item.productoId,
         vendedorId: dto.vendedorId,
         cantidad: item.cantidad,
+        destinoGanancia: destino,
+        estadoCobro,
       }),
     );
     const savedVentas = await manager.save(ventasToCreate);
+
+    if (dto.entregaInmediata) {
+      await this.persistEntregaInmediataInTx(manager, evento, dto);
+    }
 
     if (!this.shouldGenerateMovimientoIngreso(evento)) {
       return savedVentas;
     }
 
-    const movimiento = await this.crearMovimientoIngresoVentaInTx(manager, {
+    const movimientoParams = {
       evento,
       vendedorId: dto.vendedorId,
+      responsableId,
+      destino,
+      estadoPago: this.resolveEstadoPago(estadoCobro),
       medioPago: dto.medioPago,
+    };
+
+    const movimiento = await this.crearMovimientoIngresoVentaInTx(manager, {
+      ...movimientoParams,
       monto: this.computeGananciaTotalLote(dto.items, productosMap),
       descripcion: this.buildVentasLoteDescripcion(
         dto.items,
@@ -636,11 +703,9 @@ export class EventosService {
       venta.movimientoId = movimiento.id;
     }
 
-    if (this.shouldGenerateRecuperoCosto(evento)) {
+    if (this.shouldGenerateRecuperoCosto(destino)) {
       const recupero = await this.crearMovimientoRecuperoVentaInTx(manager, {
-        evento,
-        vendedorId: dto.vendedorId,
-        medioPago: dto.medioPago,
+        ...movimientoParams,
         monto: this.computeCostoTotalLote(dto.items, productosMap),
         descripcion: this.buildRecuperoLoteDescripcion(
           dto.items,
@@ -654,6 +719,37 @@ export class EventosService {
     }
 
     return manager.save(savedVentas);
+  }
+
+  /**
+   * "Entregado en el acto" = crear la Entrega junto con la venta, en la misma
+   * transacción. No hace falta ningún concepto nuevo: el stock disponible es
+   * vendido − entregado, así que una entrega inmediata lo deja en cero y una
+   * preventa lo deja pendiente. Todo con la maquinaria de entregas que ya existe.
+   */
+  private async persistEntregaInmediataInTx(
+    manager: EntityManager,
+    evento: Evento,
+    dto: RegisterVentasLoteDto,
+  ): Promise<void> {
+    const entrega = await manager.save(
+      manager.create(Entrega, {
+        eventoId: evento.id,
+        vendedorId: dto.vendedorId,
+        fecha: new Date(),
+        notas: ENTREGA_INMEDIATA_NOTA,
+      }),
+    );
+
+    await manager.save(
+      dto.items.map((item) =>
+        manager.create(EntregaLinea, {
+          entregaId: entrega.id,
+          productoId: item.productoId,
+          cantidad: item.cantidad,
+        }),
+      ),
+    );
   }
 
   // ----- VENTAS: helpers privados -----
@@ -709,16 +805,61 @@ export class EventosService {
   }
 
   /**
-   * The cost-recovery movimiento only applies to VENTA events whose profit
-   * goes to personal accounts. With CAJA_GRUPO the margen already lands in the
-   * caja grupo, so there is nothing to recover; with GRUPO there are no
-   * productos/costos at all.
+   * The cost-recovery movimiento only applies to ventas whose margen goes to a
+   * personal account: the caja grupo paid for the goods, so it gets the cost
+   * back and nets to zero. With CAJA_GRUPO the margen already lands there, so
+   * there is nothing to recover.
+   *
+   * Reads the DESTINO OF THE VENTA, not of the evento — in a MIXTA event two
+   * ventas of the same evento can differ.
    */
-  private shouldGenerateRecuperoCosto(evento: Evento): boolean {
-    return (
-      evento.tipo === TipoEvento.VENTA &&
-      evento.destinoGanancia === DestinoGanancia.CUENTAS_PERSONALES
-    );
+  private shouldGenerateRecuperoCosto(destino: DestinoGanancia): boolean {
+    return destino === DestinoGanancia.CUENTAS_PERSONALES;
+  }
+
+  /**
+   * Resolves which destino applies to a lote, enforcing the modalidad:
+   * - UNICA: inherits evento.destinoGanancia; sending one is rejected so the
+   *   caller never believes it chose something it did not.
+   * - MIXTA: the caller must declare it; there is no sensible default.
+   */
+  private resolveDestinoVenta(
+    evento: Evento,
+    destinoSolicitado?: DestinoGanancia,
+  ): DestinoGanancia {
+    if (evento.modalidadVenta === ModalidadVenta.MIXTA) {
+      if (!destinoSolicitado) {
+        throw new BadRequestException(
+          EVENTOS_ERROR_MESSAGES.DESTINO_REQUERIDO_EN_MIXTA,
+        );
+      }
+      return destinoSolicitado;
+    }
+
+    if (destinoSolicitado && destinoSolicitado !== evento.destinoGanancia) {
+      throw new BadRequestException(
+        EVENTOS_ERROR_MESSAGES.DESTINO_NO_APLICA_EN_UNICA,
+      );
+    }
+
+    if (!evento.destinoGanancia) {
+      throw new BadRequestException(
+        EVENTOS_ERROR_MESSAGES.EVENTO_SIN_DESTINO(evento.id),
+      );
+    }
+    return evento.destinoGanancia;
+  }
+
+  /**
+   * The venta's estadoCobro is the source of truth; the movimiento's
+   * estadoPago is derived from it. PENDIENTE means the money has not come in,
+   * so the movimiento must not move the caja balance (see
+   * MovimientosService.calcularSaldo).
+   */
+  private resolveEstadoPago(estadoCobro: EstadoCobroVenta): EstadoPago {
+    return estadoCobro === EstadoCobroVenta.PENDIENTE
+      ? EstadoPago.PENDIENTE_COBRO
+      : EstadoPago.PAGADO;
   }
 
   private computeGananciaProducto(
@@ -789,11 +930,19 @@ export class EventosService {
     return `Recupero costo (${this.joinProductoNombres(items, productosMap)}) - Evento "${evento.nombre}"`;
   }
 
+  /**
+   * Reads the destino OF THE VENTA, not of the evento: in a MIXTA event two
+   * ventas of the same evento land in different cajas.
+   *
+   * For CUENTAS_PERSONALES the vendedor must be a real person —
+   * getOrCreateCajaPersonal rejects agrupaciones, which is what makes "el
+   * grupo vendió a una cuenta personal" impossible to represent.
+   */
   private async resolveCajaForVenta(
-    evento: Evento,
+    destino: DestinoGanancia,
     vendedorId: string,
   ): Promise<CajaRef> {
-    if (evento.destinoGanancia === DestinoGanancia.CAJA_GRUPO) {
+    if (destino === DestinoGanancia.CAJA_GRUPO) {
       return this.cajasService.findCajaGrupo();
     }
     return this.cajasService.getOrCreateCajaPersonal(vendedorId);
@@ -815,16 +964,10 @@ export class EventosService {
    */
   private async crearMovimientoIngresoVentaInTx(
     manager: EntityManager,
-    params: {
-      evento: Evento;
-      vendedorId: string;
-      medioPago: MedioPago;
-      monto: number;
-      descripcion: string;
-    },
+    params: MovimientoVentaParams,
   ): Promise<Movimiento> {
     const caja = await this.resolveCajaForVenta(
-      params.evento,
+      params.destino,
       params.vendedorId,
     );
     return this.movimientosService.createWithManager(manager, {
@@ -833,28 +976,22 @@ export class EventosService {
       monto: params.monto,
       concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
       descripcion: params.descripcion,
-      responsableId: params.vendedorId,
+      responsableId: params.responsableId,
       medioPago: params.medioPago,
-      estadoPago: EstadoPago.PAGADO,
+      estadoPago: params.estadoPago,
       eventoId: params.evento.id,
     });
   }
 
   /**
    * Creates the cost-recovery INGRESO movimiento into the caja grupo, INSIDE an
-   * active transaction. Only call when shouldGenerateRecuperoCosto(evento) is
-   * true (destino cuentas_personales). Mirrors crearMovimientoIngresoVentaInTx
-   * but always targets the caja grupo and uses the recupero concepto.
+   * active transaction. Only call when shouldGenerateRecuperoCosto(destino) is
+   * true. Mirrors crearMovimientoIngresoVentaInTx but always targets the caja
+   * grupo and uses the recupero concepto.
    */
   private async crearMovimientoRecuperoVentaInTx(
     manager: EntityManager,
-    params: {
-      evento: Evento;
-      vendedorId: string;
-      medioPago: MedioPago;
-      monto: number;
-      descripcion: string;
-    },
+    params: MovimientoVentaParams,
   ): Promise<Movimiento> {
     const cajaGrupo = await this.cajasService.findCajaGrupo();
     return this.movimientosService.createWithManager(manager, {
@@ -863,9 +1000,9 @@ export class EventosService {
       monto: params.monto,
       concepto: ConceptoMovimiento.EVENTO_VENTA_RECUPERO_COSTO,
       descripcion: params.descripcion,
-      responsableId: params.vendedorId,
+      responsableId: params.responsableId,
       medioPago: params.medioPago,
-      estadoPago: EstadoPago.PAGADO,
+      estadoPago: params.estadoPago,
       eventoId: params.evento.id,
     });
   }

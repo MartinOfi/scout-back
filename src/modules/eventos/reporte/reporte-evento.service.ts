@@ -1,7 +1,11 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { Evento } from '../entities/evento.entity';
 import { EventosService } from '../eventos.service';
-import { TipoEvento, DestinoGanancia } from '../../../common/enums';
+import {
+  TipoEvento,
+  DestinoGanancia,
+  ModalidadVenta,
+} from '../../../common/enums';
 import { ReporteEventoDto } from './dtos/reporte-evento.dto';
 import {
   ReporteEventoStrategy,
@@ -46,7 +50,11 @@ export class ReporteEventoService {
     if (evento.tipo === TipoEvento.GRUPO) {
       return REPORTE_VARIANTE.GRUPO;
     }
-    // tipo === VENTA
+    // tipo === VENTA. La modalidad manda por sobre el destino del evento: en
+    // un evento mixto ese destino es sólo el default y no describe el reporte.
+    if (evento.modalidadVenta === ModalidadVenta.MIXTA) {
+      return REPORTE_VARIANTE.VENTA_MIXTA;
+    }
     if (evento.destinoGanancia === DestinoGanancia.CAJA_GRUPO) {
       return REPORTE_VARIANTE.VENTA_CAJA_GRUPO;
     }

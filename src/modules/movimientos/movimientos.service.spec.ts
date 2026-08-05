@@ -6,6 +6,7 @@ import { MovimientosService } from './movimientos.service';
 import { Movimiento } from './entities/movimiento.entity';
 import { CajasService } from '../cajas/cajas.service';
 import { PersonasService } from '../personas/personas.service';
+import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import {
   TipoMovimiento,
   ConceptoMovimiento,
@@ -60,6 +61,10 @@ describe('MovimientosService', () => {
       transaction: jest.fn(),
     };
 
+    const mockDeletionValidator = {
+      canDeleteMovimiento: jest.fn().mockResolvedValue({ canDelete: true }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MovimientosService,
@@ -70,6 +75,10 @@ describe('MovimientosService', () => {
         { provide: CajasService, useValue: mockCajasService },
         { provide: PersonasService, useValue: mockPersonasService },
         { provide: DataSource, useValue: mockDataSource },
+        {
+          provide: DeletionValidatorService,
+          useValue: mockDeletionValidator,
+        },
       ],
     }).compile();
 
@@ -167,12 +176,84 @@ describe('MovimientosService', () => {
 
       await service.findWithFilters({
         categoria: CategoriaMovimiento.COMIDA,
-      } as never);
+      });
 
       const andWhereCalls = mockQb.andWhere.mock.calls.map((c) => c[0]);
       expect(andWhereCalls.some((s: string) => s.includes('categoria'))).toBe(
         true,
       );
+    });
+  });
+
+  describe('calcularSaldo', () => {
+    function mockQueryBuilder(saldo: string | null) {
+      const mockQb = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ saldo }),
+      };
+      movimientoRepository.createQueryBuilder.mockReturnValue(mockQb as any);
+      return mockQb;
+    }
+
+    it('returns the saldo as a number', async () => {
+      mockQueryBuilder('1234.56');
+
+      const result = await service.calcularSaldo('caja-uuid');
+
+      expect(result).toBe(1234.56);
+    });
+
+    it('returns 0 when the caja has no movimientos', async () => {
+      mockQueryBuilder(null);
+
+      const result = await service.calcularSaldo('caja-uuid');
+
+      expect(result).toBe(0);
+    });
+
+    it('filters by cajaId and non-deleted movimientos', async () => {
+      const mockQb = mockQueryBuilder('0');
+
+      await service.calcularSaldo('caja-uuid');
+
+      expect(mockQb.where).toHaveBeenCalledWith('m.caja_id = :cajaId', {
+        cajaId: 'caja-uuid',
+      });
+      expect(mockQb.andWhere).toHaveBeenCalledWith('m.deletedAt IS NULL');
+    });
+
+    // Regresión F2: un ingreso pendiente_cobro o un egreso pendiente_reembolso
+    // no deben sumar/restar al saldo. La regla vive en la expresión SQL
+    // (SALDO_SUM_EXPRESSION), no en JS, así que lo que este test protege es
+    // que la cláusula CASE que efectivamente viaja a Postgres siga excluyendo
+    // ambos estados — si alguien la revierte, este test lo detecta acá en vez
+    // de en producción.
+    it('excluye pendiente_cobro y pendiente_reembolso en la expresión SQL', async () => {
+      const mockQb = mockQueryBuilder('0');
+
+      await service.calcularSaldo('caja-uuid');
+
+      const sqlExpression = mockQb.select.mock.calls[0][0] as string;
+      expect(sqlExpression).toContain(':pendienteCobro');
+      expect(sqlExpression).toContain(':pendienteReembolso');
+
+      const params = mockQb.setParameters.mock.calls[0][0];
+      expect(params.pendienteCobro).toBe(EstadoPago.PENDIENTE_COBRO);
+      expect(params.pendienteReembolso).toBe(EstadoPago.PENDIENTE_REEMBOLSO);
+    });
+  });
+
+  describe('calcularSaldoPersona', () => {
+    it('delega en calcularSaldo con la caja personal', async () => {
+      const spy = jest.spyOn(service, 'calcularSaldo').mockResolvedValue(500);
+
+      const result = await service.calcularSaldoPersona('caja-personal-uuid');
+
+      expect(spy).toHaveBeenCalledWith('caja-personal-uuid');
+      expect(result).toBe(500);
     });
   });
 
@@ -191,6 +272,7 @@ describe('MovimientosService', () => {
         andWhere: jest.fn().mockReturnThis(),
         groupBy: jest.fn().mockReturnThis(),
         setParameter: jest.fn().mockReturnThis(),
+        setParameters: jest.fn().mockReturnThis(),
         getRawMany: jest.fn().mockResolvedValue(rawResults),
       };
       movimientoRepository.createQueryBuilder.mockReturnValue(mockQb as any);

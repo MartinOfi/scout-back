@@ -5,3 +5,4 @@
 export * from './eventos.routes';
 export * from './eventos.swagger';
 export * from './eventos.errors';
+export * from './eventos.ventas';

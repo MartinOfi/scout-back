@@ -108,6 +108,9 @@ describe('CampamentosService', () => {
 
     const mockDeletionValidator = {
       canDeleteCampamento: jest.fn().mockResolvedValue({ canDelete: true }),
+      canRemoveParticipanteCampamento: jest
+        .fn()
+        .mockResolvedValue({ canDelete: true }),
     };
 
     const mockBonificacionesService = {

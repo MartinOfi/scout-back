@@ -3,7 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { VentaProducto } from '../../entities/venta-producto.entity';
 import { Entrega } from '../../entities/entrega.entity';
-import { PersonaType } from '../../../../common/enums';
+import {
+  PersonaType,
+  DestinoGanancia,
+  EstadoCobroVenta,
+} from '../../../../common/enums';
 import { APP_TIMEZONE } from '../../../../common/constants';
 import {
   ReporteEntregaFueraDiaDto,
@@ -13,15 +17,24 @@ import {
   ReportePorRamaDto,
   ReportePorTipoPersonaDto,
   ReporteVendedorDto,
+  ReporteDestinoLadoDto,
 } from '../dtos/reporte-bloques.dto';
 
 const TIPO_LABELS: Record<string, string> = {
   [PersonaType.EDUCADOR]: 'Educadores',
   [PersonaType.PROTAGONISTA]: 'Protagonistas',
   [PersonaType.EXTERNA]: 'Externos',
+  [PersonaType.AGRUPACION]: 'Grupo',
 };
 
 const GRUPO_EDUCADORES = 'Educadores';
+
+/**
+ * Una agrupación no tiene rama. Se agrupa aparte igual que los educadores, en
+ * vez de caer en "Sin rama", para que el bloque de participación distinga
+ * "vendió el grupo" de "vendió alguien sin rama asignada".
+ */
+const GRUPO_AGRUPACION = 'Grupo';
 
 interface RawTipoRow {
   tipo: string;
@@ -73,13 +86,23 @@ export class ReporteAggregatorsService {
     private readonly entregaRepository: Repository<Entrega>,
   ) {}
 
-  private baseVentasQuery(eventoId: string) {
-    return this.ventaProductoRepository
+  /**
+   * Único punto por el que pasan TODAS las agregaciones del reporte de venta.
+   * El filtro opcional por destino es lo que permite armar el reporte de un
+   * evento mixto sin duplicar ninguna query: se corren los mismos agregados
+   * dos veces, una por cada lado.
+   */
+  private baseVentasQuery(eventoId: string, destino?: DestinoGanancia) {
+    const qb = this.ventaProductoRepository
       .createQueryBuilder('v')
       .innerJoin('v.producto', 'pr')
       .innerJoin('v.vendedor', 'pe')
       .where('v.evento_id = :eventoId', { eventoId })
       .andWhere('v."deletedAt" IS NULL');
+
+    return destino
+      ? qb.andWhere('v.destino_ganancia = :destino', { destino })
+      : qb;
   }
 
   async recaudacionPorTipoPersona(
@@ -114,11 +137,16 @@ export class ReporteAggregatorsService {
     // `pe.rama` es un enum; hay que castearlo a text para unificarlo con el
     // literal 'Educadores' en el CASE (si no, Postgres intenta castear
     // 'Educadores' al enum personas_rama_enum y falla).
-    const grupoExpr = `CASE WHEN pe.tipo = :educador THEN :educLabel ELSE pe.rama::text END`;
+    const grupoExpr = `CASE
+      WHEN pe.tipo = :educador THEN :educLabel
+      WHEN pe.tipo = :agrupacion THEN :agrupacionLabel
+      ELSE pe.rama::text END`;
     const rows = await this.baseVentasQuery(eventoId)
       .setParameters({
         educador: PersonaType.EDUCADOR,
         educLabel: GRUPO_EDUCADORES,
+        agrupacion: PersonaType.AGRUPACION,
+        agrupacionLabel: GRUPO_AGRUPACION,
       })
       .select(grupoExpr, 'grupo')
       .addSelect(`(pe.tipo = :educador)`, 'esEducador')
@@ -187,10 +215,18 @@ export class ReporteAggregatorsService {
    * Σ (precioVenta − precioCosto) × cantidad por vendedor. Para eventos con
    * destino cuentas_personales coincide con lo acreditado en su caja personal.
    */
+  /**
+   * Sólo cuenta las ventas cuyo margen fue a una cuenta personal: es "cuánto
+   * recibió cada uno". Sin el filtro, en un evento mixto sumaría también el
+   * margen que se quedó el grupo y el reporte mentiría.
+   */
   async gananciaPorPersona(
     eventoId: string,
   ): Promise<ReporteGananciaPersonaDto[]> {
-    const rows = await this.baseVentasQuery(eventoId)
+    const rows = await this.baseVentasQuery(
+      eventoId,
+      DestinoGanancia.CUENTAS_PERSONALES,
+    )
       .select('v.vendedor_id', 'personaId')
       .addSelect('pe.nombre', 'nombre')
       .addSelect(
@@ -208,6 +244,44 @@ export class ReporteAggregatorsService {
         ganancia: Number(r.ganancia),
       }))
       .sort((a, b) => b.ganancia - a.ganancia);
+  }
+
+  /**
+   * Totales de UN destino dentro de un evento mixto. `neto` queda en 0 acá: lo
+   * completa la estrategia, que es la que conoce los egresos del evento y a
+   * quién se imputan.
+   */
+  async totalesPorDestino(
+    eventoId: string,
+    destino: DestinoGanancia,
+  ): Promise<ReporteDestinoLadoDto> {
+    const row = await this.baseVentasQuery(eventoId, destino)
+      .select('COALESCE(SUM(v.cantidad * pr."precioVenta"), 0)', 'recaudado')
+      .addSelect(
+        'COALESCE(SUM(v.cantidad * (pr."precioVenta" - pr."precioCosto")), 0)',
+        'ganancia',
+      )
+      .addSelect('COALESCE(SUM(v.cantidad), 0)', 'unidades')
+      .addSelect(
+        `COALESCE(SUM(CASE WHEN v.estado_cobro = :pendiente
+           THEN v.cantidad * pr."precioVenta" ELSE 0 END), 0)`,
+        'pendienteCobro',
+      )
+      .setParameter('pendiente', EstadoCobroVenta.PENDIENTE)
+      .getRawOne<{
+        recaudado: string;
+        ganancia: string;
+        unidades: string;
+        pendienteCobro: string;
+      }>();
+
+    return {
+      recaudado: Number(row?.recaudado ?? 0),
+      ganancia: Number(row?.ganancia ?? 0),
+      unidades: Number(row?.unidades ?? 0),
+      pendienteCobro: Number(row?.pendienteCobro ?? 0),
+      neto: 0,
+    };
   }
 
   /** Cantidad de ventas activas del evento sin movimiento de ingreso asociado. */

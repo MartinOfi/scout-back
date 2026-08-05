@@ -22,6 +22,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "NODE_ENV=test jest --config ./test/jest-e2e.json",
     "test:e2e:watch": "NODE_ENV=test jest --config ./test/jest-e2e.json --watch",
+    "_comment:benchmark": "CUIDADO: levanta AppModule, que lee .env.local y corre con migrationsRun:true. Apunta a la base real de esa config y le APLICA las migraciones pendientes. Excluido de 'npm test' por eso.",
+    "benchmark": "jest --testPathPattern 'modules/benchmark' --testPathIgnorePatterns '/node_modules/'",
     "db:test:start": "docker-compose -f docker-compose.test.yml up -d",
     "db:test:stop": "docker-compose -f docker-compose.test.yml down",
     "db:test:logs": "docker-compose -f docker-compose.test.yml logs -f",
@@ -91,6 +93,10 @@
     ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "modules/benchmark/"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },

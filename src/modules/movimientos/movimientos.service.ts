@@ -30,6 +30,34 @@ import {
 } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 
+/**
+ * THE balance rule, defined once.
+ *
+ * A movimiento only moves the caja when the money actually changed hands, so
+ * both pending states are excluded — they are mirror images of each other:
+ *
+ * - INGRESO PENDIENTE_COBRO: a receivable. The sale is recorded but not
+ *   collected (e.g. a WhatsApp order), so the money is NOT in the caja yet.
+ * - EGRESO PENDIENTE_REEMBOLSO: a liability. Someone paid a group expense out
+ *   of pocket, so the money is STILL in the caja until the refund is issued.
+ *
+ * Shared by calcularSaldo and calcularSaldosBatch on purpose: this used to be
+ * copy-pasted in both, and two copies of a money rule are a defect waiting for
+ * someone to update only one of them.
+ */
+const SALDO_SUM_EXPRESSION = `SUM(CASE
+  WHEN m.tipo = :ingreso AND m.estadoPago != :pendienteCobro THEN m.monto
+  WHEN m.tipo = :egreso AND m.estadoPago != :pendienteReembolso THEN -m.monto
+  ELSE 0
+END)`;
+
+const SALDO_PARAMS = {
+  ingreso: TipoMovimiento.INGRESO,
+  egreso: TipoMovimiento.EGRESO,
+  pendienteCobro: EstadoPago.PENDIENTE_COBRO,
+  pendienteReembolso: EstadoPago.PENDIENTE_REEMBOLSO,
+} as const;
+
 @Injectable()
 export class MovimientosService {
   constructor(
@@ -322,6 +350,81 @@ export class MovimientosService {
     };
   }
 
+  /**
+   * Money that was sold but not collected yet, grouped by whoever owes it.
+   *
+   * Mirror of findReembolsosPendientes, with one difference: the debtor is the
+   * movimiento's `responsable` (the seller who took the order and will hand the
+   * money in), not a separate `personaAReembolsar` column. That is why no new
+   * column was needed for this feature.
+   */
+  async findCobrosPendientes(): Promise<
+    {
+      personaId: string;
+      personaNombre: string;
+      totalPendiente: number;
+      movimientos: Movimiento[];
+    }[]
+  > {
+    const movimientos = await this.movimientoRepository.find({
+      where: { estadoPago: EstadoPago.PENDIENTE_COBRO },
+      relations: ['responsable', 'caja'],
+      order: { fecha: 'DESC' },
+    });
+
+    const agrupado = new Map<
+      string,
+      {
+        personaNombre: string;
+        totalPendiente: number;
+        movimientos: Movimiento[];
+      }
+    >();
+
+    for (const mov of movimientos) {
+      if (!mov.responsableId || !mov.responsable) continue;
+
+      const current = agrupado.get(mov.responsableId) || {
+        personaNombre: mov.responsable.nombre,
+        totalPendiente: 0,
+        movimientos: [],
+      };
+
+      current.totalPendiente += Number(mov.monto);
+      current.movimientos.push(mov);
+      agrupado.set(mov.responsableId, current);
+    }
+
+    return Array.from(agrupado.entries()).map(([personaId, data]) => ({
+      personaId,
+      ...data,
+    }));
+  }
+
+  /**
+   * Lightweight version for consolidado: returns only totals, no entities.
+   * Mirror of getReembolsosPendientesResumen.
+   */
+  async getCobrosPendientesResumen(): Promise<{
+    total: number;
+    cantidad: number;
+  }> {
+    const result = await this.movimientoRepository
+      .createQueryBuilder('m')
+      .select('COALESCE(SUM(m.monto), 0)', 'total')
+      .addSelect('COUNT(DISTINCT m.responsable_id)', 'cantidad')
+      .where('m.estadoPago = :estado', {
+        estado: EstadoPago.PENDIENTE_COBRO,
+      })
+      .andWhere('m.deletedAt IS NULL')
+      .getRawOne<{ total: string; cantidad: string }>();
+
+    return {
+      total: Number(result?.total ?? 0),
+      cantidad: Number(result?.cantidad ?? 0),
+    };
+  }
+
   async findOne(id: string): Promise<Movimiento> {
     const movimiento = await this.movimientoRepository.findOne({
       where: { id },
@@ -521,27 +624,16 @@ export class MovimientosService {
 
   /**
    * Calcula el saldo de una caja sumando todos sus movimientos.
-   * Ingresos suman, egresos PAGADOS restan.
-   * Egresos con PENDIENTE_REEMBOLSO no afectan el saldo: la plata
-   * sigue en la caja hasta que se emita el reembolso real.
+   * Ver SALDO_SUM_EXPRESSION para la regla.
    */
   async calcularSaldo(cajaId: string): Promise<number> {
     const result: { saldo: string | null } | undefined =
       await this.movimientoRepository
         .createQueryBuilder('m')
-        .select(
-          `SUM(CASE
-          WHEN m.tipo = :ingreso THEN m.monto
-          WHEN m.tipo = :egreso AND m.estadoPago != :pendienteReembolso THEN -m.monto
-          ELSE 0
-        END)`,
-          'saldo',
-        )
+        .select(SALDO_SUM_EXPRESSION, 'saldo')
         .where('m.caja_id = :cajaId', { cajaId })
         .andWhere('m.deletedAt IS NULL')
-        .setParameter('ingreso', TipoMovimiento.INGRESO)
-        .setParameter('egreso', TipoMovimiento.EGRESO)
-        .setParameter('pendienteReembolso', EstadoPago.PENDIENTE_REEMBOLSO)
+        .setParameters(SALDO_PARAMS)
         .getRawOne();
 
     return Number(result?.saldo ?? 0);
@@ -560,20 +652,11 @@ export class MovimientosService {
       await this.movimientoRepository
         .createQueryBuilder('m')
         .select('m.caja_id', 'caja_id')
-        .addSelect(
-          `SUM(CASE
-          WHEN m.tipo = :ingreso THEN m.monto
-          WHEN m.tipo = :egreso AND m.estadoPago != :pendienteReembolso THEN -m.monto
-          ELSE 0
-        END)`,
-          'saldo',
-        )
+        .addSelect(SALDO_SUM_EXPRESSION, 'saldo')
         .where('m.caja_id IN (:...cajaIds)', { cajaIds })
         .andWhere('m.deletedAt IS NULL')
         .groupBy('m.caja_id')
-        .setParameter('ingreso', TipoMovimiento.INGRESO)
-        .setParameter('egreso', TipoMovimiento.EGRESO)
-        .setParameter('pendienteReembolso', EstadoPago.PENDIENTE_REEMBOLSO)
+        .setParameters(SALDO_PARAMS)
         .getRawMany();
 
     const saldoMap = new Map<string, number>();

@@ -322,3 +322,45 @@ export class ReporteGananciaPersonaDto {
   @ApiProperty({ example: 408500 })
   ganancia!: number;
 }
+
+/** Un lado de un evento mixto: lo que recaudó y le quedó a ese destino. */
+export class ReporteDestinoLadoDto {
+  @ApiProperty({ example: 320000, description: 'Precio de venta × unidades' })
+  recaudado!: number;
+
+  @ApiProperty({ example: 120000, description: 'Σ (venta − costo) × unidades' })
+  ganancia!: number;
+
+  @ApiProperty({ example: 240 })
+  unidades!: number;
+
+  @ApiProperty({
+    example: 95000,
+    description:
+      'Plata registrada que todavía no entró (ventas en estado pendiente).',
+  })
+  pendienteCobro!: number;
+
+  @ApiProperty({
+    example: 80000,
+    description:
+      'Lo que efectivamente le queda a este destino. Para el grupo descuenta los egresos del evento y suma el recupero de costo; para las cuentas personales es la suma de márgenes, sin descuento de gastos.',
+  })
+  neto!: number;
+}
+
+/**
+ * KPIs de un evento mixto abiertos por destino.
+ *
+ * Los gastos del evento se imputan 100% al grupo: la caja grupo ya recupera el
+ * costo de la mercadería de las ventas personales vía el movimiento de
+ * recupero, así que el resto de los egresos (transporte, permisos) son costo
+ * del grupo y no reducen lo que reciben los chicos.
+ */
+export class ReportePorDestinoDto {
+  @ApiProperty({ type: ReporteDestinoLadoDto })
+  cajaGrupo!: ReporteDestinoLadoDto;
+
+  @ApiProperty({ type: ReporteDestinoLadoDto })
+  cuentasPersonales!: ReporteDestinoLadoDto;
+}

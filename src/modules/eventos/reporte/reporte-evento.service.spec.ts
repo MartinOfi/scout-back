@@ -10,9 +10,7 @@ function makeEvento(partial: Partial<Evento>): Evento {
   return { id: 'evt-1', estaCerrado: false, ...partial } as Evento;
 }
 
-function makeStrategy(
-  variante: ReporteEventoStrategy['variante'],
-): ReporteEventoStrategy & { build: jest.Mock } {
+function makeStrategy(variante: ReporteEventoStrategy['variante']) {
   return {
     variante,
     build: jest.fn().mockResolvedValue({ variante }),

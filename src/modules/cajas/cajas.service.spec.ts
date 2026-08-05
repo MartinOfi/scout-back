@@ -9,7 +9,7 @@ import { MovimientosService } from '../movimientos/movimientos.service';
 import { InscripcionesService } from '../inscripciones/inscripciones.service';
 import { CuotasService } from '../cuotas/cuotas.service';
 import { CampamentosService } from '../campamentos/campamentos.service';
-import { CajaType, ConceptoMovimiento } from '../../common/enums';
+import { CajaType, PersonaType, ConceptoMovimiento } from '../../common/enums';
 
 describe('CajasService', () => {
   let service: CajasService;
@@ -515,6 +515,7 @@ describe('CajasService', () => {
       expect(cajaRepository.find).toHaveBeenCalledWith({
         where: { tipo: CajaType.RAMA_MANADA },
         relations: ['propietario'],
+        order: { nombre: 'ASC' },
       });
     });
   });
@@ -811,6 +812,40 @@ describe('CajasService', () => {
       expect(result.fondoSolidario.bonificacionesOtorgadas).toBe(0);
       expect(result.resumen.totalGeneral).toBe(50000);
       expect(result.resumen.totalDisponible).toBe(50000);
+    });
+  });
+
+  describe('getOrCreateCajaPersonal — una agrupacion nunca tiene caja personal', () => {
+    it('rechaza a una AGRUPACION en vez de crearle una caja', async () => {
+      cajaRepository.findOne.mockResolvedValue(null);
+      dataSource.query.mockResolvedValue([{ tipo: PersonaType.AGRUPACION }]);
+
+      await expect(
+        service.getOrCreateCajaPersonal('agrupacion-uuid'),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(cajaRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('sigue creando la caja para un protagonista', async () => {
+      cajaRepository.findOne.mockResolvedValue(null);
+      dataSource.query.mockResolvedValue([{ tipo: PersonaType.PROTAGONISTA }]);
+      cajaRepository.create.mockReturnValue(mockCajaPersonal as Caja);
+      cajaRepository.save.mockResolvedValue(mockCajaPersonal as Caja);
+
+      const caja = await service.getOrCreateCajaPersonal('persona-uuid');
+
+      expect(caja).toEqual(mockCajaPersonal);
+      expect(cajaRepository.save).toHaveBeenCalled();
+    });
+
+    it('devuelve la caja existente sin consultar el tipo de persona', async () => {
+      cajaRepository.findOne.mockResolvedValue(mockCajaPersonal as Caja);
+
+      const caja = await service.getOrCreateCajaPersonal('persona-uuid');
+
+      expect(caja).toEqual(mockCajaPersonal);
+      expect(dataSource.query).not.toHaveBeenCalled();
     });
   });
 });

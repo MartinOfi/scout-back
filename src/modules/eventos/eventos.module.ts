@@ -19,6 +19,7 @@ import { ReporteAggregatorsService } from './reporte/aggregators/reporte-aggrega
 import { ReporteVentaBuilder } from './reporte/strategies/reporte-venta.builder';
 import { ReporteVentaCajaGrupoStrategy } from './reporte/strategies/reporte-venta-caja-grupo.strategy';
 import { ReporteVentaCuentasPersonalesStrategy } from './reporte/strategies/reporte-venta-cuentas-personales.strategy';
+import { ReporteVentaMixtaStrategy } from './reporte/strategies/reporte-venta-mixta.strategy';
 import { ReporteGrupoStrategy } from './reporte/strategies/reporte-grupo.strategy';
 import { REPORTE_EVENTO_STRATEGIES } from './reporte/strategies/reporte-evento.strategy';
 
@@ -49,17 +50,20 @@ import { REPORTE_EVENTO_STRATEGIES } from './reporte/strategies/reporte-evento.s
     ReporteVentaBuilder,
     ReporteVentaCajaGrupoStrategy,
     ReporteVentaCuentasPersonalesStrategy,
+    ReporteVentaMixtaStrategy,
     ReporteGrupoStrategy,
     {
       provide: REPORTE_EVENTO_STRATEGIES,
       useFactory: (
         cajaGrupo: ReporteVentaCajaGrupoStrategy,
         cuentasPersonales: ReporteVentaCuentasPersonalesStrategy,
+        mixta: ReporteVentaMixtaStrategy,
         grupo: ReporteGrupoStrategy,
-      ) => [cajaGrupo, cuentasPersonales, grupo],
+      ) => [cajaGrupo, cuentasPersonales, mixta, grupo],
       inject: [
         ReporteVentaCajaGrupoStrategy,
         ReporteVentaCuentasPersonalesStrategy,
+        ReporteVentaMixtaStrategy,
         ReporteGrupoStrategy,
       ],
     },

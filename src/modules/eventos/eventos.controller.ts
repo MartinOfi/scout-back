@@ -293,6 +293,24 @@ export class EventosController {
     return this.ventasEventoService.deleteVenta(eventoId, ventaId);
   }
 
+  @Post(EVENTOS_ROUTES.VENTA_COBRAR)
+  @ApiOperation({
+    summary: 'Registrar el cobro de una venta pendiente',
+    description:
+      'Marca la venta (y sus hermanas del mismo lote) como cobrada y pasa sus movimientos a PAGADO, con lo cual recién ahí impactan en el saldo de la caja. Devuelve 409 si la venta ya estaba cobrada.',
+  })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.EVENTO_ID, ...UUID_PARAM_TYPE })
+  @ApiParam({ name: EVENTOS_PARAM_NAMES.VENTA_ID, ...UUID_PARAM_TYPE })
+  @ApiResponse({ status: 201, description: 'Cobro registrado' })
+  @ApiResponse({ status: 404, description: 'Venta o evento no encontrado' })
+  @ApiResponse({ status: 409, description: 'La venta ya figura como cobrada' })
+  async cobrarVenta(
+    @Param(EVENTOS_PARAM_NAMES.EVENTO_ID, ParseUUIDPipe) eventoId: string,
+    @Param(EVENTOS_PARAM_NAMES.VENTA_ID, ParseUUIDPipe) ventaId: string,
+  ) {
+    return this.ventasEventoService.cobrarVenta(eventoId, ventaId);
+  }
+
   @Get(EVENTOS_ROUTES.KPIS_BY_EVENTO)
   @ApiOperation({
     summary: EVENTOS_SWAGGER.KPIS.GET_SUMMARY,

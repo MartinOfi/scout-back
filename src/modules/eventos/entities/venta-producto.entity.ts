@@ -4,6 +4,7 @@ import { Evento } from './evento.entity';
 import { Producto } from './producto.entity';
 import { Persona } from '../../personas/entities/persona.entity';
 import { Movimiento } from '../../movimientos/entities/movimiento.entity';
+import { DestinoGanancia, EstadoCobroVenta } from '../../../common/enums';
 
 /**
  * VentaProducto entity - Sales record per product per participant
@@ -36,7 +37,13 @@ export class VentaProducto extends BaseEntity {
   productoId!: string;
 
   /**
-   * Person who sold (vendedor)
+   * Person who sold (vendedor).
+   *
+   * May be an Agrupacion (PersonaType.AGRUPACION) when the group itself sold —
+   * e.g. a park stand with no individual seller. That is why this stays
+   * NOT NULL: "the group sold it" is a real vendedor, not a missing one, so
+   * aggregations keep their inner joins and no sale can silently drop out of
+   * the report.
    */
   @ManyToOne(() => Persona, { nullable: false })
   @JoinColumn({ name: 'vendedor_id' })
@@ -50,6 +57,42 @@ export class VentaProducto extends BaseEntity {
    */
   @Column()
   cantidad!: number;
+
+  /**
+   * Where the margen of THIS venta goes. Snapshot taken at registration time.
+   *
+   * In a UNICA event it always equals evento.destinoGanancia; in a MIXTA event
+   * each lote declares its own. This — not the evento — is what
+   * resolveCajaForVenta and shouldGenerateRecuperoCosto read.
+   *
+   * A venta sold by an Agrupacion can only be CAJA_GRUPO: there is no personal
+   * caja to credit. The rule is enforced by CajasService.getOrCreateCajaPersonal,
+   * which rejects agrupaciones for every caller in the system, not just eventos.
+   */
+  @Column({
+    name: 'destino_ganancia',
+    type: 'enum',
+    enum: DestinoGanancia,
+    enumName: 'ventas_productos_destino_ganancia_enum',
+  })
+  destinoGanancia!: DestinoGanancia;
+
+  /**
+   * Whether the money for this venta actually came in.
+   *
+   * Source of truth from which the linked movimiento's EstadoPago is derived
+   * (PENDIENTE → EstadoPago.PENDIENTE_COBRO), so a recorded-but-uncollected
+   * sale never inflates a caja balance. Flipped to COBRADO — together with its
+   * movimientos, in one transaction — by the "cobrar" endpoint.
+   */
+  @Column({
+    name: 'estado_cobro',
+    type: 'enum',
+    enum: EstadoCobroVenta,
+    enumName: 'ventas_productos_estado_cobro_enum',
+    default: EstadoCobroVenta.COBRADO,
+  })
+  estadoCobro!: EstadoCobroVenta;
 
   /**
    * Linked income Movimiento generated when this sale was registered.

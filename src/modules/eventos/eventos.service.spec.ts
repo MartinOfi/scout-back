@@ -18,6 +18,8 @@ import {
   ConceptoMovimiento,
   EstadoPago,
   MedioPago,
+  ModalidadVenta,
+  EstadoCobroVenta,
 } from '../../common/enums';
 import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
@@ -965,33 +967,33 @@ describe('EventosService', () => {
       precioVenta: 700,
     };
 
-    const ventaA: Partial<VentaProducto> = {
-      id: 'venta-a',
-      eventoId: 'evento-uuid',
-      productoId: 'producto-uuid',
-      vendedorId: 'vendedor-1',
-      cantidad: 4,
-      movimientoId: null,
-      producto: mockProducto as Producto,
-    };
-    const ventaB: Partial<VentaProducto> = {
-      id: 'venta-b',
-      eventoId: 'evento-uuid',
-      productoId: 'producto-uuid',
-      vendedorId: 'vendedor-1',
-      cantidad: 6,
-      movimientoId: null,
-      producto: mockProducto as Producto,
-    };
-    const ventaC: Partial<VentaProducto> = {
-      id: 'venta-c',
-      eventoId: 'evento-uuid',
-      productoId: 'producto-uuid',
-      vendedorId: 'vendedor-2',
-      cantidad: 2,
-      movimientoId: null,
-      producto: mockProducto as Producto,
-    };
+    // El destino vive en la venta, así que los fixtures lo llevan: el backfill
+    // agrupa por (vendedor, destino, estadoCobro) y lee el destino de la venta,
+    // no del evento.
+    function venta(
+      id: string,
+      vendedorId: string,
+      cantidad: number,
+      destinoGanancia: DestinoGanancia,
+      estadoCobro: EstadoCobroVenta = EstadoCobroVenta.COBRADO,
+    ): Partial<VentaProducto> {
+      return {
+        id,
+        eventoId: 'evento-uuid',
+        productoId: 'producto-uuid',
+        vendedorId,
+        cantidad,
+        movimientoId: null,
+        destinoGanancia,
+        estadoCobro,
+        producto: mockProducto as Producto,
+      };
+    }
+
+    const PERSONALES = DestinoGanancia.CUENTAS_PERSONALES;
+    const ventaA = venta('venta-a', 'vendedor-1', 4, PERSONALES);
+    const ventaB = venta('venta-b', 'vendedor-1', 6, PERSONALES);
+    const ventaC = venta('venta-c', 'vendedor-2', 2, PERSONALES);
 
     function eventoDeshabilitado(overrides: Partial<Evento> = {}): Evento {
       return {
@@ -1122,7 +1124,9 @@ describe('EventosService', () => {
       eventoRepository.findOne.mockResolvedValue(
         eventoDeshabilitado({ destinoGanancia: DestinoGanancia.CAJA_GRUPO }),
       );
-      fakeManager.find.mockResolvedValue([ventaA]);
+      fakeManager.find.mockResolvedValue([
+        venta('venta-a', 'vendedor-1', 4, DestinoGanancia.CAJA_GRUPO),
+      ]);
       (movimientosService.createWithManager as jest.Mock).mockResolvedValue({
         id: 'mov-uuid',
       });
@@ -1138,6 +1142,56 @@ describe('EventosService', () => {
         ),
       ).toBe(true);
       expect(calls).toHaveLength(1);
+    });
+
+    it('evento mixto: un mismo vendedor con los dos destinos recibe DOS movimientos, no uno', async () => {
+      eventoRepository.findOne.mockResolvedValue(
+        eventoDeshabilitado({ modalidadVenta: ModalidadVenta.MIXTA }),
+      );
+      fakeManager.find.mockResolvedValue([
+        venta('v1', 'vendedor-1', 4, DestinoGanancia.CAJA_GRUPO),
+        venta('v2', 'vendedor-1', 6, DestinoGanancia.CUENTAS_PERSONALES),
+      ]);
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
+      (movimientosService.createWithManager as jest.Mock).mockResolvedValue({
+        id: 'mov-uuid',
+      });
+
+      await service.habilitarMovimientos('evento-uuid');
+
+      const ingresos = movimientosService.createWithManager.mock.calls.filter(
+        (c) => c[1].concepto === ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+      );
+      // Si la clave de agrupación fuera solo el vendedor, sería 1 movimiento
+      // a una única caja: la mitad de la plata terminaría en el lugar equivocado.
+      expect(ingresos).toHaveLength(2);
+      expect(new Set(ingresos.map((c) => c[1].cajaId)).size).toBe(2);
+    });
+
+    it('un mismo vendedor y destino, con ventas cobradas e impagas, recibe DOS movimientos con distinto estadoPago', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoDeshabilitado());
+      fakeManager.find.mockResolvedValue([
+        venta('v1', 'vendedor-1', 4, PERSONALES, EstadoCobroVenta.COBRADO),
+        venta('v2', 'vendedor-1', 6, PERSONALES, EstadoCobroVenta.PENDIENTE),
+      ]);
+      (cajasService.getOrCreateCajaPersonal as jest.Mock).mockResolvedValue({
+        id: 'caja-personal-uuid',
+      });
+      (movimientosService.createWithManager as jest.Mock).mockResolvedValue({
+        id: 'mov-uuid',
+      });
+
+      await service.habilitarMovimientos('evento-uuid');
+
+      const ingresos = movimientosService.createWithManager.mock.calls.filter(
+        (c) => c[1].concepto === ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+      );
+      expect(ingresos).toHaveLength(2);
+      expect(ingresos.map((c) => c[1].estadoPago).sort()).toEqual(
+        [EstadoPago.PAGADO, EstadoPago.PENDIENTE_COBRO].sort(),
+      );
     });
 
     it('no genera movimientos para ventas que ya tienen movimientoId', async () => {

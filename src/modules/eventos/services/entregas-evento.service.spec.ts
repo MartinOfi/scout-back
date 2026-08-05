@@ -376,7 +376,7 @@ describe('EntregasEventoService', () => {
       entregaRepository.findOne.mockResolvedValue({
         ...liveEntrega,
         eventoId: 'otro-evento',
-      } as Entrega);
+      });
 
       await expect(service.deleteEntrega(eventoId, entregaId)).rejects.toThrow(
         NotFoundException,
@@ -388,7 +388,7 @@ describe('EntregasEventoService', () => {
       entregaRepository.findOne.mockResolvedValue({
         ...liveEntrega,
         deletedAt: new Date(),
-      } as Entrega);
+      });
 
       await expect(service.deleteEntrega(eventoId, entregaId)).rejects.toThrow(
         ConflictException,

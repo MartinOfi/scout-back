@@ -10,7 +10,13 @@ import { EntregaLinea } from '../entities/entrega-linea.entity';
 import { Evento } from '../entities/evento.entity';
 import { EventosService } from '../eventos.service';
 import { MovimientosService } from '../../movimientos/movimientos.service';
-import { VENTAS_ERROR_MESSAGES } from '../constants';
+import { Movimiento } from '../../movimientos/entities/movimiento.entity';
+import {
+  VENTAS_ERROR_MESSAGES,
+  EVENTOS_ERROR_MESSAGES,
+  ENTREGA_INMEDIATA_NOTA,
+} from '../constants';
+import { EstadoCobroVenta, EstadoPago } from '../../../common/enums';
 
 /**
  * Result of deleting a venta. Returned to the controller so callers can
@@ -22,6 +28,16 @@ export interface DeleteVentaResult {
   movimientoIdEliminado: string | null;
   movimientoRecuperoIdEliminado: string | null;
   hermanasEliminadas: number;
+}
+
+/**
+ * Result of collecting a venta. `hermanasCobradas` is reported so the operator
+ * knows the whole lote moved, not just the row they clicked.
+ */
+export interface CobrarResult {
+  ventaId: string;
+  hermanasCobradas: number;
+  movimientosActualizados: string[];
 }
 
 /**
@@ -72,6 +88,56 @@ export class VentasEventoService {
   }
 
   /**
+   * Marca una venta como cobrada: la plata efectivamente entró.
+   *
+   * Mueve el estado en dos lugares dentro de una misma transacción — la venta
+   * (fuente de verdad) y sus movimientos (margen y, si existe, recupero) — para
+   * que nunca queden divergentes. Recién cuando los movimientos pasan a PAGADO
+   * el saldo de la caja los cuenta.
+   *
+   * El cobro alcanza a todas las ventas hermanas del lote, porque comparten el
+   * mismo movimiento agregado: cobrar media parte de un movimiento no existe.
+   */
+  async cobrarVenta(eventoId: string, ventaId: string): Promise<CobrarResult> {
+    const evento = await this.eventosService.findOne(eventoId);
+    this.eventosService.assertEventoModificable(evento);
+
+    const venta = await this.loadVentaOrFail(eventoId, ventaId);
+    if (venta.estadoCobro === EstadoCobroVenta.COBRADO) {
+      throw new ConflictException(EVENTOS_ERROR_MESSAGES.VENTA_YA_COBRADA);
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const hermanas = venta.movimientoId
+        ? await this.findLiveSiblings(manager, venta.movimientoId, venta.id)
+        : [];
+      const todas = [venta, ...hermanas];
+
+      for (const v of todas) {
+        v.estadoCobro = EstadoCobroVenta.COBRADO;
+      }
+      await manager.save(todas);
+
+      const movimientoIds = [
+        venta.movimientoId,
+        venta.movimientoRecuperoId,
+      ].filter((id): id is string => id !== null);
+
+      for (const id of movimientoIds) {
+        await manager.update(Movimiento, id, {
+          estadoPago: EstadoPago.PAGADO,
+        });
+      }
+
+      return {
+        ventaId: venta.id,
+        hermanasCobradas: hermanas.length,
+        movimientosActualizados: movimientoIds,
+      };
+    });
+  }
+
+  /**
    * Blocks deletion when any live EntregaLinea exists for the same
    * (eventoId, productoId, vendedorId) tuple as this venta.
    *
@@ -91,9 +157,50 @@ export class VentasEventoService {
       })
       .andWhere('el."deletedAt" IS NULL')
       .andWhere('e."deletedAt" IS NULL')
+      // Las entregas creadas junto con la venta ("entregado en el acto") no
+      // bloquean: se borran en cascada más abajo. Exigirle al operador que
+      // borre a mano una entrega que nunca cargó por separado sería absurdo.
+      // Las entregas cargadas aparte sí bloquean, que es el caso que la
+      // validación existe para proteger.
+      .andWhere('e.notas IS DISTINCT FROM :notaInmediata', {
+        notaInmediata: ENTREGA_INMEDIATA_NOTA,
+      })
       .getCount();
     if (count > 0) {
       throw new ConflictException(VENTAS_ERROR_MESSAGES.VENTA_HAS_ENTREGAS);
+    }
+  }
+
+  /**
+   * Borra las entregas inmediatas del mismo (evento, vendedor, producto) que la
+   * venta que se está eliminando. Sólo alcanza a las que se crearon junto con
+   * la venta, nunca a las cargadas por separado.
+   */
+  private async cascadeDeleteEntregasInmediatas(
+    manager: EntityManager,
+    ventas: ReadonlyArray<VentaProducto>,
+  ): Promise<void> {
+    for (const venta of ventas) {
+      const lineas = await manager
+        .createQueryBuilder(EntregaLinea, 'el')
+        .innerJoin('el.entrega', 'e')
+        .where('e.evento_id = :eventoId', { eventoId: venta.eventoId })
+        .andWhere('e.vendedor_id = :vendedorId', {
+          vendedorId: venta.vendedorId,
+        })
+        .andWhere('el.producto_id = :productoId', {
+          productoId: venta.productoId,
+        })
+        .andWhere('e.notas = :notaInmediata', {
+          notaInmediata: ENTREGA_INMEDIATA_NOTA,
+        })
+        .andWhere('el."deletedAt" IS NULL')
+        .andWhere('e."deletedAt" IS NULL')
+        .getMany();
+
+      if (lineas.length > 0) {
+        await manager.softRemove(lineas);
+      }
     }
   }
 
@@ -105,6 +212,7 @@ export class VentasEventoService {
     venta: VentaProducto,
   ): Promise<DeleteVentaResult> {
     if (!venta.movimientoId) {
+      await this.cascadeDeleteEntregasInmediatas(manager, [venta]);
       await manager.softRemove(venta);
       return this.buildResult(venta, null, null, 0);
     }
@@ -116,6 +224,7 @@ export class VentasEventoService {
     );
     const allVentas = [venta, ...hermanas];
 
+    await this.cascadeDeleteEntregasInmediatas(manager, allVentas);
     await manager.softRemove(allVentas);
     await this.movimientosService.softRemoveWithManager(
       manager,
