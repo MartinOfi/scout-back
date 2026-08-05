@@ -562,13 +562,62 @@ export class MovimientosService {
     return this.movimientoRepository.save(movimiento);
   }
 
+  /**
+   * Soft delete a movimiento.
+   *
+   * TRANSFERENCIA_ENTRE_CAJAS movimientos are a linked pair (egreso + ingreso,
+   * see crearTransferencia) and skip the generic DeletionValidatorService
+   * check entirely: they have their own atomic pair-deletion flow below,
+   * so DeletionValidatorService.canDeleteMovimiento never sees them here.
+   */
   async remove(id: string): Promise<void> {
+    const movimiento = await this.findOne(id);
+
+    if (
+      movimiento.concepto === ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS &&
+      movimiento.movimientoRelacionadoId
+    ) {
+      return this.removeTransferencia(movimiento);
+    }
+
     const check = await this.deletionValidator.canDeleteMovimiento(id);
     if (!check.canDelete) {
       throw new BadRequestException(check.reason);
     }
-    const movimiento = await this.findOne(id);
     await this.movimientoRepository.softRemove(movimiento);
+  }
+
+  /**
+   * Undoes a crearTransferencia() pair atomically: soft-removes both the
+   * egreso and the ingreso side of the transfer.
+   *
+   * Validated before opening the transaction: the ingreso's caja must still
+   * hold at least the transferred amount. Without this, deleting a transfer
+   * after part of its money was already spent (e.g. a bonificación paid out
+   * of the fondo solidario) would leave that caja's computed saldo negative.
+   */
+  private async removeTransferencia(movimiento: Movimiento): Promise<void> {
+    const sibling = await this.movimientoRepository.findOne({
+      where: { id: movimiento.movimientoRelacionadoId! },
+    });
+
+    if (sibling) {
+      const ingreso =
+        movimiento.tipo === TipoMovimiento.INGRESO ? movimiento : sibling;
+      const saldoDestino = await this.calcularSaldo(ingreso.cajaId);
+      if (saldoDestino < Number(ingreso.monto)) {
+        throw new BadRequestException(
+          `No se puede eliminar la transferencia: la caja destino ya no tiene fondos suficientes (disponible: ${saldoDestino}, requerido: ${ingreso.monto})`,
+        );
+      }
+    }
+
+    await this.dataSource.transaction(async (manager) => {
+      await manager.softRemove(movimiento);
+      if (sibling) {
+        await manager.softRemove(sibling);
+      }
+    });
   }
 
   /**

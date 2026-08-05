@@ -22,6 +22,7 @@ describe('MovimientosService', () => {
   let cajasService: jest.Mocked<CajasService>;
   let personasService: jest.Mocked<PersonasService>;
   let dataSource: jest.Mocked<DataSource>;
+  let deletionValidator: jest.Mocked<DeletionValidatorService>;
 
   const mockCaja = { id: 'caja-uuid' };
   const mockPersona = { id: 'persona-uuid', nombre: 'Juan Scout' };
@@ -87,6 +88,7 @@ describe('MovimientosService', () => {
     cajasService = module.get(CajasService);
     personasService = module.get(PersonasService);
     dataSource = module.get(DataSource);
+    deletionValidator = module.get(DeletionValidatorService);
   });
 
   describe('create', () => {
@@ -532,6 +534,129 @@ describe('MovimientosService', () => {
       await expect(service.crearTransferencia(baseTransferDto)).rejects.toThrow(
         'DB failure',
       );
+    });
+  });
+
+  describe('remove', () => {
+    const mockMovimientoNormal: Partial<Movimiento> = {
+      id: 'mov-uuid',
+      cajaId: 'caja-uuid',
+      tipo: TipoMovimiento.INGRESO,
+      monto: 1000,
+      concepto: ConceptoMovimiento.CUOTA_GRUPO,
+      movimientoRelacionadoId: null,
+    };
+
+    it('elimina un movimiento normal delegando en el validador de borrado', async () => {
+      movimientoRepository.findOne.mockResolvedValue(
+        mockMovimientoNormal as Movimiento,
+      );
+
+      await service.remove('mov-uuid');
+
+      expect(deletionValidator.canDeleteMovimiento).toHaveBeenCalledWith(
+        'mov-uuid',
+      );
+      expect(movimientoRepository.softRemove).toHaveBeenCalledWith(
+        mockMovimientoNormal,
+      );
+    });
+
+    it('rechaza con BadRequestException cuando el validador bloquea el borrado', async () => {
+      movimientoRepository.findOne.mockResolvedValue(
+        mockMovimientoNormal as Movimiento,
+      );
+      deletionValidator.canDeleteMovimiento.mockResolvedValueOnce({
+        canDelete: false,
+        reason: 'bloqueado',
+      });
+
+      await expect(service.remove('mov-uuid')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(movimientoRepository.softRemove).not.toHaveBeenCalled();
+    });
+
+    describe('transferencia entre cajas (par egreso/ingreso)', () => {
+      const mockEgresoTransferencia: Partial<Movimiento> = {
+        id: 'mov-egreso-uuid',
+        cajaId: 'caja-origen-uuid',
+        tipo: TipoMovimiento.EGRESO,
+        monto: 500,
+        concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+        movimientoRelacionadoId: 'mov-ingreso-uuid',
+      };
+      const mockIngresoTransferencia: Partial<Movimiento> = {
+        id: 'mov-ingreso-uuid',
+        cajaId: 'caja-destino-uuid',
+        tipo: TipoMovimiento.INGRESO,
+        monto: 500,
+        concepto: ConceptoMovimiento.TRANSFERENCIA_ENTRE_CAJAS,
+        movimientoRelacionadoId: 'mov-egreso-uuid',
+      };
+
+      let mockManager: { softRemove: jest.Mock };
+
+      beforeEach(() => {
+        mockManager = { softRemove: jest.fn().mockResolvedValue(undefined) };
+        (dataSource.transaction as unknown as jest.Mock).mockImplementation(
+          async (cb: (m: unknown) => Promise<unknown>) => cb(mockManager),
+        );
+        jest.spyOn(service, 'calcularSaldo').mockResolvedValue(500);
+      });
+
+      it('elimina el par egreso+ingreso atomicamente sin pasar por el validador generico', async () => {
+        movimientoRepository.findOne
+          .mockResolvedValueOnce(mockEgresoTransferencia as Movimiento) // findOne(id)
+          .mockResolvedValueOnce(mockIngresoTransferencia as Movimiento); // sibling lookup
+
+        await service.remove('mov-egreso-uuid');
+
+        expect(deletionValidator.canDeleteMovimiento).not.toHaveBeenCalled();
+        expect(dataSource.transaction).toHaveBeenCalled();
+        expect(mockManager.softRemove).toHaveBeenCalledWith(
+          mockEgresoTransferencia,
+        );
+        expect(mockManager.softRemove).toHaveBeenCalledWith(
+          mockIngresoTransferencia,
+        );
+        expect(mockManager.softRemove).toHaveBeenCalledTimes(2);
+      });
+
+      it('funciona igual si se llama remove() sobre el lado ingreso del par', async () => {
+        movimientoRepository.findOne
+          .mockResolvedValueOnce(mockIngresoTransferencia as Movimiento)
+          .mockResolvedValueOnce(mockEgresoTransferencia as Movimiento);
+
+        await service.remove('mov-ingreso-uuid');
+
+        expect(mockManager.softRemove).toHaveBeenCalledTimes(2);
+      });
+
+      it('rechaza con BadRequestException si la caja destino ya no tiene fondos suficientes', async () => {
+        movimientoRepository.findOne
+          .mockResolvedValueOnce(mockEgresoTransferencia as Movimiento)
+          .mockResolvedValueOnce(mockIngresoTransferencia as Movimiento);
+        jest.spyOn(service, 'calcularSaldo').mockResolvedValue(100);
+
+        await expect(service.remove('mov-egreso-uuid')).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+        expect(dataSource.transaction).not.toHaveBeenCalled();
+      });
+
+      it('si el sibling ya fue borrado (soft-deleted), elimina solo el movimiento restante', async () => {
+        movimientoRepository.findOne
+          .mockResolvedValueOnce(mockEgresoTransferencia as Movimiento)
+          .mockResolvedValueOnce(null);
+
+        await service.remove('mov-egreso-uuid');
+
+        expect(mockManager.softRemove).toHaveBeenCalledTimes(1);
+        expect(mockManager.softRemove).toHaveBeenCalledWith(
+          mockEgresoTransferencia,
+        );
+      });
     });
   });
 });
