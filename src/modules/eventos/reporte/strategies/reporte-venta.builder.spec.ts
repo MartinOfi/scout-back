@@ -2,7 +2,11 @@ import { ReporteVentaBuilder } from './reporte-venta.builder';
 import { EventosService } from '../../eventos.service';
 import { EntregasEventoService } from '../../services/entregas-evento.service';
 import { ReporteAggregatorsService } from '../aggregators/reporte-aggregators.service';
-import { TipoEvento, DestinoGanancia, PersonaType } from '../../../../common/enums';
+import {
+  TipoEvento,
+  DestinoGanancia,
+  PersonaType,
+} from '../../../../common/enums';
 import { Evento } from '../../entities/evento.entity';
 
 const EVENTO = {
@@ -81,7 +85,14 @@ describe('ReporteVentaBuilder', () => {
     };
     aggregators = {
       recaudacionPorTipoPersona: jest.fn().mockResolvedValue([
-        { tipo: PersonaType.EDUCADOR, label: 'Educadores', vendedores: 10, unidades: 91, recaudado: 1084000, porcentaje: 0.6 },
+        {
+          tipo: PersonaType.EDUCADOR,
+          label: 'Educadores',
+          vendedores: 10,
+          unidades: 91,
+          recaudado: 1084000,
+          porcentaje: 0.6,
+        },
       ]),
       participacionPorRama: jest.fn().mockResolvedValue([]),
       vendedoresDetalle: jest.fn().mockResolvedValue([]),
