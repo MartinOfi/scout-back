@@ -1,7 +1,6 @@
 import {
   IsNumber,
   IsUUID,
-  IsPositive,
   IsEnum,
   IsOptional,
   IsBoolean,
@@ -32,11 +31,12 @@ export class CreateInscripcionDto {
 
   @ApiProperty({
     example: 15000.0,
-    minimum: 0.01,
-    description: 'Monto total de la inscripción',
+    minimum: 0,
+    description:
+      'Monto total de la inscripción. Puede ser 0 (ej: persona nueva, inscripción sin costo).',
   })
   @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
+  @Min(0)
   montoTotal!: number;
 
   // =========================================================================
