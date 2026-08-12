@@ -13,6 +13,7 @@ import {
   TipoMovimiento,
   ConceptoMovimiento,
 } from '../../common/enums';
+import { RAMA_EDUCADORES, TipoDeudaFilter } from './constants/deuda.constants';
 
 /**
  * Datos que devuelve cada repositorio mockeado en una corrida de getDeudas.
@@ -127,6 +128,140 @@ describe('ReportesService', () => {
     expect(result[0].esMayorDeEdad).toBe(true);
     expect(result[0].documentacionPersonal).toBeNull();
     expect(result[0].deudaTotal).toBe(5000);
+  });
+
+  it('expone el tipo de persona para poder enlazar a su ficha', async () => {
+    const service = await buildService({
+      protagonistas: [
+        {
+          id: 'p-1',
+          nombre: 'Beto',
+          tipo: PersonaType.PROTAGONISTA,
+          rama: Rama.UNIDAD,
+          dni: false,
+        },
+      ],
+      educadores: [
+        { id: 'edu-1', nombre: 'Ana', tipo: PersonaType.EDUCADOR, rama: null },
+      ],
+      inscripciones: [
+        inscripcionScout({ id: 'i-edu', personaId: 'edu-1', montoTotal: 5000 }),
+      ],
+    });
+
+    const result = await service.getDeudas({});
+
+    expect(result.find((d) => d.personaId === 'p-1')?.tipo).toBe(
+      PersonaType.PROTAGONISTA,
+    );
+    expect(result.find((d) => d.personaId === 'edu-1')?.tipo).toBe(
+      PersonaType.EDUCADOR,
+    );
+  });
+
+  it('rama "Educadores": devuelve solo educadores, sin importar su rama asignada', async () => {
+    const service = await buildService({
+      protagonistas: [
+        {
+          id: 'p-1',
+          nombre: 'Beto',
+          tipo: PersonaType.PROTAGONISTA,
+          rama: Rama.UNIDAD,
+          dni: false,
+        },
+      ],
+      educadores: [
+        {
+          id: 'edu-1',
+          nombre: 'Ana',
+          tipo: PersonaType.EDUCADOR,
+          rama: Rama.MANADA,
+        },
+      ],
+      inscripciones: [
+        inscripcionScout({ id: 'i-edu', personaId: 'edu-1', montoTotal: 5000 }),
+      ],
+    });
+
+    const result = await service.getDeudas({ rama: RAMA_EDUCADORES });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].personaId).toBe('edu-1');
+    expect(result[0].rama).toBe(RAMA_EDUCADORES);
+  });
+
+  /**
+   * Un deudor solo de plata (educador con inscripción impaga y papeles al día)
+   * y uno solo de papeles (protagonista sin DNI y sin deuda monetaria).
+   */
+  const buildDeudoresMixtos = () =>
+    buildService({
+      protagonistas: [
+        {
+          id: 'p-papeles',
+          nombre: 'Beto',
+          tipo: PersonaType.PROTAGONISTA,
+          rama: Rama.UNIDAD,
+          dni: false,
+          partidaNacimiento: true,
+          dniPadres: true,
+          carnetObraSocial: true,
+        },
+      ],
+      educadores: [
+        {
+          id: 'edu-plata',
+          nombre: 'Ana',
+          tipo: PersonaType.EDUCADOR,
+          rama: null,
+        },
+      ],
+      inscripciones: [
+        inscripcionScout({
+          id: 'i-edu',
+          personaId: 'edu-plata',
+          montoTotal: 5000,
+        }),
+      ],
+    });
+
+  it('tipo "dinero": unifica toda la deuda monetaria y excluye a los que solo deben papeles', async () => {
+    const service = await buildDeudoresMixtos();
+
+    const result = await service.getDeudas({ tipo: TipoDeudaFilter.DINERO });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].personaId).toBe('edu-plata');
+  });
+
+  it('tipo "documentacion": excluye a los que solo deben plata', async () => {
+    const service = await buildDeudoresMixtos();
+
+    const result = await service.getDeudas({
+      tipo: TipoDeudaFilter.DOCUMENTACION,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].personaId).toBe('p-papeles');
+  });
+
+  it('sin filtro de tipo: devuelve deudores de plata y de papeles', async () => {
+    const service = await buildDeudoresMixtos();
+
+    const result = await service.getDeudas({});
+
+    expect(result.map((d) => d.personaId).sort()).toEqual([
+      'edu-plata',
+      'p-papeles',
+    ]);
+  });
+
+  it('tipo "cuotas": excluye a quien debe otras deudas monetarias pero no cuotas', async () => {
+    const service = await buildDeudoresMixtos();
+
+    const result = await service.getDeudas({ tipo: TipoDeudaFilter.CUOTAS });
+
+    expect(result).toHaveLength(0);
   });
 
   it('protagonista menor: el DNI de los padres faltante genera deuda documental', async () => {

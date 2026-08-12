@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PersonaType } from '../../../common/enums';
 
 export class CampamentoDeudaDto {
   @ApiProperty()
@@ -109,6 +110,12 @@ export class PersonaDeudaDto {
 
   @ApiProperty()
   nombre!: string;
+
+  @ApiProperty({
+    enum: PersonaType,
+    description: 'Tipo de persona: define a qué ficha enlaza el reporte',
+  })
+  tipo!: PersonaType;
 
   @ApiProperty()
   rama!: string;

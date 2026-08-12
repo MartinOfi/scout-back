@@ -16,6 +16,7 @@ import {
   EstadoCuota,
   PersonaType,
   ConceptoMovimiento,
+  Rama,
 } from '../../common/enums';
 import { esMayorDeEdad } from '../../common/utils';
 import { DeudaQueryDto } from './dtos/deuda-query.dto';
@@ -27,9 +28,7 @@ import {
   DocumentacionPersonalDto,
   DocInscripcionDto,
 } from './dtos/deuda-consolidada.dto';
-
-/** Etiqueta de "rama" usada para agrupar a los educadores en el reporte. */
-const RAMA_EDUCADORES = 'Educadores';
+import { RAMA_EDUCADORES, TipoDeudaFilter } from './constants/deuda.constants';
 
 @Injectable()
 export class ReportesService {
@@ -76,43 +75,88 @@ export class ReportesService {
           cuotas,
         ),
       )
-      .filter((d): d is PersonaDeudaDto => d !== null);
+      .filter((d): d is PersonaDeudaDto => d !== null)
+      .filter((d) => this.matchesTipo(d, query.tipo));
+  }
+
+  /** Sin tipo indicado, se devuelven todas las deudas. */
+  private matchesTipo(deuda: PersonaDeudaDto, tipo?: TipoDeudaFilter): boolean {
+    switch (tipo) {
+      // Unifica toda la deuda monetaria: campamentos, inscripciones y cuotas.
+      case TipoDeudaFilter.DINERO:
+        return deuda.deudaTotal > 0;
+      case TipoDeudaFilter.CAMPAMENTOS:
+        return deuda.campamentos.some((c) => c.saldo > 0);
+      case TipoDeudaFilter.INSCRIPCIONES_SCOUT:
+        return deuda.inscripcionesScout.some((i) => i.saldo > 0);
+      case TipoDeudaFilter.INSCRIPCIONES_GRUPO:
+        return deuda.inscripcionesGrupo.some((i) => i.saldo > 0);
+      case TipoDeudaFilter.CUOTAS:
+        return deuda.cuotas.some((c) => c.saldo > 0);
+      case TipoDeudaFilter.DOCUMENTACION:
+        return this.hasDocDeuda(deuda);
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * Papeles pendientes: documentación personal incompleta, documentación de
+   * inscripción faltante o autorizaciones de campamento sin entregar.
+   */
+  private hasDocDeuda(deuda: PersonaDeudaDto): boolean {
+    const doc = deuda.documentacionPersonal;
+    const personalIncompleta =
+      doc !== null &&
+      (!doc.dni ||
+        !doc.partidaNacimiento ||
+        !doc.dniPadres ||
+        !doc.carnetObraSocial);
+
+    return (
+      personalIncompleta ||
+      deuda.documentacionInscripcion.length > 0 ||
+      deuda.campamentos.some((c) => !c.autorizacionEntregada)
+    );
   }
 
   /**
    * Carga protagonistas y educadores que pueden tener deuda. Los educadores se
-   * incluyen junto a los protagonistas; al filtrar por rama solo se devuelven
-   * los educadores que tengan esa rama asignada.
+   * incluyen junto a los protagonistas; al filtrar por una rama concreta solo
+   * se devuelven los educadores que tengan esa rama asignada, y con el filtro
+   * `Educadores` se devuelven todos los educadores sin importar su rama.
    */
   private async loadPersonas(query: DeudaQueryDto): Promise<Persona[]> {
+    if (query.rama === RAMA_EDUCADORES) {
+      return this.loadEducadores();
+    }
+
     const [protagonistas, educadores] = await Promise.all([
-      this.loadProtagonistas(query),
-      this.loadEducadores(query),
+      this.loadProtagonistas(query.rama),
+      this.loadEducadores(query.rama),
     ]);
     return [...protagonistas, ...educadores];
   }
 
-  private async loadProtagonistas(
-    query: DeudaQueryDto,
-  ): Promise<Protagonista[]> {
+  private async loadProtagonistas(rama?: Rama): Promise<Protagonista[]> {
     const qb = this.protagonistaRepository
       .createQueryBuilder('p')
       .where('p.deletedAt IS NULL');
 
-    if (query.rama) {
-      qb.andWhere('p.rama = :rama', { rama: query.rama });
+    if (rama) {
+      qb.andWhere('p.rama = :rama', { rama });
     }
 
     return qb.getMany();
   }
 
-  private async loadEducadores(query: DeudaQueryDto): Promise<Educador[]> {
+  private async loadEducadores(rama?: Rama): Promise<Educador[]> {
     const qb = this.educadorRepository
       .createQueryBuilder('e')
       .where('e.deletedAt IS NULL');
 
-    if (query.rama) {
-      qb.andWhere('e.rama = :rama', { rama: query.rama });
+    if (rama) {
+      qb.andWhere('e.rama = :rama', { rama });
     }
 
     return qb.getMany();
@@ -254,23 +298,10 @@ export class ReportesService {
       inscripcionesScout.reduce((s, i) => s + i.saldo, 0) +
       cuotas.reduce((s, c) => s + c.saldo, 0);
 
-    const hasDocPersonalDeuda =
-      documentacionPersonal !== null &&
-      (!documentacionPersonal.dni ||
-        !documentacionPersonal.partidaNacimiento ||
-        !documentacionPersonal.dniPadres ||
-        !documentacionPersonal.carnetObraSocial);
-
-    const hasDocDeuda =
-      hasDocPersonalDeuda ||
-      documentacionInscripcion.length > 0 ||
-      campamentos.some((c) => !c.autorizacionEntregada);
-
-    if (deudaTotal <= 0 && !hasDocDeuda) return null;
-
-    return {
+    const deuda: PersonaDeudaDto = {
       personaId: persona.id,
       nombre: persona.nombre,
+      tipo: persona.tipo,
       rama: esEducador ? RAMA_EDUCADORES : (rama ?? ''),
       esMayorDeEdad: mayorDeEdad,
       deudaTotal,
@@ -281,6 +312,11 @@ export class ReportesService {
       documentacionPersonal,
       documentacionInscripcion,
     };
+
+    // Sin deuda de plata ni de papeles, la persona no entra al reporte.
+    if (deudaTotal <= 0 && !this.hasDocDeuda(deuda)) return null;
+
+    return deuda;
   }
 
   private buildCampamentosDeuda(
