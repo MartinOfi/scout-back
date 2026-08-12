@@ -12,6 +12,10 @@ export const EVENTOS_ERROR_MESSAGES = {
     'El evento es de modalidad mixta: cada venta debe declarar su destinoGanancia (caja_grupo o cuentas_personales)',
   DESTINO_NO_APLICA_EN_UNICA:
     'El evento es de modalidad única: el destino se hereda del evento y no se puede especificar por venta',
+  MODALIDAD_NO_PUEDE_VOLVER_A_UNICA:
+    'Un evento mixto no puede volver a modalidad única: sus ventas ya tienen ' +
+    'destinos distintos y la plata ya está imputada en cada caja. Volver a ' +
+    'única haría que el reporte deje de coincidir con los saldos reales.',
   EVENTO_SIN_DESTINO: (id: string): string =>
     `El evento ${id} no tiene destinoGanancia definido y no se pueden registrar ventas`,
   VENTA_YA_COBRADA: 'La venta ya figura como cobrada',

@@ -107,6 +107,7 @@ describe('EventosService', () => {
       find: jest.fn(),
       findOne: jest.fn(),
       create: jest.fn(),
+      merge: jest.fn(),
       save: jest.fn(),
       softRemove: jest.fn(),
     };
@@ -955,6 +956,41 @@ describe('EventosService', () => {
       await service.registrarVentasLote('evento-uuid', dto);
 
       expect(movimientosService.createWithManager).not.toHaveBeenCalled();
+    });
+
+    it('evento MIXTA sin destinoGanancia: igual genera el movimiento de ingreso', async () => {
+      // En MIXTA el destino del evento es irrelevante — lo declara cada lote.
+      // Un evento mixto creado sin destino no debe quedar mudo: sus ventas
+      // tienen que seguir generando movimientos.
+      const eventoMixtaSinDestino = {
+        ...mockEvento,
+        modalidadVenta: ModalidadVenta.MIXTA,
+        destinoGanancia: null,
+      };
+      const dto = {
+        vendedorId: 'persona-uuid',
+        medioPago: MedioPago.EFECTIVO,
+        destinoGanancia: DestinoGanancia.CAJA_GRUPO,
+        items: [{ productoId: 'producto-uuid', cantidad: 5 }],
+      };
+
+      eventoRepository.findOne.mockResolvedValue(
+        eventoMixtaSinDestino as Evento,
+      );
+      productoRepository.find.mockResolvedValue([mockProducto as Producto]);
+      fakeManager.save.mockImplementationOnce(() => Promise.resolve([]));
+
+      await service.registrarVentasLote('evento-uuid', dto);
+
+      const calls = (movimientosService.createWithManager as jest.Mock).mock
+        .calls as Array<[unknown, Record<string, unknown>]>;
+      expect(calls).toHaveLength(1);
+      expect(calls[0][1]).toMatchObject({
+        cajaId: 'caja-grupo-uuid',
+        concepto: ConceptoMovimiento.EVENTO_VENTA_INGRESO,
+        // margen = (1000 - 500) * 5
+        monto: 2500,
+      });
     });
   });
 
@@ -1864,6 +1900,90 @@ describe('EventosService', () => {
       await expect(
         service.update('evento-uuid', { nombre: 'Nuevo Nombre' }),
       ).rejects.toThrow(/cerrado/);
+    });
+  });
+
+  // ==================== TRANSICIÓN DE MODALIDAD ====================
+
+  describe('update (modalidad de venta)', () => {
+    const eventoUnica = {
+      ...mockEvento,
+      modalidadVenta: ModalidadVenta.UNICA,
+      destinoGanancia: DestinoGanancia.CUENTAS_PERSONALES,
+    } as Evento;
+
+    const eventoMixta = {
+      ...mockEvento,
+      modalidadVenta: ModalidadVenta.MIXTA,
+      destinoGanancia: DestinoGanancia.CAJA_GRUPO,
+    } as Evento;
+
+    beforeEach(() => {
+      eventoRepository.merge.mockImplementation(
+        (target, ...sources) => Object.assign({}, target, ...sources) as Evento,
+      );
+      eventoRepository.save.mockImplementation((e) =>
+        Promise.resolve(e as unknown as Evento),
+      );
+    });
+
+    it('permite pasar de UNICA a MIXTA', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoUnica);
+
+      const result = await service.update('evento-uuid', {
+        modalidadVenta: ModalidadVenta.MIXTA,
+      });
+
+      expect(result.modalidadVenta).toBe(ModalidadVenta.MIXTA);
+    });
+
+    it('conserva el destinoGanancia del evento al pasar a MIXTA', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoUnica);
+
+      const result = await service.update('evento-uuid', {
+        modalidadVenta: ModalidadVenta.MIXTA,
+      });
+
+      // Sin destino el evento deja de generar movimientos de ingreso
+      // (ver shouldGenerateMovimientoIngreso): la transición nunca lo pierde.
+      expect(result.destinoGanancia).toBe(DestinoGanancia.CUENTAS_PERSONALES);
+    });
+
+    it('rechaza degradar de MIXTA a UNICA', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoMixta);
+
+      await expect(
+        service.update('evento-uuid', {
+          modalidadVenta: ModalidadVenta.UNICA,
+        }),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.update('evento-uuid', {
+          modalidadVenta: ModalidadVenta.UNICA,
+        }),
+      ).rejects.toThrow(/no puede volver a modalidad única/);
+    });
+
+    it('acepta reenviar MIXTA sobre un evento ya MIXTA (update idempotente)', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoMixta);
+
+      const result = await service.update('evento-uuid', {
+        nombre: 'Otro nombre',
+        modalidadVenta: ModalidadVenta.MIXTA,
+      });
+
+      expect(result.modalidadVenta).toBe(ModalidadVenta.MIXTA);
+      expect(result.nombre).toBe('Otro nombre');
+    });
+
+    it('acepta un update que no toca la modalidad de un evento MIXTA', async () => {
+      eventoRepository.findOne.mockResolvedValue(eventoMixta);
+
+      const result = await service.update('evento-uuid', {
+        nombre: 'Solo cambio el nombre',
+      });
+
+      expect(result.modalidadVenta).toBe(ModalidadVenta.MIXTA);
     });
   });
 

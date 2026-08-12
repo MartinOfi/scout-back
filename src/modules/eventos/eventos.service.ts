@@ -126,9 +126,46 @@ export class EventosService {
   async update(id: string, dto: UpdateEventoDto): Promise<Evento> {
     const evento = await this.findOne(id);
     this.assertEventoModificable(evento);
+    this.assertModalidadTransicion(evento, dto);
     this.validateTipoDestinoGanancia(dto, evento);
     const updated = this.eventoRepository.merge(evento, dto);
     return this.eventoRepository.save(updated);
+  }
+
+  /**
+   * La modalidad de venta es una vía de una sola mano: UNICA → MIXTA sí,
+   * MIXTA → UNICA nunca.
+   *
+   * Subir a MIXTA es inocuo: cada VentaProducto guarda su destino como snapshot
+   * al registrarse, así que las ventas y los movimientos ya emitidos siguen
+   * siendo correctos; sólo cambia cómo se cargan las ventas nuevas y qué
+   * variante de reporte aplica.
+   *
+   * Bajar a UNICA no lo es. Las ventas viejas conservan destinos mezclados,
+   * pero el reporte pasa a una estrategia que NO segmenta por destino
+   * (ReporteVentaCuentasPersonalesStrategy / ReporteVentaCajaGrupoStrategy):
+   * la plata que fue a la caja del grupo se mostraría como ganancia de los
+   * chicos, o al revés. Y nada mueve los movimientos ya imputados, así que el
+   * reporte deja de coincidir con los saldos para siempre.
+   *
+   * El bloqueo es total, incluso sin ventas cargadas: la regla queda simple de
+   * explicar y el caso "me equivoqué al crearlo" se resuelve borrando el
+   * evento, que todavía es modificable.
+   */
+  private assertModalidadTransicion(
+    evento: Evento,
+    dto: UpdateEventoDto,
+  ): void {
+    if (dto.modalidadVenta === undefined) return;
+
+    if (
+      evento.modalidadVenta === ModalidadVenta.MIXTA &&
+      dto.modalidadVenta === ModalidadVenta.UNICA
+    ) {
+      throw new BadRequestException(
+        EVENTOS_ERROR_MESSAGES.MODALIDAD_NO_PUEDE_VOLVER_A_UNICA,
+      );
+    }
   }
 
   async cerrarEvento(id: string): Promise<Evento> {
@@ -796,12 +833,18 @@ export class EventosService {
     }
   }
 
+  /**
+   * No mira `evento.destinoGanancia` a propósito. El destino efectivo ya lo
+   * resolvió `resolveDestinoVenta` antes de llegar acá — y ahí es donde se
+   * valida que exista: en UNICA exige el del evento, en MIXTA el del lote.
+   *
+   * Chequearlo de nuevo acá era un resabio pre-MIXTA y volvía mudo a todo
+   * evento mixto creado sin destino (es opcional en MIXTA): las ventas se
+   * guardaban sin movimiento de ingreso, sin error, y la plata no entraba a
+   * ninguna caja.
+   */
   private shouldGenerateMovimientoIngreso(evento: Evento): boolean {
-    return (
-      evento.tipo === TipoEvento.VENTA &&
-      evento.destinoGanancia !== null &&
-      evento.movimientosHabilitados
-    );
+    return evento.tipo === TipoEvento.VENTA && evento.movimientosHabilitados;
   }
 
   /**

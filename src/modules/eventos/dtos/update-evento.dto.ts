@@ -69,7 +69,10 @@ export class UpdateEventoDto {
   @ApiPropertyOptional({
     description:
       'Modalidad de venta del evento. MIXTA permite que cada venta defina su ' +
-      'propio destinoGanancia; UNICA usa el destinoGanancia del evento.',
+      'propio destinoGanancia; UNICA usa el destinoGanancia del evento. ' +
+      'La transición es de una sola mano: se puede pasar de UNICA a MIXTA en ' +
+      'cualquier momento (incluso con ventas ya cargadas), pero un evento ' +
+      'MIXTA no puede volver a UNICA.',
     enum: ModalidadVenta,
   })
   @IsEnum(ModalidadVenta)
