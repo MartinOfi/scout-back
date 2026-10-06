@@ -113,6 +113,12 @@ export class ParticipantePagoDto {
 
   @ApiProperty({ example: false })
   autorizacionEntregada!: boolean;
+
+  @ApiProperty({
+    example: '2026-01-10T10:30:00.000Z',
+    description: 'Fecha en que se agregó al participante al campamento',
+  })
+  fechaInscripcion!: Date;
 }
 
 /**

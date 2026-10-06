@@ -1031,6 +1031,23 @@ describe('CampamentosService', () => {
       expect(result.campamento.costoEducadores).toBe(10000);
     });
 
+    it('expone fechaInscripcion del participante (createdAt del vínculo)', async () => {
+      const fechaAlta = new Date('2026-02-03T12:00:00Z');
+      campamentoRepository.findOne.mockResolvedValue({
+        ...campamentoConParticipante,
+        participantes: [
+          {
+            ...mockCampamentoParticipante,
+            createdAt: fechaAlta,
+          } as CampamentoParticipante,
+        ],
+      } as Campamento);
+
+      const result = await service.getDetalle('campamento-uuid');
+
+      expect(result.participantes[0].fechaInscripcion).toEqual(fechaAlta);
+    });
+
     it('should return all movements when filtro is TODOS', async () => {
       const result = await service.getDetalle(
         'campamento-uuid',
