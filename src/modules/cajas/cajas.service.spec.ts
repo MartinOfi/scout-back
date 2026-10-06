@@ -9,7 +9,12 @@ import { MovimientosService } from '../movimientos/movimientos.service';
 import { InscripcionesService } from '../inscripciones/inscripciones.service';
 import { CuotasService } from '../cuotas/cuotas.service';
 import { CampamentosService } from '../campamentos/campamentos.service';
-import { CajaType, PersonaType, ConceptoMovimiento } from '../../common/enums';
+import {
+  CajaType,
+  PersonaType,
+  ConceptoMovimiento,
+  EstadoPersona,
+} from '../../common/enums';
 
 describe('CajasService', () => {
   let service: CajasService;
@@ -168,6 +173,22 @@ describe('CajasService', () => {
       expect(movimientosService.calcularSaldo).toHaveBeenCalledWith(
         'caja-personal-uuid',
       );
+    });
+
+    it('expone el estado del propietario para que el front pueda ocultar deshabilitados', async () => {
+      cajaRepository.findOne.mockResolvedValue({
+        ...mockCajaPersonal,
+        propietario: {
+          id: 'persona-uuid',
+          nombre: 'Juan',
+          estado: EstadoPersona.INACTIVO,
+        },
+      } as unknown as Caja);
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+
+      const result = await service.findOne('caja-personal-uuid');
+
+      expect(result.propietario?.estado).toBe(EstadoPersona.INACTIVO);
     });
 
     it('should throw NotFoundException when caja not found', async () => {

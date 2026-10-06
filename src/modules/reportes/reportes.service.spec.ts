@@ -12,6 +12,7 @@ import {
   Rama,
   TipoMovimiento,
   ConceptoMovimiento,
+  EstadoPersona,
 } from '../../common/enums';
 import { RAMA_EDUCADORES, TipoDeudaFilter } from './constants/deuda.constants';
 
@@ -568,5 +569,70 @@ describe('ReportesService', () => {
     expect(persona).toBeDefined();
     expect(persona!.campamentos[0].montoPagado).toBe(10000);
     expect(persona!.campamentos[0].saldo).toBe(40000);
+  });
+
+  describe('personas deshabilitadas', () => {
+    const deshabilitadoSinPapeles = {
+      id: 'p-baja',
+      nombre: 'Dani',
+      tipo: PersonaType.PROTAGONISTA,
+      estado: EstadoPersona.INACTIVO,
+      rama: Rama.UNIDAD,
+      dni: false,
+      partidaNacimiento: false,
+      dniPadres: false,
+      carnetObraSocial: false,
+    };
+
+    it('si solo debe papeles, no aparece en el reporte', async () => {
+      const service = await buildService({
+        protagonistas: [deshabilitadoSinPapeles],
+      });
+
+      const result = await service.getDeudas({});
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('si debe plata, aparece marcado como inactivo y sin deuda de papeles', async () => {
+      const service = await buildService({
+        protagonistas: [deshabilitadoSinPapeles],
+        inscripciones: [
+          inscripcionScout({
+            id: 'i-baja',
+            personaId: 'p-baja',
+            montoTotal: 5000,
+            declaracionDeSalud: false,
+          }),
+        ],
+      });
+
+      const result = await service.getDeudas({});
+
+      expect(result).toHaveLength(1);
+      expect(result[0].estado).toBe(EstadoPersona.INACTIVO);
+      expect(result[0].deudaTotal).toBe(5000);
+      expect(result[0].documentacionPersonal).toBeNull();
+      expect(result[0].documentacionInscripcion).toEqual([]);
+    });
+
+    it('con filtro "documentacion" no aparece aunque deba plata', async () => {
+      const service = await buildService({
+        protagonistas: [deshabilitadoSinPapeles],
+        inscripciones: [
+          inscripcionScout({
+            id: 'i-baja',
+            personaId: 'p-baja',
+            montoTotal: 5000,
+          }),
+        ],
+      });
+
+      const result = await service.getDeudas({
+        tipo: TipoDeudaFilter.DOCUMENTACION,
+      });
+
+      expect(result).toHaveLength(0);
+    });
   });
 });
