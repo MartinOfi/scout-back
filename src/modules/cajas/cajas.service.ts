@@ -355,11 +355,10 @@ export class CajasService {
       ),
       reembolsos AS (
         SELECT COALESCE(SUM(monto), 0) AS total,
-          COUNT(DISTINCT persona_a_reembolsar_id) AS cantidad
+          COUNT(DISTINCT COALESCE(persona_a_reembolsar_id, responsable_id)) AS cantidad
         FROM movimientos
         WHERE "estadoPago" = 'pendiente_reembolso'
           AND "deletedAt" IS NULL
-          AND persona_a_reembolsar_id IS NOT NULL
       ),
       cobros AS (
         SELECT COALESCE(SUM(monto), 0) AS total,

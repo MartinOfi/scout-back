@@ -29,6 +29,10 @@ import {
   MedioPago,
 } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
+import {
+  assertPersonaAReembolsar,
+  resolverAcreedorReembolso,
+} from './reembolso.rules';
 
 /**
  * THE balance rule, defined once.
@@ -291,11 +295,11 @@ export class MovimientosService {
   > {
     const movimientos = await this.movimientoRepository.find({
       where: { estadoPago: EstadoPago.PENDIENTE_REEMBOLSO },
-      relations: ['personaAReembolsar', 'caja'],
+      relations: ['personaAReembolsar', 'responsable', 'caja'],
       order: { fecha: 'DESC' },
     });
 
-    // Agrupar por persona a reembolsar
+    // Agrupar por acreedor (persona a reembolsar, o responsable en registros viejos)
     const agrupado = new Map<
       string,
       {
@@ -306,17 +310,18 @@ export class MovimientosService {
     >();
 
     for (const mov of movimientos) {
-      if (!mov.personaAReembolsarId || !mov.personaAReembolsar) continue;
+      const acreedor = resolverAcreedorReembolso(mov);
+      if (!acreedor) continue;
 
-      const current = agrupado.get(mov.personaAReembolsarId) || {
-        personaNombre: mov.personaAReembolsar.nombre,
+      const current = agrupado.get(acreedor.id) || {
+        personaNombre: acreedor.nombre,
         totalPendiente: 0,
         movimientos: [],
       };
 
       current.totalPendiente += Number(mov.monto);
       current.movimientos.push(mov);
-      agrupado.set(mov.personaAReembolsarId, current);
+      agrupado.set(acreedor.id, current);
     }
 
     return Array.from(agrupado.entries()).map(([personaId, data]) => ({
@@ -336,12 +341,14 @@ export class MovimientosService {
     const result = await this.movimientoRepository
       .createQueryBuilder('m')
       .select('COALESCE(SUM(m.monto), 0)', 'total')
-      .addSelect('COUNT(DISTINCT m.persona_a_reembolsar_id)', 'cantidad')
+      .addSelect(
+        'COUNT(DISTINCT COALESCE(m.persona_a_reembolsar_id, m.responsable_id))',
+        'cantidad',
+      )
       .where('m.estadoPago = :estado', {
         estado: EstadoPago.PENDIENTE_REEMBOLSO,
       })
       .andWhere('m.deletedAt IS NULL')
-      .andWhere('m.persona_a_reembolsar_id IS NOT NULL')
       .getRawOne<{ total: string; cantidad: string }>();
 
     return {
@@ -558,6 +565,11 @@ export class MovimientosService {
 
   async update(id: string, dto: UpdateMovimientoDto): Promise<Movimiento> {
     const movimiento = await this.findOne(id);
+    assertPersonaAReembolsar({
+      estadoPago: dto.estadoPago ?? movimiento.estadoPago,
+      personaAReembolsarId:
+        dto.personaAReembolsarId ?? movimiento.personaAReembolsarId,
+    });
     Object.assign(movimiento, dto);
     return this.movimientoRepository.save(movimiento);
   }
@@ -644,6 +656,7 @@ export class MovimientosService {
   private async validateCreateDtoReferences(
     dto: CreateMovimientoDto,
   ): Promise<void> {
+    assertPersonaAReembolsar(dto);
     await this.cajasService.findOne(dto.cajaId);
     await this.personasService.findOne(dto.responsableId);
     if (dto.personaAReembolsarId) {

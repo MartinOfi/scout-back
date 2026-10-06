@@ -160,6 +160,75 @@ describe('MovimientosService', () => {
 
       expect(movimientoRepository.create).toHaveBeenCalled();
     });
+
+    it('rechaza un egreso pendiente_reembolso sin persona a reembolsar', async () => {
+      const dto: CreateMovimientoDto = {
+        ...baseDto,
+        tipo: TipoMovimiento.EGRESO,
+        concepto: ConceptoMovimiento.GASTO_GENERAL,
+        estadoPago: EstadoPago.PENDIENTE_REEMBOLSO,
+      };
+
+      await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+      expect(movimientoRepository.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update - persona a reembolsar', () => {
+    it('rechaza pasar a pendiente_reembolso si el movimiento no tiene persona a reembolsar', async () => {
+      movimientoRepository.findOne.mockResolvedValue({
+        ...mockMovimiento,
+        personaAReembolsarId: null,
+      } as Movimiento);
+
+      await expect(
+        service.update('mov-uuid', {
+          estadoPago: EstadoPago.PENDIENTE_REEMBOLSO,
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(movimientoRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('acepta pendiente_reembolso cuando el update trae la persona', async () => {
+      movimientoRepository.findOne.mockResolvedValue({
+        ...mockMovimiento,
+        personaAReembolsarId: null,
+      } as Movimiento);
+
+      await service.update('mov-uuid', {
+        estadoPago: EstadoPago.PENDIENTE_REEMBOLSO,
+        personaAReembolsarId: 'persona-uuid',
+      });
+
+      expect(movimientoRepository.save).toHaveBeenCalled();
+    });
+  });
+
+  describe('findReembolsosPendientes', () => {
+    it('agrupa por responsable los registros viejos sin persona a reembolsar', async () => {
+      const responsable = { id: 'resp-uuid', nombre: 'Pilón, Bárbara' };
+      movimientoRepository.find.mockResolvedValue([
+        {
+          id: 'mov-legacy',
+          monto: 6594,
+          estadoPago: EstadoPago.PENDIENTE_REEMBOLSO,
+          personaAReembolsarId: null,
+          personaAReembolsar: null,
+          responsableId: responsable.id,
+          responsable,
+        } as unknown as Movimiento,
+      ]);
+
+      const result = await service.findReembolsosPendientes();
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          personaId: responsable.id,
+          personaNombre: responsable.nombre,
+          totalPendiente: 6594,
+        }),
+      ]);
+    });
   });
 
   describe('findWithFilters - categoria', () => {
