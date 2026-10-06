@@ -687,6 +687,7 @@ export class CampamentosService {
         saldoPendiente,
         estadoPago,
         autorizacionEntregada: cp.autorizacionEntregada,
+        fechaInscripcion: cp.createdAt,
         pagos: datosPago.pagos.sort(
           (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),
         ),
