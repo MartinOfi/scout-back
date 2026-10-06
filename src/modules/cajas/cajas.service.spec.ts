@@ -660,6 +660,32 @@ describe('CajasService', () => {
       expect(dataSource.query).toHaveBeenCalledTimes(1);
     });
 
+    it('el CTE reembolsos incluye registros sin persona a reembolsar (fallback a responsable)', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          cajas: [],
+          reembolsos: { total: 0, cantidad: 0 },
+          deuda_inscripciones: { total: 0, cantidad: 0 },
+          deuda_cuotas: { total: 0, cantidad: 0 },
+          deuda_campamentos: { total: 0, cantidad: 0 },
+        },
+      ]);
+
+      await service.getConsolidadoSaldos();
+
+      const sql = (dataSource.query as jest.Mock).mock.calls[0][0] as string;
+      const reembolsosBlock = sql.slice(
+        sql.indexOf('reembolsos AS'),
+        sql.indexOf('cobros AS'),
+      );
+      expect(reembolsosBlock).toContain(
+        'COUNT(DISTINCT COALESCE(persona_a_reembolsar_id, responsable_id))',
+      );
+      expect(reembolsosBlock).not.toContain(
+        'persona_a_reembolsar_id IS NOT NULL',
+      );
+    });
+
     it('C1: la subquery de pagos del CTE deuda_inscr excluye bonificacion_recibida', async () => {
       dataSource.query.mockResolvedValue([
         {
