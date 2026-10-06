@@ -35,6 +35,13 @@ import {
   MedioPago,
 } from '../../common/enums';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
+import { Movimiento } from '../movimientos/entities/movimiento.entity';
+
+/** Conceptos con los que se registra un pago de inscripción. */
+const CONCEPTOS_PAGO_INSCRIPCION: readonly ConceptoMovimiento[] = [
+  ConceptoMovimiento.INSCRIPCION_GRUPO,
+  ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA,
+];
 
 @Injectable()
 export class InscripcionesService {
@@ -607,6 +614,45 @@ export class InscripcionesService {
     }
 
     await this.inscripcionRepository.softRemove(inscripcion);
+  }
+
+  /**
+   * Elimina un pago de la inscripción. Si el pago usó saldo personal,
+   * también revierte el egreso de la caja personal linkeado.
+   */
+  async eliminarPago(
+    id: string,
+    movimientoId: string,
+  ): Promise<InscripcionResponseDto> {
+    const inscripcion = await this.findOneEntity(id);
+
+    const movimientos = await this.movimientosService.findByRelatedEntity(
+      'inscripcion',
+      id,
+    );
+    const pago = movimientos.find(
+      (m) =>
+        m.id === movimientoId &&
+        m.tipo === TipoMovimiento.INGRESO &&
+        CONCEPTOS_PAGO_INSCRIPCION.includes(m.concepto),
+    );
+    if (!pago) {
+      throw new NotFoundException(
+        `Pago con ID ${movimientoId} no encontrado en la inscripción`,
+      );
+    }
+
+    const idsAEliminar = pago.movimientoRelacionadoId
+      ? [pago.id, pago.movimientoRelacionadoId]
+      : [pago.id];
+
+    await this.dataSource.transaction(async (manager) => {
+      for (const movId of idsAEliminar) {
+        await manager.softDelete(Movimiento, { id: movId });
+      }
+    });
+
+    return this.toResponseDto(inscripcion);
   }
 
   /**

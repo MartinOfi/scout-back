@@ -1039,6 +1039,82 @@ describe('InscripcionesService', () => {
     });
   });
 
+  describe('eliminarPago', () => {
+    const pagoIngreso = {
+      id: 'mov-ingreso',
+      monto: 5000,
+      tipo: TipoMovimiento.INGRESO,
+      concepto: ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA,
+      movimientoRelacionadoId: null,
+    };
+
+    const mockSoftDeleteManager = (): jest.Mock => {
+      const softDelete = jest.fn().mockResolvedValue(undefined);
+      dataSource.transaction.mockImplementation(async (cb: unknown) =>
+        (cb as (m: unknown) => Promise<unknown>)({ softDelete }),
+      );
+      return softDelete;
+    };
+
+    beforeEach(() => {
+      repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
+    });
+
+    it('soft-deletes the payment movimiento of the inscripcion', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        pagoIngreso,
+      ] as never);
+      const softDelete = mockSoftDeleteManager();
+
+      await service.eliminarPago('inscripcion-uuid', 'mov-ingreso');
+
+      expect(softDelete).toHaveBeenCalledTimes(1);
+      expect(softDelete).toHaveBeenCalledWith(expect.anything(), {
+        id: 'mov-ingreso',
+      });
+    });
+
+    it('also reverts the linked saldo personal egreso', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        { ...pagoIngreso, movimientoRelacionadoId: 'mov-egreso-personal' },
+      ] as never);
+      const softDelete = mockSoftDeleteManager();
+
+      await service.eliminarPago('inscripcion-uuid', 'mov-ingreso');
+
+      expect(softDelete).toHaveBeenCalledWith(expect.anything(), {
+        id: 'mov-ingreso',
+      });
+      expect(softDelete).toHaveBeenCalledWith(expect.anything(), {
+        id: 'mov-egreso-personal',
+      });
+    });
+
+    it('rejects a movimiento that is not a payment of this inscripcion', async () => {
+      movimientosService.findByRelatedEntity.mockResolvedValue([
+        {
+          ...pagoIngreso,
+          id: 'mov-bonif',
+          concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+        },
+      ] as never);
+      const softDelete = mockSoftDeleteManager();
+
+      await expect(
+        service.eliminarPago('inscripcion-uuid', 'mov-bonif'),
+      ).rejects.toThrow(NotFoundException);
+      expect(softDelete).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the inscripcion does not exist', async () => {
+      repository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.eliminarPago('non-existent-id', 'mov-ingreso'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('pagar', () => {
     it('should process payment and return updated inscription', async () => {
       repository.findOne.mockResolvedValue(mockInscripcion as Inscripcion);
