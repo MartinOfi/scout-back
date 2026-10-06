@@ -279,7 +279,6 @@ export async function seedMovimientosAjusteInicial(
       eventoId: null,
       campamentoId: null,
       inscripcionId: null,
-      cuotaId: null,
       registradoPorId: null,
     });
 

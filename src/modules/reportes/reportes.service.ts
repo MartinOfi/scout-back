@@ -9,11 +9,9 @@ import {
 import { CampamentoParticipante } from '../campamentos/entities/campamento-participante.entity';
 import { Movimiento } from '../movimientos/entities/movimiento.entity';
 import { Inscripcion } from '../inscripciones/entities/inscripcion.entity';
-import { Cuota } from '../cuotas/entities/cuota.entity';
 import {
   TipoMovimiento,
   TipoInscripcion,
-  EstadoCuota,
   PersonaType,
   ConceptoMovimiento,
   Rama,
@@ -24,7 +22,6 @@ import {
   PersonaDeudaDto,
   CampamentoDeudaDto,
   InscripcionDeudaDto,
-  CuotaDeudaDto,
   DocumentacionPersonalDto,
   DocInscripcionDto,
 } from './dtos/deuda-consolidada.dto';
@@ -43,8 +40,6 @@ export class ReportesService {
     private readonly movimientoRepository: Repository<Movimiento>,
     @InjectRepository(Inscripcion)
     private readonly inscripcionRepository: Repository<Inscripcion>,
-    @InjectRepository(Cuota)
-    private readonly cuotaRepository: Repository<Cuota>,
   ) {}
 
   async getDeudas(query: DeudaQueryDto): Promise<PersonaDeudaDto[]> {
@@ -53,10 +48,9 @@ export class ReportesService {
 
     const personaIds = personas.map((p) => p.id);
 
-    const [participaciones, inscripciones, cuotas] = await Promise.all([
+    const [participaciones, inscripciones] = await Promise.all([
       this.loadParticipaciones(personaIds, query.ano),
       this.loadInscripciones(personaIds, query.ano),
-      this.loadCuotas(personaIds, query.ano),
     ]);
 
     const [campPayments, inscPayments] = await Promise.all([
@@ -72,7 +66,6 @@ export class ReportesService {
           campPayments,
           inscripciones,
           inscPayments,
-          cuotas,
         ),
       )
       .filter((d): d is PersonaDeudaDto => d !== null)
@@ -82,7 +75,7 @@ export class ReportesService {
   /** Sin tipo indicado, se devuelven todas las deudas. */
   private matchesTipo(deuda: PersonaDeudaDto, tipo?: TipoDeudaFilter): boolean {
     switch (tipo) {
-      // Unifica toda la deuda monetaria: campamentos, inscripciones y cuotas.
+      // Unifica toda la deuda monetaria: campamentos e inscripciones.
       case TipoDeudaFilter.DINERO:
         return deuda.deudaTotal > 0;
       case TipoDeudaFilter.CAMPAMENTOS:
@@ -91,8 +84,6 @@ export class ReportesService {
         return deuda.inscripcionesScout.some((i) => i.saldo > 0);
       case TipoDeudaFilter.INSCRIPCIONES_GRUPO:
         return deuda.inscripcionesGrupo.some((i) => i.saldo > 0);
-      case TipoDeudaFilter.CUOTAS:
-        return deuda.cuotas.some((c) => c.saldo > 0);
       case TipoDeudaFilter.DOCUMENTACION:
         return this.hasDocDeuda(deuda);
       default:
@@ -233,30 +224,12 @@ export class ReportesService {
       .getMany();
   }
 
-  private async loadCuotas(
-    personaIds: string[],
-    ano?: number,
-  ): Promise<Cuota[]> {
-    const qb = this.cuotaRepository
-      .createQueryBuilder('c')
-      .where('c.personaId IN (:...ids)', { ids: personaIds })
-      .andWhere('c.deletedAt IS NULL')
-      .andWhere('c.estado != :estado', { estado: EstadoCuota.PAGADO });
-
-    if (ano) {
-      qb.andWhere('c.ano = :ano', { ano });
-    }
-
-    return qb.getMany();
-  }
-
   private buildPersonaDeuda(
     persona: Persona,
     allParticipaciones: CampamentoParticipante[],
     campPayments: Movimiento[],
     allInscripciones: Inscripcion[],
     inscPayments: Movimiento[],
-    allCuotas: Cuota[],
   ): PersonaDeudaDto | null {
     const esEducador = persona.tipo === PersonaType.EDUCADOR;
     const rama = esEducador ? null : (persona as Protagonista).rama;
@@ -279,7 +252,6 @@ export class ReportesService {
       inscPayments,
       TipoInscripcion.SCOUT_ARGENTINA,
     );
-    const cuotas = this.buildCuotasDeuda(persona.id, allCuotas);
     // Los educadores no tienen documentación personal en el modelo (null). Los
     // protagonistas (incluidos Rovers) sí: solo se exime el DNI de los padres a
     // los Rovers (ver buildDocPersonal).
@@ -295,8 +267,7 @@ export class ReportesService {
     const deudaTotal =
       campamentos.reduce((s, c) => s + c.saldo, 0) +
       inscripcionesGrupo.reduce((s, i) => s + i.saldo, 0) +
-      inscripcionesScout.reduce((s, i) => s + i.saldo, 0) +
-      cuotas.reduce((s, c) => s + c.saldo, 0);
+      inscripcionesScout.reduce((s, i) => s + i.saldo, 0);
 
     const deuda: PersonaDeudaDto = {
       personaId: persona.id,
@@ -308,7 +279,6 @@ export class ReportesService {
       campamentos,
       inscripcionesGrupo,
       inscripcionesScout,
-      cuotas,
       documentacionPersonal,
       documentacionInscripcion,
     };
@@ -380,22 +350,6 @@ export class ReportesService {
         };
       })
       .filter((i) => i.saldo > 0);
-  }
-
-  private buildCuotasDeuda(
-    personaId: string,
-    cuotas: Cuota[],
-  ): CuotaDeudaDto[] {
-    return cuotas
-      .filter((c) => c.personaId === personaId)
-      .map((c) => ({
-        cuotaId: c.id,
-        nombre: c.nombre,
-        ano: c.ano,
-        montoTotal: Number(c.montoTotal),
-        montoPagado: Number(c.montoPagado),
-        saldo: Number(c.montoTotal) - Number(c.montoPagado),
-      }));
   }
 
   private buildDocPersonal(

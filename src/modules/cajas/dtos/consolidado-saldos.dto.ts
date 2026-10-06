@@ -118,9 +118,6 @@ export class DeudasTotalesDto {
   inscripciones!: DeudaTipoDto;
 
   @ApiProperty({ type: DeudaTipoDto })
-  cuotas!: DeudaTipoDto;
-
-  @ApiProperty({ type: DeudaTipoDto })
   campamentos!: DeudaTipoDto;
 }
 

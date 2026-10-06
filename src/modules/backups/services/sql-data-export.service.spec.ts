@@ -76,7 +76,6 @@ describe('SqlDataExportService', () => {
         'eventos',
         'productos',
         'inscripciones',
-        'cuotas',
         'campamentos',
         'campamento_participante',
         'movimientos',
@@ -168,7 +167,7 @@ describe('SqlDataExportService', () => {
 
     it('formats numbers without quotes', async () => {
       await bootstrap({
-        cuotas: {
+        inscripciones: {
           columns: ['id', 'ano', 'montoTotal'],
           rows: [{ id: 'q1', ano: 2026, montoTotal: 1500.5 }],
         },

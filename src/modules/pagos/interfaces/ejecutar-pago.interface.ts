@@ -7,7 +7,6 @@ export interface EjecutarPagoParams {
   medioPago?: MedioPago;
   concepto: ConceptoMovimiento;
   inscripcionId?: string;
-  cuotaId?: string;
   campamentoId?: string;
   descripcion?: string;
   registradoPorId?: string;

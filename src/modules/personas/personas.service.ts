@@ -96,24 +96,22 @@ export class PersonasService {
     {
       persona: Persona;
       deudaInscripciones: number;
-      deudaCuotas: number;
       deudaCampamentos: number;
       totalDeuda: number;
     }[]
   > {
-    // Esta lógica requiere consultar inscripciones, cuotas y campamentos
+    // Esta lógica requiere consultar inscripciones y campamentos
     // Por ahora retorna estructura vacía - se implementará con módulo de reportes
     // o cuando se agreguen las relaciones inversas en las entidades
     const personas = await this.personaRepository.find({
       order: { nombre: 'ASC' },
     });
 
-    // TODO: Implementar cálculo de deudas cuando estén los repos de inscripciones/cuotas
+    // TODO: Implementar cálculo de deudas cuando estén los repos de inscripciones/campamentos
     return personas
       .map((persona) => ({
         persona,
         deudaInscripciones: 0,
-        deudaCuotas: 0,
         deudaCampamentos: 0,
         totalDeuda: 0,
       }))

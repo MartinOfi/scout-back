@@ -8,7 +8,6 @@ const EXPORTED_TABLES_IN_FK_ORDER = [
   'eventos',
   'productos',
   'inscripciones',
-  'cuotas',
   'campamentos',
   'campamento_participante',
   'movimientos',

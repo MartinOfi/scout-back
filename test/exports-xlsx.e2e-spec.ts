@@ -4,7 +4,7 @@
  * Covers:
  * 1. Unauthenticated request → 401.
  * 2. Authenticated request → 200 with a valid XLSX file.
- * 3. The XLSX contains all 10 expected sheets with their headers.
+ * 3. The XLSX contains all 9 expected sheets with their headers.
  *
  * Pre-requisites
  * --------------
@@ -30,7 +30,6 @@ const EXPECTED_SHEETS = [
   'Cajas',
   'Movimientos',
   'Inscripciones',
-  'Cuotas',
   'Campamentos',
   'CampamentoParticipantes',
   'Eventos',

@@ -45,7 +45,6 @@ async function bootstrap() {
     )
     .addTag('Movimientos', 'Registro de ingresos y egresos')
     .addTag('Inscripciones', 'Inscripciones Scout Argentina')
-    .addTag('Cuotas', 'Cuotas de grupo')
     .addTag('Campamentos', 'Gestión de campamentos')
     .addTag('Eventos', 'Eventos de venta y eventos de grupo')
     .build();

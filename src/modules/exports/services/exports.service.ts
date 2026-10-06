@@ -12,7 +12,6 @@ import { Persona } from '../../personas/entities/persona.entity';
 import { Caja } from '../../cajas/entities/caja.entity';
 import { Movimiento } from '../../movimientos/entities/movimiento.entity';
 import { Inscripcion } from '../../inscripciones/entities/inscripcion.entity';
-import { Cuota } from '../../cuotas/entities/cuota.entity';
 import { Campamento } from '../../campamentos/entities/campamento.entity';
 import { CampamentoParticipante } from '../../campamentos/entities/campamento-participante.entity';
 import { Evento } from '../../eventos/entities/evento.entity';
@@ -31,8 +30,6 @@ export class ExportsService {
     private readonly movimientoRepo: Repository<Movimiento>,
     @InjectRepository(Inscripcion)
     private readonly inscripcionRepo: Repository<Inscripcion>,
-    @InjectRepository(Cuota)
-    private readonly cuotaRepo: Repository<Cuota>,
     @InjectRepository(Campamento)
     private readonly campamentoRepo: Repository<Campamento>,
     @InjectRepository(Evento)
@@ -56,7 +53,6 @@ export class ExportsService {
       cajas,
       movimientos,
       inscripciones,
-      cuotas,
       campamentos,
       eventos,
       productos,
@@ -66,7 +62,6 @@ export class ExportsService {
       this.cajaRepo.find(),
       this.movimientoRepo.find(),
       this.inscripcionRepo.find(),
-      this.cuotaRepo.find(),
       this.campamentoRepo.find({
         relations: ['participantes', 'participantes.persona'],
       }),
@@ -85,7 +80,6 @@ export class ExportsService {
       this.buildCajasSheet(cajas, personaNameById),
       this.buildMovimientosSheet(movimientos, cajaNameById, personaNameById),
       this.buildInscripcionesSheet(inscripciones, personaNameById),
-      this.buildCuotasSheet(cuotas, personaNameById),
       this.buildCampamentosSheet(campamentos),
       this.buildCampamentoParticipantesSheet(campamentos),
       this.buildEventosSheet(eventos),
@@ -223,7 +217,6 @@ export class ExportsService {
       { header: 'Evento ID', key: 'eventoId' },
       { header: 'Campamento ID', key: 'campamentoId' },
       { header: 'Inscripción ID', key: 'inscripcionId' },
-      { header: 'Cuota ID', key: 'cuotaId' },
       { header: 'Creado', key: 'createdAt', type: 'date' },
     ];
 
@@ -246,7 +239,6 @@ export class ExportsService {
       eventoId: m.eventoId,
       campamentoId: m.campamentoId,
       inscripcionId: m.inscripcionId,
-      cuotaId: m.cuotaId,
       createdAt: m.createdAt,
     }));
 
@@ -306,37 +298,6 @@ export class ExportsService {
     }));
 
     return { name: 'Inscripciones', columns, rows };
-  }
-
-  private buildCuotasSheet(
-    cuotas: Cuota[],
-    personaNameById: Map<string, string>,
-  ): SheetSpec {
-    const columns: ColumnDef[] = [
-      { header: 'ID', key: 'id' },
-      { header: 'Persona ID', key: 'personaId' },
-      { header: 'Persona', key: 'personaNombre' },
-      { header: 'Nombre', key: 'nombre' },
-      { header: 'Año', key: 'ano', type: 'number' },
-      { header: 'Monto total', key: 'montoTotal', type: 'currency' },
-      { header: 'Monto pagado', key: 'montoPagado', type: 'currency' },
-      { header: 'Estado', key: 'estado' },
-      { header: 'Creado', key: 'createdAt', type: 'date' },
-    ];
-
-    const rows = cuotas.map((c) => ({
-      id: c.id,
-      personaId: c.personaId,
-      personaNombre: personaNameById.get(c.personaId) ?? null,
-      nombre: c.nombre,
-      ano: c.ano,
-      montoTotal: Number(c.montoTotal),
-      montoPagado: Number(c.montoPagado),
-      estado: c.estado,
-      createdAt: c.createdAt,
-    }));
-
-    return { name: 'Cuotas', columns, rows };
   }
 
   private buildCampamentosSheet(campamentos: Campamento[]): SheetSpec {

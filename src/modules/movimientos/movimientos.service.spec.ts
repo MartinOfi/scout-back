@@ -31,7 +31,7 @@ describe('MovimientosService', () => {
     cajaId: 'caja-uuid',
     tipo: TipoMovimiento.INGRESO,
     monto: 1000,
-    concepto: ConceptoMovimiento.CUOTA_GRUPO,
+    concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
     responsableId: 'persona-uuid',
     medioPago: MedioPago.EFECTIVO,
     estadoPago: EstadoPago.PAGADO,
@@ -96,7 +96,7 @@ describe('MovimientosService', () => {
       cajaId: 'caja-uuid',
       tipo: TipoMovimiento.INGRESO,
       monto: 1000,
-      concepto: ConceptoMovimiento.CUOTA_GRUPO,
+      concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
       responsableId: 'persona-uuid',
       estadoPago: EstadoPago.PAGADO,
     };
@@ -612,7 +612,7 @@ describe('MovimientosService', () => {
       cajaId: 'caja-uuid',
       tipo: TipoMovimiento.INGRESO,
       monto: 1000,
-      concepto: ConceptoMovimiento.CUOTA_GRUPO,
+      concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
       movimientoRelacionadoId: null,
     };
 

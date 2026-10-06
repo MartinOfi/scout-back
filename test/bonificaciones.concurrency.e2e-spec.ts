@@ -16,7 +16,7 @@
  * which breaks against the local, non-TLS Docker Postgres. This suite
  * builds a minimal module graph (CommonModule + CajasModule +
  * MovimientosModule + PersonasModule + BonificacionesModule, which pull in
- * InscripcionesModule/CuotasModule/CampamentosModule/PagosModule via
+ * InscripcionesModule/CampamentosModule/PagosModule via
  * forwardRef) so the real services run unmodified against localhost:5433.
  *
  * Pre-requisites
