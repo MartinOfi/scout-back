@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { CajaType } from '../../../common/enums';
+import { CajaType, EstadoPersona } from '../../../common/enums';
 
 /**
  * DTO for Caja response with calculated saldo
@@ -23,6 +23,7 @@ export class CajaResponseDto {
   propietario!: {
     id: string;
     nombre: string;
+    estado: EstadoPersona;
     rama?: string | null;
   } | null;
 

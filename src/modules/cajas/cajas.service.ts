@@ -120,6 +120,7 @@ export class CajasService {
         ? {
             id: caja.propietario.id,
             nombre: caja.propietario.nombre,
+            estado: caja.propietario.estado,
             rama:
               'rama' in caja.propietario
                 ? (caja.propietario as { rama: string | null }).rama

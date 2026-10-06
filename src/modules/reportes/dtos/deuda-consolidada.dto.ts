@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PersonaType } from '../../../common/enums';
+import { EstadoPersona, PersonaType } from '../../../common/enums';
 
 export class CampamentoDeudaDto {
   @ApiProperty()
@@ -108,6 +108,12 @@ export class PersonaDeudaDto {
 
   @ApiProperty()
   deudaTotal!: number;
+
+  @ApiProperty({
+    enum: EstadoPersona,
+    description: 'inactivo = deshabilitado: solo figura por deuda de dinero',
+  })
+  estado!: EstadoPersona;
 
   @ApiProperty({ type: [CampamentoDeudaDto] })
   campamentos!: CampamentoDeudaDto[];

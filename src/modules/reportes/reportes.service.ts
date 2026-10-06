@@ -15,6 +15,7 @@ import {
   PersonaType,
   ConceptoMovimiento,
   Rama,
+  EstadoPersona,
 } from '../../common/enums';
 import { esMayorDeEdad } from '../../common/utils';
 import { DeudaQueryDto } from './dtos/deuda-query.dto';
@@ -94,8 +95,11 @@ export class ReportesService {
   /**
    * Papeles pendientes: documentación personal incompleta, documentación de
    * inscripción faltante o autorizaciones de campamento sin entregar.
+   * Un deshabilitado nunca debe papeles, ni siquiera autorizaciones.
    */
   private hasDocDeuda(deuda: PersonaDeudaDto): boolean {
+    if (deuda.estado === EstadoPersona.INACTIVO) return false;
+
     const doc = deuda.documentacionPersonal;
     const personalIncompleta =
       doc !== null &&
@@ -255,14 +259,16 @@ export class ReportesService {
     // Los educadores no tienen documentación personal en el modelo (null). Los
     // protagonistas (incluidos Rovers) sí: solo se exime el DNI de los padres a
     // los Rovers (ver buildDocPersonal).
-    const documentacionPersonal = esEducador
-      ? null
-      : this.buildDocPersonal(persona as Protagonista, mayorDeEdad);
-    const documentacionInscripcion = this.buildDocInscripcion(
-      persona.id,
-      allInscripciones,
-      mayorDeEdad,
-    );
+    // Un deshabilitado ya no está en el grupo: sus papeles dejan de importar y
+    // solo figura mientras deba plata.
+    const deshabilitada = persona.estado === EstadoPersona.INACTIVO;
+    const documentacionPersonal =
+      esEducador || deshabilitada
+        ? null
+        : this.buildDocPersonal(persona as Protagonista, mayorDeEdad);
+    const documentacionInscripcion = deshabilitada
+      ? []
+      : this.buildDocInscripcion(persona.id, allInscripciones, mayorDeEdad);
 
     const deudaTotal =
       campamentos.reduce((s, c) => s + c.saldo, 0) +
@@ -273,6 +279,7 @@ export class ReportesService {
       personaId: persona.id,
       nombre: persona.nombre,
       tipo: persona.tipo,
+      estado: persona.estado,
       rama: esEducador ? RAMA_EDUCADORES : (rama ?? ''),
       esMayorDeEdad: mayorDeEdad,
       deudaTotal,
