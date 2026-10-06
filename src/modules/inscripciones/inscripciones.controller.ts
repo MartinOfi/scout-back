@@ -197,6 +197,30 @@ export class InscripcionesController {
     return this.inscripcionesService.pagar(id, dto, userId);
   }
 
+  @Delete(':id/pagos/:movimientoId')
+  @ApiOperation({
+    summary: 'Eliminar un pago de una inscripción',
+    description:
+      'Elimina el pago y, si usó saldo personal, revierte el egreso de la caja personal asociado',
+  })
+  @ApiParam({ name: 'id', type: String, format: 'uuid' })
+  @ApiParam({ name: 'movimientoId', type: String, format: 'uuid' })
+  @ApiResponse({
+    status: 200,
+    description: 'Pago eliminado, inscripción actualizada',
+    type: InscripcionResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Inscripción o pago no encontrado',
+  })
+  async eliminarPago(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('movimientoId', ParseUUIDPipe) movimientoId: string,
+  ): Promise<InscripcionResponseDto> {
+    return this.inscripcionesService.eliminarPago(id, movimientoId);
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar una inscripción (soft delete)' })
   @ApiParam({ name: 'id', type: String, format: 'uuid' })
