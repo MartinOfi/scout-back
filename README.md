@@ -292,7 +292,6 @@ graph LR
 | Categoría | Concepto |
 |-----------|----------|
 | 📝 Inscripciones | `inscripcion` · `inscripcion_pago_scout_argentina` |
-| 💳 Cuotas | `cuota_grupo` |
 | ⛺ Campamentos | `campamento_pago` · `campamento_gasto` |
 | 🛍 Eventos de venta | `evento_venta_ingreso` · `evento_venta_gasto` |
 | 🎪 Eventos de grupo | `evento_grupo_ingreso` · `evento_grupo_gasto` |

@@ -15,7 +15,10 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * movimientos, which the API hides but the enum cast would still trip on.
  * Remap or delete those rows explicitly before running this migration.
  *
- * down() restores the schema (empty table, column, enum value), not the data.
+ * down() restores the schema, not the data. Two cosmetic differences with the
+ * original: PK/FK constraint names (originals were TypeORM hashes) and
+ * `cuota_grupo` is appended at the end of the enum instead of its original
+ * position. `cuota_id` never had a FK and `cuotas` had no secondary indexes.
  */
 const CONCEPTO_ENUM = 'movimientos_concepto_enum';
 const CONCEPTO_ENUM_OLD = 'movimientos_concepto_enum_old';

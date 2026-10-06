@@ -117,9 +117,8 @@ Types: `ingreso` (income), `egreso` (expense)
 
 Payment methods: `efectivo` (cash), `transferencia` (bank transfer)
 
-15 concepts covering all financial flows:
+Concepts covering all financial flows:
 - Inscriptions: `inscripcion`, `inscripcion_pago_scout_argentina`
-- Fees: `cuota_grupo`
 - Camps: `campamento_pago`, `campamento_gasto`
 - Sale events: `evento_venta_ingreso`, `evento_venta_gasto`
 - Group events: `evento_grupo_ingreso`, `evento_grupo_gasto`

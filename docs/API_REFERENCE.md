@@ -13,7 +13,6 @@
   - [Cajas](#cajas)
   - [Movimientos](#movimientos)
   - [Inscripciones](#inscripciones)
-  - [Cuotas](#cuotas)
   - [Campamentos](#campamentos)
   - [Eventos](#eventos)
 
@@ -72,7 +71,6 @@ export enum ConceptoMovimiento {
   INSCRIPCION_GRUPO = 'inscripcion_grupo',
   INSCRIPCION_SCOUT_ARGENTINA = 'inscripcion_scout_argentina',
   INSCRIPCION_PAGO_SCOUT_ARGENTINA = 'inscripcion_pago_scout_argentina',
-  CUOTA_GRUPO = 'cuota_grupo',
   CAMPAMENTO_PAGO = 'campamento_pago',
   CAMPAMENTO_GASTO = 'campamento_gasto',
   EVENTO_VENTA_INGRESO = 'evento_venta_ingreso',
@@ -97,7 +95,7 @@ export enum EstadoPago {
 }
 
 // ============================================================================
-// INSCRIPCIONES Y CUOTAS
+// INSCRIPCIONES
 // ============================================================================
 
 export enum EstadoInscripcion {
@@ -110,12 +108,6 @@ export enum EstadoInscripcion {
 export enum TipoInscripcion {
   GRUPO = 'grupo',
   SCOUT_ARGENTINA = 'scout_argentina',
-}
-
-export enum EstadoCuota {
-  PENDIENTE = 'pendiente',
-  PARCIAL = 'parcial',
-  PAGADO = 'pagado',
 }
 
 // ============================================================================
@@ -229,7 +221,6 @@ interface Movimiento extends BaseEntity {
   eventoId: string | null;
   campamentoId: string | null;
   inscripcionId: string | null;
-  cuotaId: string | null;
 
   // Relaciones (solo en respuestas con include)
   caja?: Caja;
@@ -258,22 +249,6 @@ interface Inscripcion extends BaseEntity {
   // Calculado (no almacenado)
   estado?: EstadoInscripcion;   // Calculado desde movimientos
   montoPagado?: number;         // Calculado desde movimientos
-}
-```
-
-### Cuota
-
-```typescript
-interface Cuota extends BaseEntity {
-  personaId: string;
-  nombre: string;
-  ano: number;
-  montoTotal: number;     // Decimal
-  montoPagado: number;    // Decimal, default 0
-  estado: EstadoCuota;
-
-  // Relación
-  persona?: Persona;
 }
 ```
 
@@ -420,7 +395,6 @@ interface CreateMovimientoDto {
   eventoId?: string;                     // UUID
   campamentoId?: string;                 // UUID
   inscripcionId?: string;                // UUID
-  cuotaId?: string;                      // UUID
 }
 ```
 
@@ -470,19 +444,6 @@ interface UpdateInscripcionDto {
   autorizacionDeImagen?: boolean;
   salidasCercanas?: boolean;
   autorizacionIngreso?: boolean;
-}
-```
-
-### Cuotas
-
-#### CreateCuotaDto
-
-```typescript
-interface CreateCuotaDto {
-  personaId: string;    // UUID
-  nombre: string;       // Min: 2, Max: 100
-  ano: number;          // Min: 2020, Max: 2100
-  montoTotal: number;   // Positivo, max 2 decimales
 }
 ```
 
@@ -682,7 +643,6 @@ Base: `/movimientos`
 | GET | `/movimientos/evento/:eventoId` | - | `Movimiento[]` | Movimientos de un evento |
 | GET | `/movimientos/campamento/:campamentoId` | - | `Movimiento[]` | Movimientos de un campamento |
 | GET | `/movimientos/inscripcion/:inscripcionId` | - | `Movimiento[]` | Movimientos de una inscripción |
-| GET | `/movimientos/cuota/:cuotaId` | - | `Movimiento[]` | Movimientos de una cuota |
 | GET | `/movimientos/saldo/:cajaId` | - | `{ cajaId: string, saldo: number }` | Saldo calculado de una caja |
 | GET | `/movimientos/:id` | - | `Movimiento` | Obtener movimiento por ID |
 | POST | `/movimientos` | `CreateMovimientoDto` | `Movimiento` | Crear movimiento |
@@ -731,11 +691,10 @@ interface GastoGeneralBody {
   "cajaId": "caja-uuid",
   "tipo": "ingreso",
   "monto": 5000.00,
-  "concepto": "cuota_grupo",
+  "concepto": "evento_grupo_ingreso",
   "responsableId": "persona-uuid",
   "medioPago": "transferencia",
-  "estadoPago": "pagado",
-  "cuotaId": "cuota-uuid"
+  "estadoPago": "pagado"
 }
 ```
 
@@ -809,52 +768,6 @@ Base: `/inscripciones`
   "autorizacionIngreso": false,
   "montoPagado": 5000.00,
   "medioPago": "efectivo"
-}
-```
-
----
-
-### Cuotas
-
-Base: `/cuotas`
-
-| Método | Ruta | DTO Request | Response | Descripción |
-|--------|------|-------------|----------|-------------|
-| GET | `/cuotas` | - | `Cuota[]` | Lista cuotas. Query: `ano` |
-| GET | `/cuotas/persona/:personaId` | - | `Cuota[]` | Cuotas de una persona |
-| GET | `/cuotas/:id` | - | `Cuota` | Obtener cuota por ID |
-| POST | `/cuotas` | `CreateCuotaDto` | `Cuota` | Crear cuota |
-| POST | `/cuotas/:id/pago` | Ver abajo | `object` | Registrar pago de cuota |
-| DELETE | `/cuotas/:id` | - | `Cuota` | Eliminar (soft delete) |
-
-#### Pago Cuota Body
-
-```typescript
-interface PagoCuotaBody {
-  monto: number;
-  medioPago: MedioPago;
-  responsableId: string;
-}
-```
-
-#### Ejemplos
-
-```typescript
-// POST /cuotas
-// Body:
-{
-  "personaId": "persona-uuid",
-  "nombre": "Cuota Marzo 2026",
-  "ano": 2026,
-  "montoTotal": 3000.00
-}
-
-// POST /cuotas/:id/pago
-// Body:
-{
-  "monto": 1500.00,
-  "medioPago": "efectivo",
-  "responsableId": "persona-uuid"
 }
 ```
 

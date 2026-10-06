@@ -59,7 +59,6 @@ enum ConceptoMovimiento {
   INSCRIPCION_GRUPO = 'inscripcion_grupo',
   INSCRIPCION_SCOUT_ARGENTINA = 'inscripcion_scout_argentina',
   INSCRIPCION_PAGO_SCOUT_ARGENTINA = 'inscripcion_pago_scout_argentina',
-  CUOTA_GRUPO = 'cuota_grupo',
   EVENTO_VENTA_INGRESO = 'evento_venta_ingreso',
   EVENTO_VENTA_GASTO = 'evento_venta_gasto',
   EVENTO_GRUPO_INGRESO = 'evento_grupo_ingreso',

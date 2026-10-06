@@ -33,7 +33,6 @@ type ConceptoMovimiento =
   // Ingresos
   | 'inscripcion_grupo'
   | 'inscripcion_scout_argentina'
-  | 'cuota_grupo'
   | 'campamento_pago'
   | 'evento_venta_ingreso'
   | 'evento_grupo_ingreso'
@@ -106,7 +105,6 @@ interface Movimiento {
   eventoId: string | null;
   campamentoId: string | null;
   inscripcionId: string | null;
-  cuotaId: string | null;
   movimientoRelacionadoId: string | null;
   registradoPorId: string | null;
   // Auditoría
@@ -136,7 +134,6 @@ interface CreateMovimientoDto {
   eventoId?: string;
   campamentoId?: string;
   inscripcionId?: string;
-  cuotaId?: string;
 }
 ```
 
@@ -381,7 +378,7 @@ Cuando `estadoPago = 'pendiente_reembolso'`:
 
 ### Flujo 1 — Ingreso simple (cobro de cuota)
 
-El caso más básico: alguien paga su cuota mensual en efectivo.
+El caso más básico: alguien paga su inscripción de grupo en efectivo.
 
 ```typescript
 // POST /movimientos
@@ -389,8 +386,8 @@ const body: CreateMovimientoDto = {
   cajaId: 'uuid-caja-grupo',
   tipo: 'ingreso',
   monto: 2000,
-  concepto: 'cuota_grupo',
-  descripcion: 'Cuota marzo 2026 — Juan Pérez',
+  concepto: 'inscripcion_grupo',
+  descripcion: 'Inscripción grupo 2026 — Juan Pérez',
   responsableId: 'uuid-juan',
   medioPago: 'efectivo',
   estadoPago: 'pagado',          // Ingresos siempre 'pagado'
@@ -585,7 +582,6 @@ Mostrar siempre los tres valores juntos para que quede claro el estado real:
 
 | Caso de uso | tipo | concepto | estadoPago |
 |---|---|---|---|
-| Cobro de cuota mensual | ingreso | `cuota_grupo` | pagado |
 | Cobro inscripción grupo | ingreso | `inscripcion_grupo` | pagado |
 | Pago de campamento | ingreso | `campamento_pago` | pagado |
 | Gasto de campamento (caja pagó) | egreso | `campamento_gasto` | pagado |
