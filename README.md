@@ -7,7 +7,7 @@
 <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,6,20,24,30&height=220&section=header&text=Scout%20Backend&fontSize=60&fontColor=ffffff&animation=fadeIn&fontAlignY=38&desc=API%20REST%20para%20la%20gesti%C3%B3n%20financiera%20de%20un%20grupo%20scout&descAlignY=58&descSize=16" width="100%" alt="Scout Backend — API REST NestJS de gestión financiera para grupos scout" />
 
 <a href="#scout-backend--api-nestjs-de-gestión-financiera-para-grupos-scout">
-  <img src="https://readme-typing-svg.demolab.com/?lines=NestJS+11+%7C+TypeORM+%7C+PostgreSQL;JWT+Auth+%2B+Swagger+OpenAPI;15+conceptos+de+movimientos;Soft+delete+%2B+multi-tenancy&center=true&width=700&height=50&color=E0234E&vCenter=true&size=22&pause=800" width="700" height="50" alt="NestJS 11, TypeORM y PostgreSQL con autenticación JWT, documentación Swagger OpenAPI, 15 conceptos de movimientos, soft delete y multi-tenancy" />
+  <img src="https://readme-typing-svg.demolab.com/?lines=NestJS+11+%7C+TypeORM+%7C+PostgreSQL;JWT+Auth+%2B+Swagger+OpenAPI;19+conceptos+de+movimientos;Soft+delete+%2B+multi-tenancy&center=true&width=700&height=50&color=E0234E&vCenter=true&size=22&pause=800" width="700" height="50" alt="NestJS 11, TypeORM y PostgreSQL con autenticación JWT, documentación Swagger OpenAPI, 19 conceptos de movimientos, soft delete y multi-tenancy" />
 </a>
 
 <br/>
@@ -35,17 +35,17 @@
 
 # Scout Backend — API NestJS de gestión financiera para grupos scout 🚀
 
-**Scout Backend** es la **API REST en NestJS 11 + TypeORM + PostgreSQL** que sostiene toda la operación de **gestión financiera de un grupo scout**. Centraliza el padrón de personas (protagonistas, educadores y personas externas), las cajas contables del grupo y las ramas, los movimientos de ingresos y egresos con 15 conceptos distintos, las inscripciones anuales a **Scouts de Argentina**, las cuotas mensuales, los campamentos y los eventos — con saldos calculados en tiempo real, soft-delete en todas las entidades, autenticación JWT y documentación OpenAPI.
+**Scout Backend** es la **API REST en NestJS 11 + TypeORM + PostgreSQL** que sostiene toda la operación de **gestión financiera de un grupo scout**. Centraliza el padrón de personas (protagonistas, educadores y personas externas), las cajas contables del grupo y las ramas, los movimientos de ingresos y egresos con 19 conceptos distintos, las inscripciones anuales a **Scouts de Argentina**, los campamentos y los eventos — con saldos calculados en tiempo real, soft-delete en todas las entidades, autenticación JWT y documentación OpenAPI.
 
 > 📦 **Parte del monorepo [Scout](../README.md)** · Ver también: [🎯 Frontend (Angular)](../frontend/README.md) · [🤖 AGENTS.md](../AGENTS.md)
 
-> **API REST** que sostiene la operación financiera y administrativa de un grupo scout. Centraliza padrón de personas, cajas contables, movimientos, inscripciones, cuotas, campamentos y eventos — con saldos calculados en tiempo real y soft-delete en todas las entidades.
+> **API REST** que sostiene la operación financiera y administrativa de un grupo scout. Centraliza padrón de personas, cajas contables, movimientos, inscripciones, campamentos y eventos — con saldos calculados en tiempo real y soft-delete en todas las entidades.
 
 <div align="center">
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  🏦 15 conceptos   👥 3 tipos de persona   🌳 4 ramas      │
+│  🏦 19 conceptos   👥 3 tipos de persona   🌳 4 ramas      │
 │  💰 Saldos calculados   🗃 Soft delete   🔐 JWT + Swagger  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -95,9 +95,8 @@
 |:---:|---|:---:|
 | 👥 | **Padrón de personas** — protagonistas, educadores y externas | ✅ |
 | 💰 | **Cajas contables** — grupo, ramas y cuentas personales | ✅ |
-| 📊 | **Movimientos** — ingresos / egresos con 15 conceptos | ✅ |
+| 📊 | **Movimientos** — ingresos / egresos con 19 conceptos | ✅ |
 | 📝 | **Inscripciones** a Scouts de Argentina | ✅ |
-| 💳 | **Cuotas** mensuales del grupo | ✅ |
 | ⛺ | **Campamentos** con pagos de participantes | ✅ |
 | 🎪 | **Eventos** de venta y eventos del grupo | ✅ |
 | 📑 | **Exportaciones** a Excel | ✅ |
@@ -156,7 +155,6 @@ graph TB
     App --> Cajas[💰 cajas]:::module
     App --> Movimientos[📊 movimientos]:::module
     App --> Inscripciones[📝 inscripciones]:::module
-    App --> Cuotas[💳 cuotas]:::module
     App --> Campamentos[⛺ campamentos]:::module
     App --> Eventos[🎪 eventos]:::module
     App --> Pagos[💸 pagos]:::module
@@ -173,7 +171,6 @@ graph TB
     Cajas --> DB
     Movimientos --> DB
     Inscripciones --> DB
-    Cuotas --> DB
     Campamentos --> DB
     Eventos --> DB
 ```
@@ -202,9 +199,8 @@ src/
     ├── 🔐 auth/                Login, JWT, estrategias Passport
     ├── 👥 personas/            Protagonistas · Educadores · Externas
     ├── 💰 cajas/               Caja grupo · fondos rama · personales
-    ├── 📊 movimientos/         Ingresos y egresos (15 conceptos)
+    ├── 📊 movimientos/         Ingresos y egresos (19 conceptos)
     ├── 📝 inscripciones/       Scouts de Argentina
-    ├── 💳 cuotas/              Cuotas mensuales
     ├── ⛺ campamentos/         Gestión de campamentos
     ├── 🎪 eventos/             Eventos de venta y grupo
     ├── 💸 pagos/               Procesamiento de pagos
@@ -285,7 +281,7 @@ graph LR
 - **Medios de pago:** 💵 `efectivo` · 🏧 `transferencia`
 
 <details>
-<summary><b>📖 Ver los 15 conceptos disponibles</b></summary>
+<summary><b>📖 Ver los 19 conceptos disponibles</b></summary>
 
 <div align="center">
 
@@ -600,7 +596,7 @@ Cada controlador documenta sus endpoints con `@ApiTags`, `@ApiOperation` y `@Api
 
 **Tipos:** `feat` · `fix` · `docs` · `chore` · `perf` · `refactor` · `style` · `test`
 
-**Scopes:** `personas` · `cajas` · `movimientos` · `inscripciones` · `cuotas` · `campamentos` · `eventos` · `auth` · `database` · `common`
+**Scopes:** `personas` · `cajas` · `movimientos` · `inscripciones` · `campamentos` · `eventos` · `auth` · `database` · `common`
 
 ### 🧬 DTOs y validación
 
@@ -621,7 +617,7 @@ Cada controlador documenta sus endpoints con `@ApiTags`, `@ApiOperation` y `@Api
 
 ## 🗺 Roadmap
 
-- [x] ✅ Módulos de dominio (personas, cajas, movimientos, inscripciones, cuotas, campamentos, eventos)
+- [x] ✅ Módulos de dominio (personas, cajas, movimientos, inscripciones, campamentos, eventos)
 - [x] ✅ Exportaciones a Excel
 - [x] ✅ Backups
 - [x] ✅ Autenticación JWT

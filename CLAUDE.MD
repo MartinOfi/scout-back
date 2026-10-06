@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository Overview
 
-**Scout** is a NestJS backend for financial management of a scout group. It handles members (protagonistas, educadores), financial accounts (cajas), movements, inscriptions, monthly fees (cuotas), camps, and events.
+**Scout** is a NestJS backend for financial management of a scout group. It handles members (protagonistas, educadores), financial accounts (cajas), movements, inscriptions, camps, and events.
 
 ### Tech Stack
 
@@ -73,7 +73,6 @@ src/
     ├── cajas/             # Financial accounts (Grupo, Rama, Personal)
     ├── movimientos/       # Income/expense tracking
     ├── inscripciones/     # Scout Argentina inscriptions
-    ├── cuotas/            # Group monthly fees
     ├── campamentos/       # Camp management
     └── eventos/           # Sale events and group events
 ```
@@ -255,7 +254,7 @@ Follow conventional-commit style: `<type>[scope]: <description>`
 
 **Types:** `feat`, `fix`, `docs`, `chore`, `perf`, `refactor`, `style`, `test`
 
-**Scopes:** `personas`, `cajas`, `movimientos`, `inscripciones`, `cuotas`, `campamentos`, `eventos`, `database`, `common`, `config`, `skills`, `docs`
+**Scopes:** `personas`, `cajas`, `movimientos`, `inscripciones`, `campamentos`, `eventos`, `database`, `common`, `config`, `skills`, `docs`
 
 **Rule:** Never add commit author like "Co-Author: ClaudeCode..."
 
