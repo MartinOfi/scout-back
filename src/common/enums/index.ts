@@ -100,9 +100,6 @@ export enum ConceptoMovimiento {
   INSCRIPCION_SCOUT_ARGENTINA = 'inscripcion_scout_argentina', // Ingreso: cobro inscripción SA
   INSCRIPCION_PAGO_SCOUT_ARGENTINA = 'inscripcion_pago_scout_argentina', // Egreso: pago a Scout Argentina
 
-  // Cuotas
-  CUOTA_GRUPO = 'cuota_grupo', // Ingreso: cobro cuota de grupo
-
   // Campamentos
   CAMPAMENTO_PAGO = 'campamento_pago', // Ingreso: pago de participante
   CAMPAMENTO_GASTO = 'campamento_gasto', // Egreso: gasto del campamento
@@ -195,7 +192,7 @@ export enum CategoriaMovimiento {
 }
 
 // ============================================================================
-// INSCRIPCIONES Y CUOTAS
+// INSCRIPCIONES
 // ============================================================================
 
 /**
@@ -216,16 +213,6 @@ export enum EstadoInscripcion {
 export enum TipoInscripcion {
   GRUPO = 'grupo',
   SCOUT_ARGENTINA = 'scout_argentina',
-}
-
-/**
- * Cuota states (similar to inscription but without bonificado)
- * From PRD §3.3 (F9): Cuota de grupo
- */
-export enum EstadoCuota {
-  PENDIENTE = 'pendiente',
-  PARCIAL = 'parcial',
-  PAGADO = 'pagado',
 }
 
 // ============================================================================

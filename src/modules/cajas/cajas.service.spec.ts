@@ -7,7 +7,6 @@ import { Caja } from './entities/caja.entity';
 import { DeletionValidatorService } from '../../common/services/deletion-validator.service';
 import { MovimientosService } from '../movimientos/movimientos.service';
 import { InscripcionesService } from '../inscripciones/inscripciones.service';
-import { CuotasService } from '../cuotas/cuotas.service';
 import { CampamentosService } from '../campamentos/campamentos.service';
 import {
   CajaType,
@@ -22,7 +21,6 @@ describe('CajasService', () => {
   let deletionValidator: jest.Mocked<DeletionValidatorService>;
   let movimientosService: jest.Mocked<MovimientosService>;
   let inscripcionesService: jest.Mocked<InscripcionesService>;
-  let cuotasService: jest.Mocked<CuotasService>;
   let dataSource: jest.Mocked<DataSource>;
   let campamentosService: jest.Mocked<CampamentosService>;
 
@@ -91,12 +89,6 @@ describe('CajasService', () => {
         .mockResolvedValue({ total: 0, cantidad: 0 }),
     };
 
-    const mockCuotasService = {
-      getTotalDeudaCuotas: jest
-        .fn()
-        .mockResolvedValue({ total: 0, cantidad: 0 }),
-    };
-
     const mockCampamentosService = {
       getTotalDeudaCampamentos: jest
         .fn()
@@ -131,10 +123,6 @@ describe('CajasService', () => {
           useValue: mockInscripcionesService,
         },
         {
-          provide: CuotasService,
-          useValue: mockCuotasService,
-        },
-        {
           provide: CampamentosService,
           useValue: mockCampamentosService,
         },
@@ -147,7 +135,6 @@ describe('CajasService', () => {
     deletionValidator = module.get(DeletionValidatorService);
     movimientosService = module.get(MovimientosService);
     inscripcionesService = module.get(InscripcionesService);
-    cuotasService = module.get(CuotasService);
     campamentosService = module.get(CampamentosService);
   });
 
@@ -640,7 +627,6 @@ describe('CajasService', () => {
           ],
           reembolsos: { total: 1000, cantidad: 1 },
           deuda_inscripciones: { total: 5000, cantidad: 10 },
-          deuda_cuotas: { total: 8000, cantidad: 20 },
           deuda_campamentos: { total: 3000, cantidad: 5 },
         },
       ]);
@@ -666,16 +652,15 @@ describe('CajasService', () => {
       expect(result.reembolsosPendientes.cantidad).toBe(1);
 
       // Verify deudas
-      expect(result.deudasTotales.total).toBe(16000); // 5000 + 8000 + 3000
+      expect(result.deudasTotales.total).toBe(8000); // 5000 + 3000
       expect(result.deudasTotales.inscripciones.total).toBe(5000);
-      expect(result.deudasTotales.cuotas.total).toBe(8000);
       expect(result.deudasTotales.campamentos.total).toBe(3000);
 
       // Verify resumen calculations
       const totalGeneral = 10000 + 5000 + 500; // grupo + ramas + personales
       expect(result.resumen.totalGeneral).toBe(totalGeneral);
       expect(result.resumen.totalDisponible).toBe(totalGeneral - 1000); // - reembolsos
-      expect(result.resumen.totalPorCobrar).toBe(16000);
+      expect(result.resumen.totalPorCobrar).toBe(8000);
 
       // Verify single query was used
       expect(dataSource.query).toHaveBeenCalledTimes(1);
@@ -713,7 +698,6 @@ describe('CajasService', () => {
           cajas: [],
           reembolsos: { total: 0, cantidad: 0 },
           deuda_inscripciones: { total: 0, cantidad: 0 },
-          deuda_cuotas: { total: 0, cantidad: 0 },
           deuda_campamentos: { total: 0, cantidad: 0 },
         },
       ]);
@@ -723,7 +707,7 @@ describe('CajasService', () => {
       const sql = (dataSource.query as jest.Mock).mock.calls[0][0] as string;
       const deudaInscrBlock = sql.slice(
         sql.indexOf('deuda_inscr AS'),
-        sql.indexOf('deuda_cuotas AS'),
+        sql.indexOf('deuda_camp AS'),
       );
       expect(deudaInscrBlock).toContain("concepto != 'bonificacion_recibida'");
     });
@@ -734,7 +718,6 @@ describe('CajasService', () => {
           cajas: [],
           reembolsos: { total: 0, cantidad: 0 },
           deuda_inscripciones: { total: 0, cantidad: 0 },
-          deuda_cuotas: { total: 0, cantidad: 0 },
           deuda_campamentos: { total: 0, cantidad: 0 },
         },
       ]);
@@ -758,7 +741,6 @@ describe('CajasService', () => {
           cajas: null,
           reembolsos: { total: 0, cantidad: 0 },
           deuda_inscripciones: { total: 0, cantidad: 0 },
-          deuda_cuotas: { total: 0, cantidad: 0 },
           deuda_campamentos: { total: 0, cantidad: 0 },
         },
       ]);
@@ -789,7 +771,6 @@ describe('CajasService', () => {
           ],
           reembolsos: { total: 0, cantidad: 0 },
           deuda_inscripciones: { total: 0, cantidad: 0 },
-          deuda_cuotas: { total: 0, cantidad: 0 },
           deuda_campamentos: { total: 0, cantidad: 0 },
         },
       ]);
@@ -818,7 +799,6 @@ describe('CajasService', () => {
           ],
           reembolsos: { total: 20000, cantidad: 1 },
           deuda_inscripciones: { total: 0, cantidad: 0 },
-          deuda_cuotas: { total: 0, cantidad: 0 },
           deuda_campamentos: { total: 0, cantidad: 0 },
           bonificaciones_otorgadas: { total: 80000 },
         },
@@ -846,7 +826,6 @@ describe('CajasService', () => {
           ],
           reembolsos: { total: 0, cantidad: 0 },
           deuda_inscripciones: { total: 0, cantidad: 0 },
-          deuda_cuotas: { total: 0, cantidad: 0 },
           deuda_campamentos: { total: 0, cantidad: 0 },
           bonificaciones_otorgadas: { total: 0 },
         },

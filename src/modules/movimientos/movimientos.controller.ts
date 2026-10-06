@@ -146,13 +146,6 @@ export class MovimientosController {
     );
   }
 
-  @Get('cuota/:cuotaId')
-  @ApiOperation({ summary: 'Listar movimientos de una cuota' })
-  @ApiParam({ name: 'cuotaId', type: String, format: 'uuid' })
-  async findByCuota(@Param('cuotaId', ParseUUIDPipe) cuotaId: string) {
-    return this.movimientosService.findByRelatedEntity('cuota', cuotaId);
-  }
-
   @Get('saldo/:cajaId')
   @ApiOperation({ summary: 'Calcular saldo de una caja' })
   @ApiParam({ name: 'cajaId', type: String, format: 'uuid' })

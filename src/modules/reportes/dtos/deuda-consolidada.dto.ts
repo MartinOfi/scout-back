@@ -47,26 +47,6 @@ export class InscripcionDeudaDto {
   saldo!: number;
 }
 
-export class CuotaDeudaDto {
-  @ApiProperty()
-  cuotaId!: string;
-
-  @ApiProperty()
-  nombre!: string;
-
-  @ApiProperty()
-  ano!: number;
-
-  @ApiProperty()
-  montoTotal!: number;
-
-  @ApiProperty()
-  montoPagado!: number;
-
-  @ApiProperty()
-  saldo!: number;
-}
-
 export class DocumentacionPersonalDto {
   @ApiProperty()
   dni!: boolean;
@@ -143,9 +123,6 @@ export class PersonaDeudaDto {
 
   @ApiProperty({ type: [InscripcionDeudaDto] })
   inscripcionesScout!: InscripcionDeudaDto[];
-
-  @ApiProperty({ type: [CuotaDeudaDto] })
-  cuotas!: CuotaDeudaDto[];
 
   @ApiProperty({
     type: DocumentacionPersonalDto,

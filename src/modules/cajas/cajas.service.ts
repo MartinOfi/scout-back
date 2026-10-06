@@ -383,12 +383,6 @@ export class CajasService {
         ) p ON p.inscripcion_id = i.id
         WHERE i."deletedAt" IS NULL
       ),
-      deuda_cuotas AS (
-        SELECT COALESCE(SUM("montoTotal" - "montoPagado"), 0) AS total,
-          COUNT(*) AS cantidad
-        FROM cuotas
-        WHERE "deletedAt" IS NULL AND "montoTotal" > "montoPagado"
-      ),
       deuda_camp AS (
         SELECT
           COALESCE(SUM(GREATEST(0, cp."montoAsignado" - cp."montoBonificado" - COALESCE(pagos.total_pagado, 0))), 0) AS total,
@@ -419,7 +413,6 @@ export class CajasService {
         (SELECT row_to_json(r) FROM reembolsos r) AS reembolsos,
         (SELECT row_to_json(c) FROM cobros c) AS cobros,
         (SELECT row_to_json(d) FROM deuda_inscr d) AS deuda_inscripciones,
-        (SELECT row_to_json(d) FROM deuda_cuotas d) AS deuda_cuotas,
         (SELECT row_to_json(d) FROM deuda_camp d) AS deuda_campamentos,
         (SELECT row_to_json(b) FROM bonif_otorgadas b) AS bonificaciones_otorgadas
     `);
@@ -437,7 +430,6 @@ export class CajasService {
       total: 0,
       cantidad: 0,
     };
-    const deudaCuotas = raw.deuda_cuotas ?? { total: 0, cantidad: 0 };
     const deudaCampamentos = raw.deuda_campamentos ?? { total: 0, cantidad: 0 };
     const bonificacionesOtorgadas = raw.bonificaciones_otorgadas ?? {
       total: 0,
@@ -470,9 +462,7 @@ export class CajasService {
     const totalPersonales = saldosPersonales.reduce((sum, s) => sum + s, 0);
     const totalReembolsos = Number(reembolsos.total);
     const totalDeudas =
-      Number(deudaInscripciones.total) +
-      Number(deudaCuotas.total) +
-      Number(deudaCampamentos.total);
+      Number(deudaInscripciones.total) + Number(deudaCampamentos.total);
 
     // El fondo solidario suma al total general (es plata que el grupo
     // tiene) pero se excluye del disponible: sólo se libera al bonificar.
@@ -518,10 +508,6 @@ export class CajasService {
         inscripciones: {
           total: Number(deudaInscripciones.total),
           cantidad: Number(deudaInscripciones.cantidad),
-        },
-        cuotas: {
-          total: Number(deudaCuotas.total),
-          cantidad: Number(deudaCuotas.cantidad),
         },
         campamentos: {
           total: Number(deudaCampamentos.total),

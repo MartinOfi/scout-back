@@ -10,7 +10,6 @@ import { CajasModule } from './modules/cajas/cajas.module';
 import { MovimientosModule } from './modules/movimientos/movimientos.module';
 import { PagosModule } from './modules/pagos/pagos.module';
 import { InscripcionesModule } from './modules/inscripciones/inscripciones.module';
-import { CuotasModule } from './modules/cuotas/cuotas.module';
 import { CampamentosModule } from './modules/campamentos/campamentos.module';
 import { EventosModule } from './modules/eventos/eventos.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -34,7 +33,6 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     MovimientosModule,
     PagosModule,
     InscripcionesModule,
-    CuotasModule,
     CampamentosModule,
     EventosModule,
     BackupsModule,

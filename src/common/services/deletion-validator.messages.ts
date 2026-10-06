@@ -11,8 +11,6 @@ export const DELETION_VALIDATOR_MESSAGES = {
     `No se puede eliminar: la persona tiene ${count} reembolso(s) registrado(s)`,
   INSCRIPCION_HAS_MOVEMENTS: (count: number): string =>
     `No se puede eliminar: la inscripción tiene ${count} movimiento(s) asociado(s)`,
-  CUOTA_HAS_MOVEMENTS: (count: number): string =>
-    `No se puede eliminar: la cuota tiene ${count} movimiento(s) asociado(s)`,
   CAMPAMENTO_HAS_MOVEMENTS: (count: number): string =>
     `No se puede eliminar: el campamento tiene ${count} movimiento(s) asociado(s)`,
   EVENTO_HAS_EXTERNAL_MOVEMENTS: (count: number): string =>

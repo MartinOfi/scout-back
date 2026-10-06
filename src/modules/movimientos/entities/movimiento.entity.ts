@@ -144,12 +144,6 @@ export class Movimiento extends BaseEntity {
   @Column({ name: 'inscripcion_id', type: 'uuid', nullable: true })
   inscripcionId!: string | null;
 
-  /**
-   * Related cuota (if applicable)
-   */
-  @Column({ name: 'cuota_id', type: 'uuid', nullable: true })
-  cuotaId!: string | null;
-
   // ==========================================================================
   // Related movement (for linked operations)
   // ==========================================================================

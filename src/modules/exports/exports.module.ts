@@ -9,7 +9,6 @@ import { Persona } from '../personas/entities/persona.entity';
 import { Caja } from '../cajas/entities/caja.entity';
 import { Movimiento } from '../movimientos/entities/movimiento.entity';
 import { Inscripcion } from '../inscripciones/entities/inscripcion.entity';
-import { Cuota } from '../cuotas/entities/cuota.entity';
 import { Campamento } from '../campamentos/entities/campamento.entity';
 import { Evento } from '../eventos/entities/evento.entity';
 import { Producto } from '../eventos/entities/producto.entity';
@@ -22,7 +21,6 @@ import { VentaProducto } from '../eventos/entities/venta-producto.entity';
       Caja,
       Movimiento,
       Inscripcion,
-      Cuota,
       Campamento,
       Evento,
       Producto,

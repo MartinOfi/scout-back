@@ -50,7 +50,6 @@ export enum ConceptoMovimiento {
   INSCRIPCION_GRUPO = 'inscripcion_grupo',
   INSCRIPCION_SCOUT_ARGENTINA = 'inscripcion_scout_argentina',
   INSCRIPCION_PAGO_SCOUT_ARGENTINA = 'inscripcion_pago_scout_argentina',
-  CUOTA_GRUPO = 'cuota_grupo',
   CAMPAMENTO_PAGO = 'campamento_pago',
   CAMPAMENTO_GASTO = 'campamento_gasto',
   EVENTO_VENTA_INGRESO = 'evento_venta_ingreso',
@@ -84,12 +83,6 @@ export enum EstadoInscripcion {
 export enum TipoInscripcion {
   GRUPO = 'grupo',
   SCOUT_ARGENTINA = 'scout_argentina',
-}
-
-export enum EstadoCuota {
-  PENDIENTE = 'pendiente',
-  PARCIAL = 'parcial',
-  PAGADO = 'pagado',
 }
 
 export enum EstadoPagoCampamento {
@@ -179,7 +172,6 @@ export interface Movimiento extends BaseEntity {
   eventoId: string | null;
   campamentoId: string | null;
   inscripcionId: string | null;
-  cuotaId: string | null;
   caja?: Caja;
   responsable?: Persona;
   personaAReembolsar?: Persona | null;
@@ -202,20 +194,6 @@ export interface Inscripcion extends BaseEntity {
   persona?: Persona;
   estado?: EstadoInscripcion;
   montoPagado?: number;
-}
-
-// ============================================================================
-// CUOTAS
-// ============================================================================
-
-export interface Cuota extends BaseEntity {
-  personaId: string;
-  nombre: string;
-  ano: number;
-  montoTotal: number;
-  montoPagado: number;
-  estado: EstadoCuota;
-  persona?: Persona;
 }
 
 // ============================================================================
@@ -324,7 +302,6 @@ export interface CreateMovimientoDto {
   eventoId?: string;
   campamentoId?: string;
   inscripcionId?: string;
-  cuotaId?: string;
 }
 
 export interface UpdateMovimientoDto {
@@ -375,23 +352,6 @@ export interface UpdateInscripcionDto {
   autorizacionDeImagen?: boolean;
   salidasCercanas?: boolean;
   autorizacionIngreso?: boolean;
-}
-
-// ============================================================================
-// DTOs - CUOTAS
-// ============================================================================
-
-export interface CreateCuotaDto {
-  personaId: string;
-  nombre: string;
-  ano: number;
-  montoTotal: number;
-}
-
-export interface PagoCuotaDto {
-  monto: number;
-  medioPago: MedioPago;
-  responsableId: string;
 }
 
 // ============================================================================
@@ -590,6 +550,3 @@ export interface InscripcionesQueryParams {
   tipo?: TipoInscripcion;
 }
 
-export interface CuotasQueryParams {
-  ano?: number;
-}

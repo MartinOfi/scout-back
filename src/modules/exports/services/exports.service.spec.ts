@@ -9,7 +9,6 @@ import { Persona } from '../../personas/entities/persona.entity';
 import { Caja } from '../../cajas/entities/caja.entity';
 import { Movimiento } from '../../movimientos/entities/movimiento.entity';
 import { Inscripcion } from '../../inscripciones/entities/inscripcion.entity';
-import { Cuota } from '../../cuotas/entities/cuota.entity';
 import { Campamento } from '../../campamentos/entities/campamento.entity';
 import { Evento } from '../../eventos/entities/evento.entity';
 import { Producto } from '../../eventos/entities/producto.entity';
@@ -18,7 +17,6 @@ import { VentaProducto } from '../../eventos/entities/venta-producto.entity';
 import {
   CajaType,
   ConceptoMovimiento,
-  EstadoCuota,
   EstadoPago,
   EstadoPersona,
   MedioPago,
@@ -74,12 +72,12 @@ const mockMovimientos: Partial<Movimiento>[] = [
     fecha: new Date('2026-04-01T10:00:00Z'),
     tipo: TipoMovimiento.INGRESO,
     monto: 1500,
-    concepto: ConceptoMovimiento.CUOTA_GRUPO,
+    concepto: ConceptoMovimiento.INSCRIPCION_GRUPO,
     medioPago: MedioPago.EFECTIVO,
     estadoPago: EstadoPago.PAGADO,
     cajaId: 'c1',
     responsableId: 'p1',
-    descripcion: 'Pago cuota marzo',
+    descripcion: 'Pago inscripción grupo',
   },
 ];
 
@@ -91,18 +89,6 @@ const mockInscripciones: Partial<Inscripcion>[] = [
     ano: 2026,
     montoTotal: 5000,
     montoBonificado: 0,
-  },
-];
-
-const mockCuotas: Partial<Cuota>[] = [
-  {
-    id: 'q1',
-    personaId: 'p1',
-    nombre: 'Cuota Marzo 2026',
-    ano: 2026,
-    montoTotal: 1500,
-    montoPagado: 1500,
-    estado: EstadoCuota.PAGADO,
   },
 ];
 
@@ -196,10 +182,6 @@ describe('ExportsService', () => {
           useValue: buildRepoMock(mockInscripciones),
         },
         {
-          provide: getRepositoryToken(Cuota),
-          useValue: buildRepoMock(mockCuotas),
-        },
-        {
           provide: getRepositoryToken(Campamento),
           useValue: buildRepoMock(mockCampamentos),
         },
@@ -228,7 +210,7 @@ describe('ExportsService', () => {
       expect(workbookBuilder.build).toHaveBeenCalledTimes(1);
     });
 
-    it('produces exactly the 10 expected sheets in order', async () => {
+    it('produces exactly the 9 expected sheets in order', async () => {
       await service.generateXlsx();
 
       expect(capturedSpecs.map((s) => s.name)).toEqual([
@@ -236,7 +218,6 @@ describe('ExportsService', () => {
         'Cajas',
         'Movimientos',
         'Inscripciones',
-        'Cuotas',
         'Campamentos',
         'CampamentoParticipantes',
         'Eventos',
@@ -317,7 +298,7 @@ describe('ExportsService', () => {
       expect(row.cantidad).toBe(10);
     });
 
-    it('enriches Inscripciones and Cuotas rows with personaNombre', async () => {
+    it('enriches Inscripciones rows with personaNombre', async () => {
       await service.generateXlsx();
 
       const inscripcionesSheet = capturedSpecs.find(
@@ -328,10 +309,6 @@ describe('ExportsService', () => {
         unknown
       >;
       expect(inscripcionRow.personaNombre).toBe('Juan');
-
-      const cuotasSheet = capturedSpecs.find((s) => s.name === 'Cuotas');
-      const cuotaRow = cuotasSheet?.rows[0] as Record<string, unknown>;
-      expect(cuotaRow.personaNombre).toBe('Juan');
     });
 
     it('enriches Productos rows with eventoNombre', async () => {

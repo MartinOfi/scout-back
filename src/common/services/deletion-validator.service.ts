@@ -43,7 +43,6 @@ const INSCRIPCION_CUOTA_CONCEPTOS: readonly ConceptoMovimiento[] = [
   ConceptoMovimiento.INSCRIPCION_GRUPO,
   ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA,
   ConceptoMovimiento.INSCRIPCION_PAGO_SCOUT_ARGENTINA,
-  ConceptoMovimiento.CUOTA_GRUPO,
 ] as const;
 
 @Injectable()
@@ -85,13 +84,6 @@ export class DeletionValidatorService {
     return this.checkRelationByCount(
       { inscripcionId },
       DELETION_VALIDATOR_MESSAGES.INSCRIPCION_HAS_MOVEMENTS,
-    );
-  }
-
-  async canDeleteCuota(cuotaId: string): Promise<DeletionCheckResult> {
-    return this.checkRelationByCount(
-      { cuotaId },
-      DELETION_VALIDATOR_MESSAGES.CUOTA_HAS_MOVEMENTS,
     );
   }
 

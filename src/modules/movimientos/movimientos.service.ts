@@ -208,7 +208,7 @@ export class MovimientosService {
   }
 
   async findByRelatedEntity(
-    entityType: 'evento' | 'campamento' | 'inscripcion' | 'cuota',
+    entityType: 'evento' | 'campamento' | 'inscripcion',
     entityId: string,
   ): Promise<Movimiento[]> {
     const whereClause: FindOptionsWhere<Movimiento> = {};
@@ -222,9 +222,6 @@ export class MovimientosService {
         break;
       case 'inscripcion':
         whereClause.inscripcionId = entityId;
-        break;
-      case 'cuota':
-        whereClause.cuotaId = entityId;
         break;
     }
 

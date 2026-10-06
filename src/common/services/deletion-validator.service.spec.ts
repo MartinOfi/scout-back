@@ -129,30 +129,6 @@ describe('DeletionValidatorService', () => {
     });
   });
 
-  describe('canDeleteCuota', () => {
-    it('should return canDelete=true when cuota has no movements', async () => {
-      movimientoRepository.count.mockResolvedValue(0);
-
-      const result = await service.canDeleteCuota('cuota-uuid');
-
-      expect(result.canDelete).toBe(true);
-      expect(result.reason).toBeUndefined();
-      expect(movimientoRepository.count).toHaveBeenCalledWith({
-        where: { cuotaId: 'cuota-uuid' },
-      });
-    });
-
-    it('should return canDelete=false when cuota has movements', async () => {
-      movimientoRepository.count.mockResolvedValue(4);
-
-      const result = await service.canDeleteCuota('cuota-uuid');
-
-      expect(result.canDelete).toBe(false);
-      expect(result.reason).toContain('cuota tiene 4 movimiento(s)');
-      expect(result.movementCount).toBe(4);
-    });
-  });
-
   describe('canDeleteCampamento', () => {
     it('should return canDelete=true when campamento has no movements', async () => {
       movimientoRepository.count.mockResolvedValue(0);
@@ -412,7 +388,6 @@ describe('DeletionValidatorService', () => {
         ConceptoMovimiento.INSCRIPCION_GRUPO,
         ConceptoMovimiento.INSCRIPCION_SCOUT_ARGENTINA,
         ConceptoMovimiento.INSCRIPCION_PAGO_SCOUT_ARGENTINA,
-        ConceptoMovimiento.CUOTA_GRUPO,
       ])(
         'should block for concepto %s without hitting venta table',
         async (concepto) => {

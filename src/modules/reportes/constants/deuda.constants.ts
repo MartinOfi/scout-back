@@ -20,7 +20,7 @@ export type DeudaRamaFilter = (typeof DEUDA_RAMA_FILTERS)[number];
 /**
  * Tipos de deuda por los que se puede filtrar el reporte.
  * `DINERO` unifica toda la deuda monetaria (campamentos, inscripciones Scout
- * AR, inscripciones de grupo y cuotas) en un solo filtro. Ausente el
+ * AR e inscripciones de grupo) en un solo filtro. Ausente el
  * parámetro, se devuelven todos los tipos.
  */
 export enum TipoDeudaFilter {
@@ -28,6 +28,5 @@ export enum TipoDeudaFilter {
   CAMPAMENTOS = 'campamentos',
   INSCRIPCIONES_SCOUT = 'inscripcionesScout',
   INSCRIPCIONES_GRUPO = 'inscripcionesGrupo',
-  CUOTAS = 'cuotas',
   DOCUMENTACION = 'documentacion',
 }

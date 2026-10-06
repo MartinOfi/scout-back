@@ -38,7 +38,7 @@ export class CreateMovimientoDto {
 
   @ApiProperty({
     enum: ConceptoMovimiento,
-    example: ConceptoMovimiento.CUOTA_GRUPO,
+    example: ConceptoMovimiento.GASTO_GENERAL,
   })
   @IsEnum(ConceptoMovimiento)
   concepto!: ConceptoMovimiento;
@@ -125,9 +125,4 @@ export class CreateMovimientoDto {
   @IsUUID()
   @IsOptional()
   inscripcionId?: string;
-
-  @ApiPropertyOptional({ format: 'uuid', description: 'Cuota relacionada' })
-  @IsUUID()
-  @IsOptional()
-  cuotaId?: string;
 }

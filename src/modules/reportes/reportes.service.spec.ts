@@ -5,7 +5,6 @@ import { Protagonista, Educador } from '../personas/entities/persona.entity';
 import { CampamentoParticipante } from '../campamentos/entities/campamento-participante.entity';
 import { Movimiento } from '../movimientos/entities/movimiento.entity';
 import { Inscripcion } from '../inscripciones/entities/inscripcion.entity';
-import { Cuota } from '../cuotas/entities/cuota.entity';
 import {
   PersonaType,
   TipoInscripcion,
@@ -24,7 +23,6 @@ interface SetupData {
   educadores?: unknown[];
   inscripciones?: unknown[];
   participaciones?: unknown[];
-  cuotas?: unknown[];
   movimientos?: unknown[];
 }
 
@@ -84,10 +82,6 @@ async function buildService(data: SetupData): Promise<ReportesService> {
       {
         provide: getRepositoryToken(Inscripcion),
         useValue: makeRepo(data.inscripciones ?? []),
-      },
-      {
-        provide: getRepositoryToken(Cuota),
-        useValue: makeRepo(data.cuotas ?? []),
       },
     ],
   }).compile();
@@ -255,14 +249,6 @@ describe('ReportesService', () => {
       'edu-plata',
       'p-papeles',
     ]);
-  });
-
-  it('tipo "cuotas": excluye a quien debe otras deudas monetarias pero no cuotas', async () => {
-    const service = await buildDeudoresMixtos();
-
-    const result = await service.getDeudas({ tipo: TipoDeudaFilter.CUOTAS });
-
-    expect(result).toHaveLength(0);
   });
 
   it('protagonista menor: el DNI de los padres faltante genera deuda documental', async () => {

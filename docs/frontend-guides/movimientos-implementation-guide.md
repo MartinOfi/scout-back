@@ -33,7 +33,6 @@ type ConceptoMovimiento =
   // Ingresos
   | 'inscripcion_grupo'
   | 'inscripcion_scout_argentina'
-  | 'cuota_grupo'
   | 'campamento_pago'
   | 'evento_venta_ingreso'
   | 'evento_grupo_ingreso'
@@ -106,7 +105,6 @@ interface Movimiento {
   eventoId: string | null;
   campamentoId: string | null;
   inscripcionId: string | null;
-  cuotaId: string | null;
   movimientoRelacionadoId: string | null;
   registradoPorId: string | null;
   // Auditoría
@@ -136,7 +134,6 @@ interface CreateMovimientoDto {
   eventoId?: string;
   campamentoId?: string;
   inscripcionId?: string;
-  cuotaId?: string;
 }
 ```
 
@@ -379,9 +376,9 @@ Cuando `estadoPago = 'pendiente_reembolso'`:
 
 ## Flujos de Ejemplo
 
-### Flujo 1 — Ingreso simple (cobro de cuota)
+### Flujo 1 — Ingreso simple (ingreso de un evento de grupo)
 
-El caso más básico: alguien paga su cuota mensual en efectivo.
+El caso más básico: entra plata de un evento de grupo en efectivo.
 
 ```typescript
 // POST /movimientos
@@ -389,8 +386,8 @@ const body: CreateMovimientoDto = {
   cajaId: 'uuid-caja-grupo',
   tipo: 'ingreso',
   monto: 2000,
-  concepto: 'cuota_grupo',
-  descripcion: 'Cuota marzo 2026 — Juan Pérez',
+  concepto: 'evento_grupo_ingreso',
+  descripcion: 'Bono contribución peña de invierno',
   responsableId: 'uuid-juan',
   medioPago: 'efectivo',
   estadoPago: 'pagado',          // Ingresos siempre 'pagado'
@@ -585,9 +582,8 @@ Mostrar siempre los tres valores juntos para que quede claro el estado real:
 
 | Caso de uso | tipo | concepto | estadoPago |
 |---|---|---|---|
-| Cobro de cuota mensual | ingreso | `cuota_grupo` | pagado |
-| Cobro inscripción grupo | ingreso | `inscripcion_grupo` | pagado |
-| Pago de campamento | ingreso | `campamento_pago` | pagado |
+| Cobro inscripción grupo (desde `/inscripciones`, no manual) | ingreso | `inscripcion_grupo` | pagado |
+| Pago de campamento (desde `/campamentos`, no manual) | ingreso | `campamento_pago` | pagado |
 | Gasto de campamento (caja pagó) | egreso | `campamento_gasto` | pagado |
 | Gasto de campamento (persona adelantó) | egreso | `campamento_gasto` | pendiente_reembolso |
 | Gasto general (caja pagó) | egreso | `gasto_general` | pagado |
