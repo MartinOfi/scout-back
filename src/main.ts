@@ -2,13 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { resolveAllowedOrigins } from './common/utils/cors-origins.util';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS for frontend development
+  // CORS: orígenes por defecto + los de FRONTEND_URL (separados por coma)
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:4201',
+    origin: resolveAllowedOrigins(process.env.FRONTEND_URL),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization'],
