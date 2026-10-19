@@ -621,4 +621,90 @@ describe('ReportesService', () => {
       expect(result).toHaveLength(0);
     });
   });
+
+  describe('búsqueda, origen y consolidado', () => {
+    const protagonista = (id: string, nombre: string) => ({
+      id,
+      nombre,
+      tipo: PersonaType.PROTAGONISTA,
+      rama: Rama.UNIDAD,
+      estado: EstadoPersona.ACTIVO,
+      dni: true,
+      partidaNacimiento: true,
+      dniPadres: true,
+      carnetObraSocial: true,
+    });
+    const participacion = (
+      personaId: string,
+      campamentoId: string,
+      nombre: string,
+    ) => ({
+      campamentoId,
+      personaId,
+      autorizacionEntregada: true,
+      montoAsignado: 32000,
+      montoBonificado: 0,
+      campamento: { nombre, fechaInicio: new Date('2026-05-01') },
+    });
+    const escenario = () =>
+      buildService({
+        protagonistas: [
+          protagonista('p1', 'Martín Oficialdegui'),
+          protagonista('p2', 'Lucía Pérez'),
+        ],
+        participaciones: [
+          participacion('p1', 'camp-inicio', 'Campamento de Inicio'),
+          participacion('p2', 'camp-inicio', 'Campamento de Inicio'),
+          participacion('p2', 'camp-verano', 'Campamento de Verano'),
+        ],
+        inscripciones: [
+          inscripcionScout({
+            id: 'i1',
+            personaId: 'p1',
+            tipo: TipoInscripcion.GRUPO,
+            montoTotal: 10000,
+          }),
+        ],
+      });
+
+    it('q busca por nombre sin importar mayúsculas ni tildes', async () => {
+      const service = await escenario();
+      const result = await service.getDeudas({ q: 'MARTIN' });
+      expect(result.map((d) => d.personaId)).toEqual(['p1']);
+    });
+
+    it('campamentoId muestra solo la deuda de ese campamento', async () => {
+      const service = await escenario();
+      const result = await service.getDeudas({ campamentoId: 'camp-verano' });
+      expect(result).toHaveLength(1);
+      expect(result[0].personaId).toBe('p2');
+      expect(result[0].campamentos.map((c) => c.campamentoId)).toEqual([
+        'camp-verano',
+      ]);
+      expect(result[0].deudaTotal).toBe(32000);
+    });
+
+    it('el consolidado agrupa por campamento e inscripción y no depende de q ni del origen', async () => {
+      const service = await escenario();
+      const consolidado = await service.getConsolidado({});
+      expect(consolidado.deudaTotal).toBe(32000 * 3 + 10000);
+      expect(
+        consolidado.campamentos.map((c) => [
+          c.campamentoId,
+          c.personasConDeuda,
+        ]),
+      ).toEqual([
+        ['camp-inicio', 2],
+        ['camp-verano', 1],
+      ]);
+      expect(consolidado.inscripciones).toEqual([
+        {
+          tipo: TipoDeudaFilter.INSCRIPCIONES_GRUPO,
+          ano: 2026,
+          deudaTotal: 10000,
+          personasConDeuda: 1,
+        },
+      ]);
+    });
+  });
 });

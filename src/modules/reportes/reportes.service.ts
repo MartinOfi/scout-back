@@ -27,6 +27,10 @@ import {
   DocInscripcionDto,
 } from './dtos/deuda-consolidada.dto';
 import { RAMA_EDUCADORES, TipoDeudaFilter } from './constants/deuda.constants';
+import { ConsolidadoDeudasDto } from './dtos/consolidado-deudas.dto';
+import { DeudaConsolidadoQueryDto } from './dtos/deuda-consolidado-query.dto';
+import { buildConsolidado } from './helpers/deuda-consolidado';
+import { acotarAOrigen, coincideConBusqueda } from './helpers/deuda-filters';
 
 @Injectable()
 export class ReportesService {
@@ -43,7 +47,34 @@ export class ReportesService {
     private readonly inscripcionRepository: Repository<Inscripcion>,
   ) {}
 
+  /**
+   * Deudores filtrados: búsqueda por nombre (`q`), origen de la deuda
+   * (`campamentoId` o `tipo`) y, dentro de eso, solo la plata del origen.
+   */
   async getDeudas(query: DeudaQueryDto): Promise<PersonaDeudaDto[]> {
+    const deudas = await this.calcularDeudas(query);
+    return deudas
+      .filter((d) => coincideConBusqueda(d.nombre, query.q))
+      .map((d) => acotarAOrigen(d, query))
+      .filter((d): d is PersonaDeudaDto => d !== null)
+      .filter((d) => this.matchesTipo(d, query.tipo));
+  }
+
+  /**
+   * Deuda de plata agrupada por origen (campamentos e inscripciones). Solo
+   * considera rama y año: los orígenes saldados desaparecen solos, y el
+   * resultado sirve de menú de filtros para `getDeudas`.
+   */
+  async getConsolidado(
+    query: DeudaConsolidadoQueryDto,
+  ): Promise<ConsolidadoDeudasDto> {
+    return buildConsolidado(await this.calcularDeudas(query));
+  }
+
+  /** Deuda (plata y papeles) de todas las personas que cumplen rama/año. */
+  private async calcularDeudas(
+    query: DeudaConsolidadoQueryDto,
+  ): Promise<PersonaDeudaDto[]> {
     const personas = await this.loadPersonas(query);
     if (!personas.length) return [];
 
@@ -69,8 +100,7 @@ export class ReportesService {
           inscPayments,
         ),
       )
-      .filter((d): d is PersonaDeudaDto => d !== null)
-      .filter((d) => this.matchesTipo(d, query.tipo));
+      .filter((d): d is PersonaDeudaDto => d !== null);
   }
 
   /** Sin tipo indicado, se devuelven todas las deudas. */
@@ -121,7 +151,9 @@ export class ReportesService {
    * se devuelven los educadores que tengan esa rama asignada, y con el filtro
    * `Educadores` se devuelven todos los educadores sin importar su rama.
    */
-  private async loadPersonas(query: DeudaQueryDto): Promise<Persona[]> {
+  private async loadPersonas(
+    query: DeudaConsolidadoQueryDto,
+  ): Promise<Persona[]> {
     if (query.rama === RAMA_EDUCADORES) {
       return this.loadEducadores();
     }
