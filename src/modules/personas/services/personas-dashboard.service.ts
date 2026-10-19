@@ -230,8 +230,11 @@ export class PersonasDashboardService {
   }
 
   /**
-   * Campamentos del año actual + años pasados con deuda. montoPagado se calcula
-   * desde los pagos donde la persona es responsable.
+   * Campamentos del año actual + años pasados con deuda. Mismo cálculo que el
+   * reporte de deudas: el monto sale del snapshot `montoAsignado` del
+   * participante (un educador exento tiene 0, aunque el campamento tenga costo
+   * general) menos lo bonificado; solo cuentan como pago los `campamento_pago`
+   * donde la persona es responsable (la bonificación ya está descontada).
    */
   private buildCampamentoItems(
     participaciones: CampamentoParticipante[],
@@ -244,10 +247,14 @@ export class PersonasDashboardService {
           .filter(
             (m) =>
               m.campamentoId === cp.campamentoId &&
-              m.tipo === TipoMovimiento.INGRESO,
+              m.tipo === TipoMovimiento.INGRESO &&
+              m.concepto === ConceptoMovimiento.CAMPAMENTO_PAGO,
           )
           .reduce((sum, m) => sum + Number(m.monto), 0);
-        const montoTotal = Number(cp.campamento.costoPorPersona);
+        const montoTotal = Math.max(
+          0,
+          Number(cp.montoAsignado) - Number(cp.montoBonificado),
+        );
 
         return {
           id: cp.campamentoId,
@@ -255,7 +262,7 @@ export class PersonasDashboardService {
           ano: new Date(cp.campamento.fechaInicio).getFullYear(),
           montoTotal,
           montoPagado,
-          saldoPendiente: montoTotal - montoPagado,
+          saldoPendiente: Math.max(0, montoTotal - montoPagado),
           autorizacionEntregada: cp.autorizacionEntregada,
         };
       })

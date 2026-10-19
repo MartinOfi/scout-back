@@ -89,6 +89,8 @@ describe('PersonasDashboardService', () => {
     campamentoId: 'camp-1',
     personaId: 'persona-1',
     autorizacionEntregada: false,
+    montoAsignado: 8000,
+    montoBonificado: 0,
     campamento: {
       id: 'camp-1',
       nombre: 'Campamento Primavera',
@@ -262,11 +264,87 @@ describe('PersonasDashboardService', () => {
       expect(result.inscripciones.items.map((i) => i.ano)).not.toContain(2025);
     });
 
+    it('usa el monto asignado al participante (educador exento = 0), no el costo general del campamento', async () => {
+      const participacionEducadorExento = {
+        ...mockParticipacion2026,
+        montoAsignado: 0,
+        campamento: {
+          ...mockParticipacion2026.campamento,
+          costoPorPersona: 32000,
+        },
+      };
+      personasService.findOne.mockResolvedValue(mockProtagonista as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+      inscripcionesService.findByPersona.mockResolvedValue([]);
+      movimientosService.findByCaja.mockResolvedValue([]);
+      movimientosService.findByResponsable.mockResolvedValue([]);
+      setParticipaciones([participacionEducadorExento]);
+
+      const result = await service.getDashboard('persona-1');
+
+      expect(result.campamentos.items[0]).toMatchObject({
+        montoTotal: 0,
+        saldoPendiente: 0,
+      });
+      expect(result.deudaTotal.campamentos).toBe(0);
+    });
+
+    it('descuenta lo bonificado del monto y no cuenta la bonificación recibida como pago', async () => {
+      const participacionBonificada = {
+        ...mockParticipacion2026,
+        montoAsignado: 8000,
+        montoBonificado: 3000,
+      };
+      personasService.findOne.mockResolvedValue(mockProtagonista as any);
+      cajasService.getOrCreateCajaPersonal.mockResolvedValue(
+        mockCajaPersonal as any,
+      );
+      movimientosService.calcularSaldo.mockResolvedValue(0);
+      inscripcionesService.findByPersona.mockResolvedValue([]);
+      movimientosService.findByCaja.mockResolvedValue([]);
+      movimientosService.findByResponsable.mockResolvedValue([
+        {
+          id: 'bonif-1',
+          fecha: new Date('2026-05-01'),
+          createdAt: new Date('2026-05-01'),
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.BONIFICACION_RECIBIDA,
+          campamentoId: 'camp-1',
+          monto: 3000,
+          medioPago: MedioPago.EFECTIVO,
+        },
+        {
+          id: 'pago-1',
+          fecha: new Date('2026-05-02'),
+          createdAt: new Date('2026-05-02'),
+          tipo: TipoMovimiento.INGRESO,
+          concepto: ConceptoMovimiento.CAMPAMENTO_PAGO,
+          campamentoId: 'camp-1',
+          monto: 2000,
+          medioPago: MedioPago.EFECTIVO,
+        },
+      ] as any);
+      setParticipaciones([participacionBonificada]);
+
+      const result = await service.getDashboard('persona-1');
+
+      expect(result.campamentos.items[0]).toMatchObject({
+        montoTotal: 5000,
+        montoPagado: 2000,
+        saldoPendiente: 3000,
+      });
+    });
+
     it('should filter campamentos to current year + past years with debt', async () => {
       const participacion2025Pagada = {
         campamentoId: 'camp-2025',
         personaId: 'persona-1',
         autorizacionEntregada: true,
+        montoAsignado: 6000,
+        montoBonificado: 0,
         campamento: {
           id: 'camp-2025',
           nombre: 'Campamento Invierno',
