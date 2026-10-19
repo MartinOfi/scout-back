@@ -5,6 +5,7 @@ import {
   DestinoGanancia,
   ModalidadVenta,
 } from '../../../common/enums';
+import { dateOnlyTransformer } from '../../../common/utils/date-only.transformer';
 import { Producto } from './producto.entity';
 
 /**
@@ -19,7 +20,7 @@ export class Evento extends BaseEntity {
   @Column({ length: 100 })
   nombre!: string;
 
-  @Column({ type: 'date' })
+  @Column({ type: 'date', transformer: dateOnlyTransformer })
   fecha!: Date;
 
   @Column({ type: 'text', nullable: true })

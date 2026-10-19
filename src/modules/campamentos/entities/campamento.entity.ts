@@ -1,5 +1,6 @@
 import { Entity, Column, OneToMany } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
+import { dateOnlyTransformer } from '../../../common/utils/date-only.transformer';
 import { CampamentoParticipante } from './campamento-participante.entity';
 
 /**
@@ -16,10 +17,10 @@ export class Campamento extends BaseEntity {
   @Column({ length: 100 })
   nombre!: string;
 
-  @Column({ type: 'date' })
+  @Column({ type: 'date', transformer: dateOnlyTransformer })
   fechaInicio!: Date;
 
-  @Column({ type: 'date' })
+  @Column({ type: 'date', transformer: dateOnlyTransformer })
   fechaFin!: Date;
 
   /**
